@@ -285,14 +285,20 @@ impl Menu<Podcast> {
     pub fn get_episodes(&self) -> LockVec<Episode> {
         let index = self.get_menu_idx(self.selected);
         let (borrowed_map, _, borrowed_order) = self.items.borrow();
-        let pod_id = borrowed_order
+        if borrowed_order.len() <= index{
+            LockVec::new(Vec::new())
+        }
+        else{
+            let pod_id = borrowed_order
             .get(index)
             .expect("Could not retrieve podcast.");
-        return borrowed_map
+            borrowed_map
             .get(pod_id)
             .expect("Could not retrieve podcast info.")
             .episodes
-            .clone();
+            .clone()
+        }
+        
     }
 
     /// Controls how the window changes when it is inactive (i.e., not
@@ -370,7 +376,6 @@ impl Menu<NewEpisode> {
         return changed;
     }
 }
-
 
 // TESTS ----------------------------------------------------------------
 #[cfg(test)]
