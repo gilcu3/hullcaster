@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cmp::Ordering, rc::Rc};
 
 use crossterm::style;
 
@@ -26,16 +26,16 @@ impl Panel {
         // printing to the terminal buffer
         let buffer = vec![String::new(); (n_row - 2) as usize];
 
-        return Panel {
-            buffer: buffer,
-            screen_pos: screen_pos,
-            colors: colors,
-            title: title,
-            start_x: start_x,
-            n_row: n_row,
-            n_col: n_col,
-            margins: margins,
-        };
+        Panel {
+            buffer,
+            screen_pos,
+            colors,
+            title,
+            start_x,
+            n_row,
+            n_col,
+            margins,
+        }
     }
 
     pub fn redraw(&self) {}
@@ -64,7 +64,7 @@ impl Panel {
     ) -> u16 {
         let mut row = start_y;
         let max_row = self.get_rows();
-        let wrapper = textwrap::wrap(&string, self.get_cols() as usize);
+        let wrapper = textwrap::wrap(string, self.get_cols() as usize);
         for line in wrapper {
             self.write_line(row, line.to_string(), None);
             row += 1;
@@ -73,7 +73,7 @@ impl Panel {
                 break;
             }
         }
-        return row - 1;
+        row - 1
     }
 
     pub fn resize(&mut self, n_row: u16, n_col: u16, start_x: u16) {
@@ -83,26 +83,28 @@ impl Panel {
 
         let new_len = (n_row - 2) as usize;
         let len = self.buffer.len();
-        if new_len < len {
-            self.buffer.truncate(new_len);
-        } else if new_len > len {
-            for _ in (new_len - len)..new_len {
-                self.buffer.push(String::new());
+        match new_len.cmp(&len) {
+            Ordering::Greater => {
+                for _ in (new_len - len)..new_len {
+                    self.buffer.push(String::new());
+                }
             }
+            Ordering::Less =>  self.buffer.truncate(new_len),
+            Ordering::Equal => {},
         }
     }
 
     pub fn get_rows(&self) -> u16 {
         // 2 for border on top and bottom
-        return self.n_row - self.margins.0 - self.margins.2 - 2;
+        self.n_row - self.margins.0 - self.margins.2 - 2
     }
 
     pub fn get_cols(&self) -> u16 {
         // 2 for border, and 1 extra for some reason...
-        return self.n_col - self.margins.1 - self.margins.3 - 3;
+        self.n_col - self.margins.1 - self.margins.3 - 3
     }
 
     pub fn get_row(&self, row: usize) -> String {
-        return self.buffer[row].clone();
+        self.buffer[row].clone()
     }
 }

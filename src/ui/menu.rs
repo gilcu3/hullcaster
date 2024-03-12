@@ -384,15 +384,13 @@ mod tests {
 
     fn create_menu(n_row: u16, n_col: u16, top_row: u16, selected: u16) -> Menu<Episode> {
         let colors = Rc::new(crate::ui::AppColors::default());
-        let titles = vec![
-            "A Very Cool Episode",
+        let titles = ["A Very Cool Episode",
             "This is a very long episode title but we'll get through it together",
             "An episode with le Unicodé",
             "How does an episode with emoji sound? 😉",
             "Here's another title",
             "Un titre, c'est moi!",
-            "One more just for good measure",
-        ];
+            "One more just for good measure"];
         let mut items = Vec::new();
         for (i, t) in titles.iter().enumerate() {
             let played = i % 2 == 0;
@@ -406,7 +404,7 @@ mod tests {
                 pubdate: Some(Utc::now()),
                 duration: Some(12345),
                 path: None,
-                played: played,
+                played,
             });
         }
 
@@ -419,15 +417,15 @@ mod tests {
             0,
             (0, 0, 0, 0),
         );
-        return Menu {
-            panel: panel,
+        Menu {
+            panel,
             header: None,
             items: LockVec::new(items),
             start_row: 0,
-            top_row: top_row,
-            selected: selected,
+            top_row,
+            selected,
             active: true,
-        };
+        }
     }
 
     #[test]

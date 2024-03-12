@@ -271,7 +271,7 @@ mod tests {
     use std::io::BufReader;
 
     fn open_file(path: &str) -> BufReader<File> {
-        return BufReader::new(File::open(path).unwrap());
+        BufReader::new(File::open(path).unwrap())
     }
 
     #[test]
