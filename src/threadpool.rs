@@ -25,16 +25,15 @@ impl Threadpool {
             workers.push(Worker::new(Arc::clone(&receiver_lock)));
         }
 
-        return Threadpool {
-            workers: workers,
-            sender: sender,
-        };
+        Threadpool { workers, sender }
     }
 
     /// Adds a new job to the threadpool, passing closure to first
     /// available worker.
     pub fn execute<F>(&self, func: F)
-    where F: FnOnce() + Send + 'static {
+    where
+        F: FnOnce() + Send + 'static,
+    {
         let job = Box::new(func);
         self.sender
             .send(JobMessage::NewJob(job))
@@ -92,8 +91,8 @@ impl Worker {
             }
         });
 
-        return Worker {
+        Worker {
             thread: Some(thread),
-        };
+        }
     }
 }

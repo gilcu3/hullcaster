@@ -49,7 +49,6 @@ lazy_static! {
     static ref RE_MULT_LINE_BREAKS: Regex = Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error");
 }
 
-
 /// Enum used for communicating back to the main controller after user
 /// input has been captured by the UI. usize values always represent the
 /// selected podcast, and (if applicable), the selected episode, in that
@@ -111,9 +110,7 @@ impl<'a> Ui<'a> {
     /// Spawns a UI object in a new thread, with message channels to send
     /// and receive messages
     pub fn spawn(
-        config: Config,
-        items: LockVec<Podcast>,
-        rx_from_main: mpsc::Receiver<MainMessage>,
+        config: Config, items: LockVec<Podcast>, rx_from_main: mpsc::Receiver<MainMessage>,
         tx_to_main: mpsc::Sender<Message>,
     ) -> thread::JoinHandle<()> {
         return thread::spawn(move || {
@@ -179,7 +176,7 @@ impl<'a> Ui<'a> {
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
         let (pod_col, ep_col, det_col) = Self::calculate_sizes(n_col);
 
-        let first_pod = match items.borrow_filtered_order().get(0) {
+        let first_pod = match items.borrow_filtered_order().first() {
             Some(first_id) => match items.borrow_map().get(first_id) {
                 Some(pod) => pod.episodes.clone(),
                 None => LockVec::new(Vec::new()),
@@ -227,18 +224,18 @@ impl<'a> Ui<'a> {
         let notif_win = NotifWin::new(colors.clone(), n_row - 1, n_row, n_col);
         let popup_win = PopupWin::new(&config.keybindings, colors.clone(), n_row, n_col);
 
-        return Ui {
-            n_row: n_row,
-            n_col: n_col,
+        Ui {
+            n_row,
+            n_col,
             keymap: &config.keybindings,
-            colors: colors,
-            podcast_menu: podcast_menu,
-            episode_menu: episode_menu,
-            details_panel: details_panel,
+            colors,
+            podcast_menu,
+            episode_menu,
+            details_panel,
             active_panel: ActivePanel::PodcastMenu,
-            notif_win: notif_win,
-            popup_win: popup_win,
-        };
+            notif_win,
+            popup_win,
+        }
     }
 
     /// This should be called immediately after creating the UI, in order
@@ -425,7 +422,7 @@ impl<'a> Ui<'a> {
                 _ => (),
             }
         } // end of poll()
-        return UiMsg::Noop;
+        UiMsg::Noop
     }
 
     /// Resize all the windows on the screen and redraw them.
@@ -474,10 +471,7 @@ impl<'a> Ui<'a> {
 
     /// Move the menu cursor around and redraw menus when necessary.
     pub fn move_cursor(
-        &mut self,
-        action: &UserAction,
-        curr_pod_id: Option<i64>,
-        curr_ep_id: Option<i64>,
+        &mut self, action: &UserAction, curr_pod_id: Option<i64>, curr_ep_id: Option<i64>,
     ) {
         match action {
             UserAction::Down => {
@@ -595,9 +589,7 @@ impl<'a> Ui<'a> {
     /// Mark an episode as played or unplayed (opposite of its current
     /// status).
     pub fn mark_played(
-        &mut self,
-        curr_pod_id: Option<i64>,
-        curr_ep_id: Option<i64>,
+        &mut self, curr_pod_id: Option<i64>, curr_ep_id: Option<i64>,
     ) -> Option<UiMsg> {
         if let Some(pod_id) = curr_pod_id {
             if let Some(ep_id) = curr_ep_id {
@@ -610,7 +602,7 @@ impl<'a> Ui<'a> {
                 }
             }
         }
-        return None;
+        None
     }
 
     /// Mark all episodes for a given podcast as played or unplayed. If
@@ -627,7 +619,7 @@ impl<'a> Ui<'a> {
                 return Some(UiMsg::MarkAllPlayed(pod_id, !played));
             }
         }
-        return None;
+        None
     }
 
     /// Remove a podcast from the list.
@@ -649,14 +641,12 @@ impl<'a> Ui<'a> {
 
             return Some(UiMsg::RemovePodcast(pod_id, delete));
         }
-        return None;
+        None
     }
 
     /// Remove an episode from the list for the current podcast.
     fn remove_episode(
-        &mut self,
-        curr_pod_id: Option<i64>,
-        curr_ep_id: Option<i64>,
+        &mut self, curr_pod_id: Option<i64>, curr_ep_id: Option<i64>,
     ) -> Option<UiMsg> {
         let confirm = self.ask_for_confirmation("Are you sure you want to remove the episode?");
         // If we don't get a confirmation to delete, then don't remove
@@ -680,7 +670,7 @@ impl<'a> Ui<'a> {
                 return Some(UiMsg::RemoveEpisode(pod_id, ep_id, delete));
             }
         }
-        return None;
+        None
     }
 
     /// Remove all episodes from the list for the current podcast.
@@ -696,9 +686,8 @@ impl<'a> Ui<'a> {
             }
             return Some(UiMsg::RemoveAllEpisodes(pod_id, delete));
         }
-        return None;
+        None
     }
-
 
     /// Based on the current selected value of the podcast and episode
     /// menus, returns the IDs of the current podcast and episode (if
@@ -719,7 +708,7 @@ impl<'a> Ui<'a> {
             .borrow_filtered_order()
             .get(current_ep_index)
             .copied();
-        return (current_pod_id, current_ep_id);
+        (current_pod_id, current_ep_id)
     }
 
     /// Calculates the number of columns to allocate for each of the
@@ -739,7 +728,7 @@ impl<'a> Ui<'a> {
             ep_col = n_col + 1 - pod_col;
             det_col = 0;
         }
-        return (pod_col, ep_col, det_col);
+        (pod_col, ep_col, det_col)
     }
 
     /// Checks whether the user has downloaded any episodes for the
@@ -759,7 +748,7 @@ impl<'a> Ui<'a> {
                 break;
             }
         }
-        return any_downloaded;
+        any_downloaded
     }
 
     /// Spawns a "(y/n)" notification with the specified input
@@ -775,7 +764,7 @@ impl<'a> Ui<'a> {
     /// user at the beginning of the input line. This returns the user's
     /// input; if the user cancels their input, the String will be empty.
     pub fn spawn_input_notif(&self, prefix: &str) -> String {
-        return self.notif_win.input_notif(prefix);
+        self.notif_win.input_notif(prefix)
     }
 
     /// Adds a notification to the bottom of the screen that solicits
@@ -795,7 +784,7 @@ impl<'a> Ui<'a> {
                 out_val = Some(false);
             }
         }
-        return out_val;
+        out_val
     }
 
     /// Adds a notification to the bottom of the screen for `duration`
@@ -909,8 +898,8 @@ impl<'a> Ui<'a> {
                         };
 
                         let details = Details {
-                            pod_title: pod_title,
-                            ep_title: ep_title,
+                            pod_title,
+                            ep_title,
                             pubdate: ep.pubdate,
                             duration: Some(ep.format_duration()),
                             explicit: pod_explicit,

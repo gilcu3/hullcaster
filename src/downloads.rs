@@ -36,10 +36,7 @@ pub struct EpData {
 /// for every episode to be downloaded. New jobs can be requested
 /// by the user while there are still ongoing jobs.
 pub fn download_list(
-    episodes: Vec<EpData>,
-    dest: &Path,
-    max_retries: usize,
-    threadpool: &Threadpool,
+    episodes: Vec<EpData>, dest: &Path, max_retries: usize, threadpool: &Threadpool,
     tx_to_main: Sender<Message>,
 ) {
     // parse episode details and push to queue
@@ -53,7 +50,6 @@ pub fn download_list(
         });
     }
 }
-
 
 /// Downloads a file to a local filepath, returning DownloadMsg variant
 /// indicating success or failure.
@@ -96,11 +92,14 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
         _ => "mp3", // assume .mp3 unless we figure out otherwise
     };
 
-    let mut file_name = sanitize_with_options(&ep_data.title, Options {
-        truncate: true,
-        windows: true, // for simplicity, we'll just use Windows-friendly paths for everyone
-        replacement: "",
-    });
+    let mut file_name = sanitize_with_options(
+        &ep_data.title,
+        Options {
+            truncate: true,
+            windows: true, // for simplicity, we'll just use Windows-friendly paths for everyone
+            replacement: "",
+        },
+    );
 
     if let Some(pubdate) = ep_data.pubdate {
         file_name = format!("{}_{}", file_name, pubdate.format("%Y%m%d_%H%M%S"));
@@ -117,8 +116,8 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     ep_data.file_path = Some(file_path);
 
     let mut reader = response.into_reader();
-    return match std::io::copy(&mut reader, &mut dst.unwrap()) {
+    match std::io::copy(&mut reader, &mut dst.unwrap()) {
         Ok(_) => DownloadMsg::Complete(ep_data),
         Err(_) => DownloadMsg::FileWriteError(ep_data),
-    };
+    }
 }

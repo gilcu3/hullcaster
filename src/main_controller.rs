@@ -76,20 +76,20 @@ impl MainController {
         );
         // TODO: Can we do this without cloning the config?
 
-        return Ok(MainController {
-            config: config,
+        Ok(MainController {
+            config,
             db: db_inst,
-            threadpool: threadpool,
+            threadpool,
             podcasts: podcast_list,
             filters: Filters::default(),
-            ui_thread: ui_thread,
+            ui_thread,
             sync_counter: 0,
             sync_tracker: Vec::new(),
             download_tracker: HashSet::new(),
-            tx_to_ui: tx_to_ui,
-            tx_to_main: tx_to_main,
-            rx_to_main: rx_to_main,
-        });
+            tx_to_ui,
+            tx_to_main,
+            rx_to_main,
+        })
     }
 
     /// Initiates the main loop where the controller waits for messages coming in from the UI and other threads, and processes them.
@@ -530,11 +530,14 @@ impl MainController {
 
         if !ep_data.is_empty() {
             // add directory for podcast, create if it does not exist
-            let dir_name = sanitize_with_options(&pod_title, Options {
-                truncate: true,
-                windows: true, // for simplicity, we'll just use Windows-friendly paths for everyone
-                replacement: "",
-            });
+            let dir_name = sanitize_with_options(
+                &pod_title,
+                Options {
+                    truncate: true,
+                    windows: true, // for simplicity, we'll just use Windows-friendly paths for everyone
+                    replacement: "",
+                },
+            );
             match self.create_podcast_dir(dir_name) {
                 Ok(path) => {
                     for ep in ep_data.iter() {
@@ -590,10 +593,10 @@ impl MainController {
     pub fn create_podcast_dir(&self, pod_title: String) -> Result<PathBuf, std::io::Error> {
         let mut download_path = self.config.download_path.clone();
         download_path.push(pod_title);
-        return match std::fs::create_dir_all(&download_path) {
+        match std::fs::create_dir_all(&download_path) {
             Ok(_) => Ok(download_path),
             Err(err) => Err(err),
-        };
+        }
     }
 
     /// Deletes a downloaded file for an episode from the user's local
@@ -753,9 +756,9 @@ impl MainController {
                         FilterStatus::NegativeCases => ep.path.is_some(),
                     };
                     if !(play_filter | download_filter) {
-                        return Some(ep.id);
+                        Some(ep.id)
                     } else {
-                        return None;
+                        None
                     }
                 });
                 if !new_filter.is_empty() {

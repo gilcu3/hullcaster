@@ -15,7 +15,6 @@ pub const BOTTOM_LEFT: &str = "└";
 pub const TOP_TEE: &str = "┬";
 pub const BOTTOM_TEE: &str = "┴";
 
-
 /// Panels abstract away a terminal "window" (section of the screen),
 /// and handle all methods associated with writing data to that window.
 /// A panel includes a border and margin around the edge of the window,
@@ -39,23 +38,18 @@ pub struct Panel {
 impl Panel {
     /// Creates a new panel.
     pub fn new(
-        title: String,
-        screen_pos: usize,
-        colors: Rc<AppColors>,
-        n_row: u16,
-        n_col: u16,
-        start_x: u16,
-        margins: (u16, u16, u16, u16),
+        title: String, screen_pos: usize, colors: Rc<AppColors>, n_row: u16, n_col: u16,
+        start_x: u16, margins: (u16, u16, u16, u16),
     ) -> Self {
-        return Panel {
-            screen_pos: screen_pos,
-            colors: colors,
-            title: title,
-            start_x: start_x,
-            n_row: n_row,
-            n_col: n_col,
-            margins: margins,
-        };
+        Panel {
+            screen_pos,
+            colors,
+            title,
+            start_x,
+            n_row,
+            n_col,
+            margins,
+        }
     }
 
     /// Redraws borders and refreshes the window to display on terminal.
@@ -183,11 +177,7 @@ impl Panel {
     /// wrapping and may mess up the format. Use `write_wrap_line()` if
     /// you need line wrapping.
     pub fn write_key_value_line(
-        &self,
-        y: u16,
-        mut key: String,
-        mut value: String,
-        key_style: Option<style::ContentStyle>,
+        &self, y: u16, mut key: String, mut value: String, key_style: Option<style::ContentStyle>,
         value_style: Option<style::ContentStyle>,
     ) {
         key.push(':');
@@ -216,10 +206,7 @@ impl Panel {
     /// wrapping makes it unknown where text will end). Returns the row
     /// on which the text ended.
     pub fn write_wrap_line(
-        &self,
-        start_y: u16,
-        string: &str,
-        style: Option<style::ContentStyle>,
+        &self, start_y: u16, string: &str, style: Option<style::ContentStyle>,
     ) -> u16 {
         let mut row = start_y;
         let max_row = self.get_rows();
@@ -246,7 +233,7 @@ impl Panel {
                 break;
             }
         }
-        return row - 1;
+        row - 1
     }
 
     /// Updates window size.
@@ -260,25 +247,25 @@ impl Panel {
     /// and margins).
     pub fn get_rows(&self) -> u16 {
         // 2 for borders on top and bottom
-        return self.n_row - self.margins.0 - self.margins.2 - 2;
+        self.n_row - self.margins.0 - self.margins.2 - 2
     }
 
     /// Returns the effective number of columns (accounting for
     /// borders and margins).
     pub fn get_cols(&self) -> u16 {
         // 2 for borders on left and right
-        return self.n_col - self.margins.1 - self.margins.3 - 2;
+        self.n_col - self.margins.1 - self.margins.3 - 2
     }
 
     /// Calculates the y-value relative to the terminal rather than to
     /// the panel (i.e., taking into account borders and margins).
     fn abs_y(&self, y: u16) -> u16 {
-        return y + self.margins.0 + 1;
+        y + self.margins.0 + 1
     }
 
     /// Calculates the x-value relative to the terminal rather than to
     /// the panel (i.e., taking into account borders and margins).
     fn abs_x(&self, x: u16) -> u16 {
-        return x + self.start_x + self.margins.3 + 1;
+        x + self.start_x + self.margins.3 + 1
     }
 }

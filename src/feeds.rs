@@ -38,19 +38,13 @@ pub struct PodcastFeed {
 
 impl PodcastFeed {
     pub fn new(id: Option<i64>, url: String, title: Option<String>) -> Self {
-        return Self {
-            id: id,
-            url: url,
-            title: title,
-        };
+        Self { id, url, title }
     }
 }
 
 /// Spawns a new thread to check a feed and retrieve podcast data.
 pub fn check_feed(
-    feed: PodcastFeed,
-    max_retries: usize,
-    threadpool: &Threadpool,
+    feed: PodcastFeed, max_retries: usize, threadpool: &Threadpool,
     tx_to_main: mpsc::Sender<Message>,
 ) {
     threadpool.execute(move || match get_feed_data(feed.url.clone(), max_retries) {
@@ -95,7 +89,7 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
         }
     };
 
-    return match request {
+    match request {
         Ok(resp) => {
             let mut reader = resp.into_reader();
             let mut resp_data = Vec::new();
@@ -105,9 +99,8 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
             Ok(parse_feed_data(channel, &url))
         }
         Err(err) => Err(err),
-    };
+    }
 }
-
 
 /// Given a Channel with the RSS feed data, this parses the data about a
 /// podcast and its episodes and returns a Podcast. There are existing
@@ -145,15 +138,15 @@ fn parse_feed_data(channel: Channel, url: &str) -> PodcastNoId {
         }
     }
 
-    return PodcastNoId {
-        title: title,
-        url: url,
-        description: description,
-        author: author,
-        explicit: explicit,
-        last_checked: last_checked,
-        episodes: episodes,
-    };
+    PodcastNoId {
+        title,
+        url,
+        description,
+        author,
+        explicit,
+        last_checked,
+        episodes,
+    }
 }
 
 /// For an item (episode) in an RSS feed, this pulls data about the item
@@ -186,7 +179,7 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
                 // to a NaiveDateTime, and then from there create
                 // a DateTime<Utc>; see
                 // https://github.com/chronotope/chrono/issues/169#issue-239433186
-                Some(DateTime::from_utc(date.naive_utc(), Utc))
+                Some(DateTime::from_naive_utc_and_offset(date.naive_utc(), Utc))
             }
             Err(_) => None,
         },
@@ -198,14 +191,14 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
         duration = duration_to_int(itunes.duration()).map(|dur| dur as i64);
     }
 
-    return EpisodeNoId {
-        title: title,
-        url: url,
-        guid: guid,
-        description: description,
-        pubdate: pubdate,
-        duration: duration,
-    };
+    EpisodeNoId {
+        title,
+        url,
+        guid,
+        description,
+        pubdate,
+        duration,
+    }
 }
 
 /// Given a string representing an episode duration, this attempts to
@@ -242,7 +235,7 @@ fn duration_to_int(duration: Option<&str>) -> Option<i32> {
                         }
                     }
 
-                    return match counter {
+                    match counter {
                         // HH:MM:SS
                         3 => Some(
                             times[0].unwrap() * 60 * 60
@@ -254,7 +247,7 @@ fn duration_to_int(duration: Option<&str>) -> Option<i32> {
                         // SS
                         1 => times[0],
                         _ => None,
-                    };
+                    }
                 }
                 None => None,
             }
@@ -269,7 +262,6 @@ fn regex_to_int(re_match: Match) -> Result<i32, std::num::ParseIntError> {
     let mstr = re_match.as_str();
     mstr.parse::<i32>()
 }
-
 
 // TESTS -----------------------------------------------------------------
 #[cfg(test)]

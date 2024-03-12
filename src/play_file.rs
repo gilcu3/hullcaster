@@ -7,7 +7,7 @@ pub fn execute(command: &str, path: &str) -> Result<()> {
     // everything to it in a string doesn't work), so we need to split
     // on white space and treat everything after the first word as args
     let cmd_string = command.to_string();
-    let mut parts = cmd_string.trim().split_whitespace();
+    let mut parts = cmd_string.split_whitespace();
     let base_cmd = parts.next().ok_or_else(|| anyhow!("Invalid command."))?;
     let mut cmd = Command::new(base_cmd);
 
@@ -16,7 +16,7 @@ pub fn execute(command: &str, path: &str) -> Result<()> {
         cmd.args(parts.map(|a| if a == "%s" { path } else { a }));
     } else {
         // otherwise, add path to the end of the command
-        cmd.args(parts.chain(vec![path].into_iter()));
+        cmd.args(parts.chain(vec![path]));
     }
 
     cmd.stdout(Stdio::null()).stderr(Stdio::null());

@@ -31,7 +31,6 @@ pub const DETAILS_PANEL_LENGTH: u16 = 135;
 // in relation to the rows eg: 4 = 1/4 of the screen
 pub const BIG_SCROLL_AMOUNT: u16 = 4;
 
-
 /// Identifies the user's selection for what to do with new episodes
 /// when syncing.
 #[derive(Debug, Clone)]
@@ -116,7 +115,6 @@ pub struct AppColorsFromToml {
     pub error_background: Option<String>,
 }
 
-
 impl Config {
     /// Given a file path, this reads a TOML config file and returns a
     /// Config struct with keybindings, etc. Inserts defaults if config
@@ -188,7 +186,7 @@ impl Config {
             }
         };
 
-        return config_with_defaults(config_toml);
+        config_with_defaults(config_toml)
     }
 }
 
@@ -242,17 +240,16 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         None => 3,
     };
 
-    return Ok(Config {
-        download_path: download_path,
-        play_command: play_command,
-        download_new_episodes: download_new_episodes,
-        simultaneous_downloads: simultaneous_downloads,
-        max_retries: max_retries,
+    Ok(Config {
+        download_path,
+        play_command,
+        download_new_episodes,
+        simultaneous_downloads,
+        max_retries,
         keybindings: keymap,
-        colors: colors,
-    });
+        colors,
+    })
 }
-
 
 /// Helper function that takes an (optionally specified) user directory
 /// and an (OS-dependent) default directory, expands any environment
@@ -290,5 +287,5 @@ fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Result<
         )
     })?;
 
-    return Ok(final_path);
+    Ok(final_path)
 }

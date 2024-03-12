@@ -8,7 +8,7 @@ use crate::types::*;
 /// Import a list of podcast feeds from an OPML file. Supports
 /// v1.0, v1.1, and v2.0 OPML files.
 pub fn import(xml: String) -> Result<Vec<PodcastFeed>> {
-    return match OPML::from_str(&xml) {
+    match OPML::from_str(&xml) {
         Err(err) => Err(anyhow!(err)),
         Ok(opml) => {
             let mut feeds = Vec::new();
@@ -33,7 +33,7 @@ pub fn import(xml: String) -> Result<Vec<PodcastFeed>> {
             }
             Ok(feeds)
         }
-    };
+    }
 }
 
 /// Converts the current set of podcast feeds to the OPML format
@@ -61,8 +61,6 @@ pub fn export(podcasts: Vec<Podcast>) -> OPML {
         });
     }
 
-    opml.body = Body {
-        outlines: outlines,
-    };
-    return opml;
+    opml.body = Body { outlines };
+    opml
 }

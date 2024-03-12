@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rusqlite::{params, Connection};
@@ -15,7 +15,6 @@ lazy_static! {
     /// podcast titles
     static ref RE_ARTICLES: Regex = Regex::new(r"^(a|an|the) ").expect("Regex error.");
 }
-
 
 pub struct SyncResult {
     pub added: Vec<NewEpisode>,
@@ -83,7 +82,7 @@ impl Database {
             }
         }
 
-        return Ok(db_conn);
+        Ok(db_conn)
     }
 
     /// Creates the necessary database tables, if they do not already
@@ -146,7 +145,7 @@ impl Database {
             params![],
         )
         .with_context(|| "Could not create version database table")?;
-        return Ok(());
+        Ok(())
     }
 
     /// If version stored in database is less than the current version
@@ -168,7 +167,7 @@ impl Database {
                 params![1, current_version.to_string()],
             )?;
         }
-        return Ok(());
+        Ok(())
     }
 
     /// Inserts a new podcast and list of podcast episodes into the
@@ -202,8 +201,8 @@ impl Database {
         for ep in podcast.episodes.iter().rev() {
             let id = self.insert_episode(&tx, pod_id, ep)?;
             let new_ep = NewEpisode {
-                id: id,
-                pod_id: pod_id,
+                id,
+                pod_id,
                 title: ep.title.clone(),
                 pod_title: podcast.title.clone(),
                 selected: false,
@@ -212,18 +211,15 @@ impl Database {
         }
         tx.commit()?;
 
-        return Ok(SyncResult {
+        Ok(SyncResult {
             added: ep_ids,
             updated: Vec::new(),
-        });
+        })
     }
 
     /// Inserts a podcast episode into the database.
     pub fn insert_episode(
-        &self,
-        conn: &Connection,
-        podcast_id: i64,
-        episode: &EpisodeNoId,
+        &self, conn: &Connection, podcast_id: i64, episode: &EpisodeNoId,
     ) -> Result<i64> {
         let pubdate = episode.pubdate.map(|dt| dt.timestamp());
 
@@ -243,7 +239,7 @@ impl Database {
             false,
             false,
         ])?;
-        return Ok(conn.last_insert_rowid());
+        Ok(conn.last_insert_rowid())
     }
 
     /// Inserts a filepath to a downloaded episode.
@@ -255,7 +251,7 @@ impl Database {
                 VALUES (?, ?);",
         )?;
         stmt.execute(params![episode_id, path.to_str(),])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Removes a file listing for an episode from the database when the
@@ -264,7 +260,7 @@ impl Database {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
         let mut stmt = conn.prepare_cached("DELETE FROM files WHERE episode_id = ?;")?;
         stmt.execute(params![episode_id])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Removes all file listings for the selected episode ids.
@@ -277,7 +273,7 @@ impl Database {
 
         let mut stmt = conn.prepare_cached("DELETE FROM files WHERE episode_id = (?);")?;
         stmt.execute(params![episodes])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Removes a podcast, all episodes, and files from the database.
@@ -289,7 +285,7 @@ impl Database {
         // those episodes as well.
         let mut stmt = conn.prepare_cached("DELETE FROM podcasts WHERE id = ?;")?;
         stmt.execute(params![podcast_id])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Updates an existing podcast in the database, where metadata is
@@ -315,7 +311,7 @@ impl Database {
         }
 
         let result = self.update_episodes(pod_id, podcast.title, podcast.episodes)?;
-        return Ok(result);
+        Ok(result)
     }
 
     /// Updates metadata about episodes that already exist in database,
@@ -327,10 +323,7 @@ impl Database {
     /// a "new" episode. The old version will still remain in the
     /// database.
     fn update_episodes(
-        &self,
-        podcast_id: i64,
-        podcast_title: String,
-        episodes: Vec<EpisodeNoId>,
+        &self, podcast_id: i64, podcast_title: String, episodes: Vec<EpisodeNoId>,
     ) -> Result<SyncResult> {
         let old_episodes = self.get_episodes(podcast_id, true)?;
         let mut old_ep_map = AHashMap::new();
@@ -407,7 +400,7 @@ impl Database {
                 None => {
                     let id = self.insert_episode(&tx, podcast_id, new_ep)?;
                     let new_ep = NewEpisode {
-                        id: id,
+                        id,
                         pod_id: podcast_id,
                         title: new_ep.title.clone(),
                         pod_title: podcast_title.clone(),
@@ -418,10 +411,10 @@ impl Database {
             }
         }
         tx.commit()?;
-        return Ok(SyncResult {
+        Ok(SyncResult {
             added: insert_ep,
             updated: update_ep,
-        });
+        })
     }
 
     /// Checks two matching episodes to see whether there are details
@@ -444,7 +437,7 @@ impl Database {
         {
             return true;
         }
-        return false;
+        false
     }
 
     /// Updates an episode to mark it as played or unplayed.
@@ -453,7 +446,7 @@ impl Database {
 
         let mut stmt = conn.prepare_cached("UPDATE episodes SET played = ? WHERE id = ?;")?;
         stmt.execute(params![played, episode_id])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Updates an episode to "remove" it by hiding it. "Removed"
@@ -464,7 +457,7 @@ impl Database {
 
         let mut stmt = conn.prepare_cached("UPDATE episodes SET hidden = ? WHERE id = ?;")?;
         stmt.execute(params![hide, episode_id])?;
-        return Ok(());
+        Ok(())
     }
 
     /// Generates list of all podcasts in database.
@@ -487,8 +480,8 @@ impl Database {
 
             Ok(Podcast {
                 id: pod_id,
-                title: title,
-                sort_title: sort_title,
+                title,
+                sort_title,
                 url: row.get("url")?,
                 description: row.get("description")?,
                 author: row.get("author")?,
@@ -503,7 +496,7 @@ impl Database {
         }
         podcasts.sort_unstable();
 
-        return Ok(podcasts);
+        Ok(podcasts)
     }
 
     /// Generates list of episodes for a given podcast.
@@ -541,12 +534,12 @@ impl Database {
                 description: row.get("description")?,
                 pubdate: convert_date(row.get("pubdate")),
                 duration: row.get("duration")?,
-                path: path,
+                path,
                 played: row.get("played")?,
             })
         })?;
         let episodes = episode_iter.flatten().collect();
-        return Ok(episodes);
+        Ok(episodes)
     }
 
     /// Deletes all rows in all tables
@@ -555,17 +548,16 @@ impl Database {
         conn.execute("DELETE FROM files;", params![])?;
         conn.execute("DELETE FROM episodes;", params![])?;
         conn.execute("DELETE FROM podcasts;", params![])?;
-        return Ok(());
+        Ok(())
     }
 }
 
 /// Helper function converting an (optional) Unix timestamp to a
 /// DateTime<Utc> object
 fn convert_date(result: Result<i64, rusqlite::Error>) -> Option<DateTime<Utc>> {
-    return match result {
-        Ok(timestamp) => {
-            NaiveDateTime::from_timestamp_opt(timestamp, 0).map(|ndt| DateTime::from_utc(ndt, Utc))
-        }
+    match result {
+        Ok(timestamp) => DateTime::from_timestamp(timestamp, 0)
+            .map(|ndt| DateTime::from_naive_utc_and_offset(ndt.naive_utc(), Utc)),
         Err(_) => None,
-    };
+    }
 }

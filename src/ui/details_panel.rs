@@ -18,7 +18,6 @@ pub enum DetailsLine {
     ),
 }
 
-
 /// Struct holding the raw data used for building the details panel.
 #[derive(Debug)]
 pub struct Details {
@@ -42,22 +41,17 @@ pub struct DetailsPanel {
 impl DetailsPanel {
     /// Creates a new details panel.
     pub fn new(
-        title: String,
-        screen_pos: usize,
-        colors: Rc<AppColors>,
-        n_row: u16,
-        n_col: u16,
-        start_x: u16,
-        margins: (u16, u16, u16, u16),
+        title: String, screen_pos: usize, colors: Rc<AppColors>, n_row: u16, n_col: u16,
+        start_x: u16, margins: (u16, u16, u16, u16),
     ) -> Self {
         let panel = Panel::new(title, screen_pos, colors, n_row, n_col, start_x, margins);
-        return Self {
-            panel: panel,
+        Self {
+            panel,
             details: None,
             content: Vec::new(),
             top_row: 0,
             total_rows: 0,
-        };
+        }
     }
 
     /// Redraws borders and refreshes the window to display on terminal.

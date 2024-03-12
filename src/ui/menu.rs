@@ -29,7 +29,8 @@ use crate::types::*;
 ///   those events.
 #[derive(Debug)]
 pub struct Menu<T>
-where T: Clone + Menuable
+where
+    T: Clone + Menuable,
 {
     pub panel: Panel,
     pub header: Option<String>,
@@ -43,15 +44,15 @@ where T: Clone + Menuable
 impl<T: Clone + Menuable> Menu<T> {
     /// Creates a new menu.
     pub fn new(panel: Panel, header: Option<String>, items: LockVec<T>) -> Self {
-        return Self {
-            panel: panel,
-            header: header,
-            items: items,
+        Self {
+            panel,
+            header,
+            items,
             start_row: 0,
             top_row: 0,
             selected: 0,
             active: false,
-        };
+        }
     }
 
     /// Clears the terminal, and then prints the list of visible items
@@ -116,9 +117,9 @@ impl<T: Clone + Menuable> Menu<T> {
     /// above the menu.
     fn print_header(&mut self) -> u16 {
         if let Some(header) = &self.header {
-            return self.panel.write_wrap_line(0, header, None) + 2;
+            self.panel.write_wrap_line(0, header, None) + 2
         } else {
-            return 0;
+            0
         }
     }
 
@@ -274,10 +275,9 @@ impl<T: Clone + Menuable> Menu<T> {
     /// or that the resulting menu index is between 0 and `n_items`.
     /// It's merely a straight translation.
     pub fn get_menu_idx(&self, screen_y: u16) -> usize {
-        return (self.top_row + screen_y - self.start_row) as usize;
+        (self.top_row + screen_y - self.start_row) as usize
     }
 }
-
 
 impl Menu<Podcast> {
     /// Returns a cloned reference to the list of episodes from the
@@ -285,20 +285,18 @@ impl Menu<Podcast> {
     pub fn get_episodes(&self) -> LockVec<Episode> {
         let index = self.get_menu_idx(self.selected);
         let (borrowed_map, _, borrowed_order) = self.items.borrow();
-        if borrowed_order.len() <= index{
+        if borrowed_order.len() <= index {
             LockVec::new(Vec::new())
-        }
-        else{
+        } else {
             let pod_id = borrowed_order
-            .get(index)
-            .expect("Could not retrieve podcast.");
+                .get(index)
+                .expect("Could not retrieve podcast.");
             borrowed_map
-            .get(pod_id)
-            .expect("Could not retrieve podcast info.")
-            .episodes
-            .clone()
+                .get(pod_id)
+                .expect("Could not retrieve podcast info.")
+                .episodes
+                .clone()
         }
-        
     }
 
     /// Controls how the window changes when it is inactive (i.e., not
@@ -373,7 +371,7 @@ impl Menu<NewEpisode> {
                 }
             }
         }
-        return changed;
+        changed
     }
 }
 

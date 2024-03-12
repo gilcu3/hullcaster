@@ -19,13 +19,8 @@ pub struct Panel {
 
 impl Panel {
     pub fn new(
-        title: String,
-        screen_pos: usize,
-        colors: Rc<AppColors>,
-        n_row: u16,
-        n_col: u16,
-        start_x: u16,
-        margins: (u16, u16, u16, u16),
+        title: String, screen_pos: usize, colors: Rc<AppColors>, n_row: u16, n_col: u16,
+        start_x: u16, margins: (u16, u16, u16, u16),
     ) -> Self {
         // we represent the window as a vector of Strings instead of
         // printing to the terminal buffer
@@ -58,21 +53,14 @@ impl Panel {
     }
 
     pub fn write_key_value_line(
-        &mut self,
-        y: u16,
-        key: String,
-        value: String,
-        _key_style: Option<style::ContentStyle>,
+        &mut self, y: u16, key: String, value: String, _key_style: Option<style::ContentStyle>,
         _value_style: Option<style::ContentStyle>,
     ) {
         self.buffer[y as usize] = format!("{key}: {value}");
     }
 
     pub fn write_wrap_line(
-        &mut self,
-        start_y: u16,
-        string: &str,
-        _style: Option<style::ContentStyle>,
+        &mut self, start_y: u16, string: &str, _style: Option<style::ContentStyle>,
     ) -> u16 {
         let mut row = start_y;
         let max_row = self.get_rows();

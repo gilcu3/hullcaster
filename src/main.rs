@@ -120,7 +120,6 @@ fn main() -> Result<()> {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
     }
 
-
     return match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
         Some(("sync", sub_args)) => sync_podcasts(&db_path, config, sub_args),
@@ -144,7 +143,6 @@ fn main() -> Result<()> {
     };
 }
 
-
 /// Gets the path to the config file if one is specified in the command-
 /// line arguments, or else returns the default config path for the
 /// user's operating system.
@@ -154,7 +152,7 @@ fn main() -> Result<()> {
 /// specifying a config path. If the command-line API is
 /// extended in the future, this will have to be refactored.
 fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
-    return match config {
+    match config {
         Some(path) => Some(PathBuf::from(path)),
         None => {
             let default_config = dirs::config_dir();
@@ -167,9 +165,8 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
                 None => None,
             }
         }
-    };
+    }
 }
-
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
 fn sync_podcasts(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Result<()> {
@@ -232,9 +229,8 @@ fn sync_podcasts(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Res
     } else if !args.is_present("quiet") {
         println!("Sync successful.");
     }
-    return Ok(());
+    Ok(())
 }
-
 
 /// Imports a list of podcasts from OPML format, either reading from a
 /// file or from stdin. If the `replace` flag is set, this replaces all
@@ -281,17 +277,14 @@ fn import(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Result<()>
         let old_podcasts = db_inst.get_podcasts()?;
 
         // if URL is already in database, remove it from import
-        podcast_list = podcast_list
-            .into_iter()
-            .filter(|pod| {
-                for op in &old_podcasts {
-                    if pod.url == op.url {
-                        return false;
-                    }
+        podcast_list.retain(|pod| {
+            for op in &old_podcasts {
+                if pod.url == op.url {
+                    return false;
                 }
-                return true;
-            })
-            .collect();
+            }
+            true
+        });
     }
 
     // check again, now that we may have removed feeds after looking at
@@ -359,9 +352,8 @@ fn import(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Result<()>
     } else if !args.is_present("quiet") {
         println!("Import successful.");
     }
-    return Ok(());
+    Ok(())
 }
-
 
 /// Exports all podcasts to OPML format, either printing to stdout or
 /// exporting to a file.
@@ -386,5 +378,5 @@ fn export(db_path: &Path, args: &clap::ArgMatches) -> Result<()> {
         // print to stdout
         None => println!("{xml}"),
     }
-    return Ok(());
+    Ok(())
 }

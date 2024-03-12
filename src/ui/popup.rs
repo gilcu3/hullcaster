@@ -23,19 +23,19 @@ pub enum ActivePopup {
 
 impl ActivePopup {
     pub fn is_welcome_win(&self) -> bool {
-        return matches!(self, ActivePopup::WelcomeWin(_));
+        matches!(self, ActivePopup::WelcomeWin(_))
     }
 
     pub fn is_help_win(&self) -> bool {
-        return matches!(self, ActivePopup::HelpWin(_));
+        matches!(self, ActivePopup::HelpWin(_))
     }
 
     pub fn is_download_win(&self) -> bool {
-        return matches!(self, ActivePopup::DownloadWin(_));
+        matches!(self, ActivePopup::DownloadWin(_))
     }
 
     pub fn is_none(&self) -> bool {
-        return matches!(self, ActivePopup::None);
+        matches!(self, ActivePopup::None)
     }
 }
 
@@ -61,34 +61,31 @@ pub struct PopupWin<'a> {
 impl<'a> PopupWin<'a> {
     /// Set up struct for handling popup windows.
     pub fn new(
-        keymap: &'a Keybindings,
-        colors: Rc<AppColors>,
-        total_rows: u16,
-        total_cols: u16,
+        keymap: &'a Keybindings, colors: Rc<AppColors>, total_rows: u16, total_cols: u16,
     ) -> Self {
-        return Self {
+        Self {
             popup: ActivePopup::None,
             new_episodes: Vec::new(),
-            keymap: keymap,
-            colors: colors,
-            total_rows: total_rows,
-            total_cols: total_cols,
+            keymap,
+            colors,
+            total_rows,
+            total_cols,
             welcome_win: false,
             help_win: false,
             download_win: false,
-        };
+        }
     }
 
     /// Indicates whether any sort of popup window is currently on the
     /// screen.
     pub fn is_popup_active(&self) -> bool {
-        return self.welcome_win || self.help_win || self.download_win;
+        self.welcome_win || self.help_win || self.download_win
     }
 
     /// Indicates whether a popup window *other than the welcome window*
     /// is currently on the screen.
     pub fn is_non_welcome_popup_active(&self) -> bool {
-        return self.help_win || self.download_win;
+        self.help_win || self.download_win
     }
 
     /// Resize the currently active popup window if one exists.
@@ -160,7 +157,7 @@ impl<'a> PopupWin<'a> {
             None,
         );
 
-        return welcome_win;
+        welcome_win
     }
 
     /// Create a new help window and draw it to the screen.
@@ -287,7 +284,7 @@ impl<'a> PopupWin<'a> {
         }
 
         let _ = help_win.write_wrap_line(row + 2, "Press \"q\" to close this window.", None);
-        return help_win;
+        help_win
     }
 
     /// Create a new download window and draw it to the screen.
@@ -327,7 +324,7 @@ impl<'a> PopupWin<'a> {
         );
         download_win.redraw();
 
-        return download_win;
+        download_win
     }
 
     /// Appends a new episode to the list of new episodes.
@@ -427,9 +424,8 @@ impl<'a> PopupWin<'a> {
             },
             _ => (),
         }
-        return msg;
+        msg
     }
-
 
     /// Helper function that gets the keybindings for a particular
     /// user action, and converts it to a string, e.g., '"a", "b", or
@@ -441,7 +437,7 @@ impl<'a> PopupWin<'a> {
         if let Some(max_num) = max_num {
             max_keys = min(keys.len(), max_num);
         }
-        return match max_keys {
+        match max_keys {
             0 => "<missing>".to_string(),
             1 => format!("\"{}\"", &keys[0]),
             2 => format!("\"{}\" or \"{}\"", &keys[0], &keys[1]),
@@ -456,6 +452,6 @@ impl<'a> PopupWin<'a> {
                 }
                 s
             }
-        };
+        }
     }
 }

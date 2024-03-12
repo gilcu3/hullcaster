@@ -56,7 +56,7 @@ impl Podcast {
 impl Menuable for Podcast {
     /// Returns the database ID for the podcast.
     fn get_id(&self) -> i64 {
-        return self.id;
+        self.id
     }
 
     /// Returns the title for the podcast, up to length characters.
@@ -71,39 +71,38 @@ impl Menuable for Podcast {
 
             let out = self.title.substr(0, title_length);
 
-            return format!(
+            format!(
                 " {out} {meta_str:>width$} ",
                 width = length - out.grapheme_len() - 3
-            ); // this pads spaces between title and totals
+            ) // this pads spaces between title and totals
         } else {
-            return format!(" {} ", self.title.substr(0, title_length - 2));
+            format!(" {} ", self.title.substr(0, title_length - 2))
         }
     }
 
     fn is_played(&self) -> bool {
-        return self.num_unplayed() == 0;
+        self.num_unplayed() == 0
     }
 }
 
 impl PartialEq for Podcast {
     fn eq(&self, other: &Self) -> bool {
-        return self.sort_title == other.sort_title;
+        self.sort_title == other.sort_title
     }
 }
 impl Eq for Podcast {}
 
 impl PartialOrd for Podcast {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        return Some(self.cmp(other));
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Podcast {
     fn cmp(&self, other: &Self) -> Ordering {
-        return self.sort_title.cmp(&other.sort_title);
+        self.sort_title.cmp(&other.sort_title)
     }
 }
-
 
 /// Struct holding data about an individual podcast episode. Most of this
 /// is metadata, but if the episode has been downloaded to the local
@@ -126,7 +125,7 @@ pub struct Episode {
 impl Episode {
     /// Formats the duration in seconds into an HH:MM:SS format.
     pub fn format_duration(&self) -> String {
-        return match self.duration {
+        match self.duration {
             Some(dur) => {
                 let mut seconds = dur;
                 let hours = seconds / 3600;
@@ -136,14 +135,14 @@ impl Episode {
                 format!("{hours:02}:{minutes:02}:{seconds:02}")
             }
             None => "--:--:--".to_string(),
-        };
+        }
     }
 }
 
 impl Menuable for Episode {
     /// Returns the database ID for the episode.
     fn get_id(&self) -> i64 {
-        return self.id;
+        self.id
     }
 
     /// Returns the title for the episode, up to length characters.
@@ -166,17 +165,17 @@ impl Menuable for Episode {
                 let added_len = meta_str.chars().count();
 
                 let out_added = out.substr(0, length - added_len - 3);
-                return format!(
+                format!(
                     " {out_added} {meta_str:>width$} ",
                     width = length - out_added.grapheme_len() - 3
-                );
+                )
             } else {
                 // just print duration
                 let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
-                return format!(
+                format!(
                     " {out_added} {meta_dur:>width$} ",
                     width = length - out_added.grapheme_len() - 3
-                );
+                )
             }
         } else if length > crate::config::EPISODE_DURATION_LENGTH {
             let dur = self.format_duration();
@@ -192,10 +191,9 @@ impl Menuable for Episode {
     }
 
     fn is_played(&self) -> bool {
-        return self.played;
+        self.played
     }
 }
-
 
 /// Struct holding data about an individual podcast feed, before it has
 /// been inserted into the database. This includes a
@@ -238,7 +236,7 @@ pub struct NewEpisode {
 impl Menuable for NewEpisode {
     /// Returns the database ID for the episode.
     fn get_id(&self) -> i64 {
-        return self.id;
+        self.id
     }
 
     /// Returns the title for the episode, up to length characters.
@@ -258,11 +256,11 @@ impl Menuable for NewEpisode {
             " [{}] {} ({}){} ",
             selected, self.title, self.pod_title, empty_string
         );
-        return full_string.substr(0, length);
+        full_string.substr(0, length)
     }
 
     fn is_played(&self) -> bool {
-        return true;
+        true
     }
 }
 
@@ -282,7 +280,8 @@ impl Menuable for NewEpisode {
 /// undownloaded.
 #[derive(Debug)]
 pub struct LockVec<T>
-where T: Clone + Menuable
+where
+    T: Clone + Menuable,
 {
     data: Arc<Mutex<HashMap<i64, T, BuildNoHashHasher<i64>>>>,
     order: Arc<Mutex<Vec<i64>>>,
@@ -300,11 +299,11 @@ impl<T: Clone + Menuable> LockVec<T> {
             order.push(id);
         }
 
-        return LockVec {
+        LockVec {
             data: Arc::new(Mutex::new(hm)),
             order: Arc::new(Mutex::new(order.clone())),
             filtered_order: Arc::new(Mutex::new(order)),
-        };
+        }
     }
 
     /// Lock the LockVec hashmap for reading/writing.
@@ -364,7 +363,9 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// alive, the function returns a Vec of the collected results,
     /// rather than an iterator.
     pub fn map<B, F>(&self, mut f: F, filtered: bool) -> Vec<B>
-    where F: FnMut(&T) -> B {
+    where
+        F: FnMut(&T) -> B,
+    {
         let (map, order, filtered_order) = self.borrow();
         if filtered {
             return filtered_order
@@ -382,7 +383,9 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// Maps a closure to a single element in the LockVec, specified by
     /// `id`. If there is no element `id`, this returns None.
     pub fn map_single<B, F>(&self, id: i64, f: F) -> Option<B>
-    where F: FnOnce(&T) -> B {
+    where
+        F: FnOnce(&T) -> B,
+    {
         let borrowed = self.borrow_map();
         return match borrowed.get(&id) {
             Some(item) => Some(f(item)),
@@ -394,7 +397,9 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// `index` (position order). If there is no element at that index,
     /// this returns None.
     pub fn map_single_by_index<B, F>(&self, index: usize, f: F) -> Option<B>
-    where F: FnOnce(&T) -> B {
+    where
+        F: FnOnce(&T) -> B,
+    {
         let order = self.borrow_filtered_order();
         return match order.get(index) {
             Some(id) => self.map_single(*id, f),
@@ -415,7 +420,9 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// filters to show only selected podcasts/episodes, but this is
     /// *not* the sense of the word here.
     pub fn filter_map<B, F>(&self, mut f: F) -> Vec<B>
-    where F: FnMut(&T) -> Option<B> {
+    where
+        F: FnMut(&T) -> Option<B>,
+    {
         let (map, order, _) = self.borrow();
         return order
             .iter()
@@ -440,11 +447,11 @@ impl<T: Clone + Menuable> LockVec<T> {
 
 impl<T: Clone + Menuable> Clone for LockVec<T> {
     fn clone(&self) -> Self {
-        return LockVec {
+        LockVec {
             data: Arc::clone(&self.data),
             order: Arc::clone(&self.order),
             filtered_order: Arc::clone(&self.filtered_order),
-        };
+        }
     }
 }
 
@@ -464,7 +471,7 @@ impl LockVec<Podcast> {
         if let Some(pod) = pod_map.get(&pod_id) {
             return pod.episodes.clone_episode(ep_id);
         }
-        return None;
+        None
     }
 }
 
@@ -478,7 +485,6 @@ impl LockVec<Episode> {
     }
 }
 
-
 /// Overarching Message enum that allows multiple threads to communicate
 /// back to the main thread with a single enum type.
 #[derive(Debug)]
@@ -487,7 +493,6 @@ pub enum Message {
     Feed(FeedMsg),
     Dl(DownloadMsg),
 }
-
 
 /// Simple enum to designate the status of a filter. "Positive" and
 /// "Negative" cases represent, e.g., "played" vs. "unplayed".
@@ -514,13 +519,12 @@ pub struct Filters {
 
 impl Default for Filters {
     fn default() -> Self {
-        return Self {
+        Self {
             played: FilterStatus::All,
             downloaded: FilterStatus::All,
-        };
+        }
     }
 }
-
 
 /// Some helper functions for dealing with Unicode strings.
 pub trait StringUtils {

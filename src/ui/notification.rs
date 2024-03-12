@@ -26,11 +26,11 @@ impl Notification {
     /// used to create timed notifications -- `Instant` should refer
     /// to the timestamp when the message should disappear.
     pub fn new(message: String, error: bool, expiry: Option<Instant>) -> Self {
-        return Self {
-            message: message,
-            error: error,
-            expiry: expiry,
-        };
+        Self {
+            message,
+            error,
+            expiry,
+        }
     }
 }
 
@@ -58,15 +58,15 @@ pub struct NotifWin {
 impl NotifWin {
     /// Creates a new NotifWin.
     pub fn new(colors: Rc<AppColors>, start_y: u16, total_rows: u16, total_cols: u16) -> Self {
-        return Self {
-            colors: colors,
-            start_y: start_y,
-            total_rows: total_rows,
-            total_cols: total_cols,
+        Self {
+            colors,
+            start_y,
+            total_rows,
+            total_cols,
             msg_stack: Vec::new(),
             persistent_msg: None,
             current_msg: None,
-        };
+        }
     }
 
     /// Initiates the window -- primarily, sets the background on the
@@ -233,7 +233,7 @@ impl NotifWin {
         if cancelled {
             return String::from("");
         }
-        return inputs;
+        inputs
     }
 
     /// Prints a notification to the window.

@@ -14,7 +14,6 @@ lazy_static! {
     static ref RE_COLOR_RGB: Regex = Regex::new(r"(?i)rgb\(([0-9]+), ?([0-9]+), ?([0-9]+)\)").expect("Regex error");
 }
 
-
 /// Holds information about the colors to use in the application. Tuple
 /// values represent (foreground, background), respectively.
 #[derive(Debug, Clone)]
@@ -29,13 +28,13 @@ pub struct AppColors {
 impl AppColors {
     /// Creates an AppColors struct with default color values.
     pub fn default() -> Self {
-        return Self {
+        Self {
             normal: (Color::Grey, Color::Black),
             bold: (Color::White, Color::Black),
             highlighted_active: (Color::Black, Color::DarkYellow),
             highlighted: (Color::Black, Color::Grey),
             error: (Color::Red, Color::Black),
-        };
+        }
     }
 
     /// Reading in values that were set in the config file, this changes
@@ -108,7 +107,7 @@ impl AppColors {
                     b: u8::from_str_radix(&cap[3], 16)?,
                 });
             }
-            return Err(anyhow!("Invalid color hex code"));
+            Err(anyhow!("Invalid color hex code"))
         } else if text.starts_with("rgb") || text.starts_with("RGB") {
             #[allow(clippy::from_str_radix_10)]
             if let Some(cap) = RE_COLOR_RGB.captures(text) {
@@ -145,7 +144,6 @@ impl AppColors {
     }
 }
 
-
 // TESTS -----------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -156,11 +154,7 @@ mod tests {
         let color = String::from("#ff0000");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0
-        });
+        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
     }
 
     #[test]
@@ -180,11 +174,7 @@ mod tests {
         let color = String::from("rgb(255, 0, 0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0
-        });
+        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
     }
 
     #[test]
@@ -192,11 +182,7 @@ mod tests {
         let color = String::from("RGB(255, 0, 0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0
-        });
+        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
     }
 
     #[test]
@@ -204,10 +190,6 @@ mod tests {
         let color = String::from("rgb(255,0,0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0
-        });
+        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
     }
 }

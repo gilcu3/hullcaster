@@ -50,7 +50,7 @@ pub struct Keybindings(AHashMap<String, UserAction>);
 impl Keybindings {
     /// Returns a new Keybindings struct.
     pub fn new() -> Self {
-        return Self(AHashMap::new());
+        Self(AHashMap::new())
     }
 
     /// Returns a Keybindings struct with all default values set.
@@ -60,7 +60,7 @@ impl Keybindings {
         for (action, defaults) in defaults.into_iter() {
             keymap.insert_from_vec(defaults, action);
         }
-        return keymap;
+        keymap
     }
 
     /// Given a struct deserialized from config.toml (for which any or
@@ -102,7 +102,7 @@ impl Keybindings {
                 keymap.insert_from_vec(config, action);
             }
         }
-        return keymap;
+        keymap
     }
 
     /// Takes an Input object from crossterm and returns the associated
@@ -146,12 +146,12 @@ impl Keybindings {
     }
 
     fn _defaults() -> Vec<(UserAction, Vec<String>)> {
-        return vec![
+        vec![
             (UserAction::Left, vec!["Left".to_string(), "h".to_string()]),
-            (UserAction::Right, vec![
-                "Right".to_string(),
-                "l".to_string(),
-            ]),
+            (
+                UserAction::Right,
+                vec!["Right".to_string(), "l".to_string()],
+            ),
             (UserAction::Up, vec!["Up".to_string(), "k".to_string()]),
             (UserAction::Down, vec!["Down".to_string(), "j".to_string()]),
             (UserAction::BigUp, vec!["K".to_string()]),
@@ -176,7 +176,7 @@ impl Keybindings {
             (UserAction::FilterDownloaded, vec!["2".to_string()]),
             (UserAction::Help, vec!["?".to_string()]),
             (UserAction::Quit, vec!["q".to_string()]),
-        ];
+        ]
     }
 }
 
@@ -199,7 +199,7 @@ pub fn input_to_str(input: KeyEvent) -> Option<String> {
         ""
     };
     let mut tmp = [0; 4];
-    return match input.code {
+    match input.code {
         KeyCode::Backspace => Some(format!("{ctrl}{alt}{shift}Backspace")),
         KeyCode::Enter => Some(format!("{ctrl}{alt}{shift}Enter")),
         KeyCode::Left => Some(format!("{ctrl}{alt}{shift}Left")),
@@ -232,5 +232,5 @@ pub fn input_to_str(input: KeyEvent) -> Option<String> {
             }
         }
         _ => None,
-    };
+    }
 }
