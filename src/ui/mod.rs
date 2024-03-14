@@ -321,9 +321,7 @@ impl<'a> Ui<'a> {
                                 }
                             }
                             Some(UserAction::SyncAll) => {
-                                if curr_pod_id.is_some() {
-                                    return UiMsg::SyncAll;
-                                }
+                                return UiMsg::SyncAll;
                             }
 
                             Some(UserAction::Play) => {
