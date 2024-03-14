@@ -1,17 +1,17 @@
-<div align="center"><img alt="shellcaster logo: Ferris the crab with headphones" src="https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/shellcaster-logo_smol.png"/></div>
-
-# Note
-
-This is a fork of the original [shellcaster](https://github.com/jeff-hughes/shellcaster), which is no longer maintained. Currently I am planning to implement the features states in `TODO.md`, while learning `rust` at the same time.
-
 # Shellcaster
+
+![shellcaster logo: Ferris the crab with headphones](https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/shellcaster-logo_smol.png)
+
 
 Shellcaster is a terminal-based podcast manager, built in Rust. It provides a terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to podcast feeds, and sync feeds to check for new episodes. Episodes may be downloaded locally, played with an external media player, and marked as played/unplayed. Keybindings and other options are configurable via a config file.
 
-<div align="center"><img alt="screenshot of shellcaster" src="https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/screenshot.png"/></div>
+![screenshot of shellcaster](https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/screenshot.png)
+
+## Note
+
+This is a fork of the original [shellcaster](https://github.com/jeff-hughes/shellcaster), which is no longer maintained. Currently I am planning to implement the features states in `TODO.md`, while learning `rust` at the same time.
 
 ## Installing shellcaster
-
 
 ### On Linux distributions and MacOS
 
@@ -19,20 +19,20 @@ Currently the only option is to build from source.
 
 First, ensure you have installed the necessary dependencies:
 
-  * rust
-  * gcc
-  * pkg-config
-  * libsqlite3-dev
+* rust
+* gcc
+* pkg-config
+* libsqlite3-dev
 
 **Notes:**
 
-  * The names of these dependencies may be slightly different for your system. For `libsqlite3-dev`, you are looking for the development headers for SQLite, which may be separate from the runtime package (e.g., with a `-dev` suffix).
-  * If you enable the "native_tls" feature of shellcaster (disabled by default), you will also need `libssl-dev`, the development headers for OpenSSL (not needed on MacOS).
-  * If you enable the "sqlite-bundled" feature of shellcaster (disabled by default), `pkg-config` and `libsqlite3-dev` are not necessary.
+* The names of these dependencies may be slightly different for your system. For `libsqlite3-dev`, you are looking for the development headers for SQLite, which may be separate from the runtime package (e.g., with a `-dev` suffix).
+* If you enable the "native_tls" feature of shellcaster (disabled by default), you will also need `libssl-dev`, the development headers for OpenSSL (not needed on MacOS).
+* If you enable the "sqlite-bundled" feature of shellcaster (disabled by default), `pkg-config` and `libsqlite3-dev` are not necessary.
 
-Next, there are two options for compiling the program: 
+Next, there are two options for compiling the program:
 
-1. You can install the latest version of the binary directly from crates.io with one command:
+- You can install the latest version of the binary directly from crates.io with one command:
 
 ```bash
 # for MacOS or Linux
@@ -42,7 +42,7 @@ sudo cargo install shellcaster --no-track --root "/usr/local"  # add or remove a
 cargo install shellcaster --no-track --root "$HOME/.local"
 ```
 
-2. You can clone the Github repo and compile it yourself:
+- You can clone the Github repo and compile it yourself:
 
 ```bash
 git clone https://github.com/gilcu3/shellcaster.git
@@ -87,7 +87,7 @@ cp target/release/shellcaster ~/.local/bin/
 
 ## Running shellcaster
 
-Easy peasy! In your terminal, run:
+Easy-peasy! In your terminal, run:
 
 ```bash
 shellcaster
@@ -146,6 +146,7 @@ The sample file above provides comments that should walk you through all the ava
 ### Configuration options
 
 **download_path**:
+
 * Specifies where podcast episodes that are downloaded will be stored.
 * Defaults:
   * On Linux: $XDG_DATA_HOME/shellcaster/ or $HOME/.local/share/shellcaster/
@@ -153,22 +154,26 @@ The sample file above provides comments that should walk you through all the ava
   * On Windows: C:\Users\\**username**\AppData\Local\shellcaster\
 
 **play_command**:
+
 * Command used to play episodes. Use "%s" to indicate where file/URL will be entered to the command. Note that shellcaster does *not* include a native media player -- it simply passes the file path/URL to the given command with no further checking as to its success or failure. This process is started *in the background*, so be sure to send it to a program that has GUI controls of some kind so you have control over the playback.
 * Default: "vlc %s"
 
 **download_new_episodes**:
+
 * Configures what happens when new episodes are found as podcasts are synced. Valid options:
-    * "always" will automatically download all new episodes;
-    * "ask-selected" will open a popup window to let you select which episodes to download, with all of them selected by default;
-    * "ask-unselected" will open a popup window to let you select with episodes to download, with none of them selected by default;
-    * "never" will never automatically download new episodes.
+  * "always" will automatically download all new episodes;
+  * "ask-selected" will open a popup window to let you select which episodes to download, with all of them selected by default;
+  * "ask-unselected" will open a popup window to let you select with episodes to download, with none of them selected by default;
+  * "never" will never automatically download new episodes.
 * Default: "ask-unselected"
 
 **simultaneous_downloads**:
+
 * Maximum number of files to download simultaneously. Setting this too high could result in network requests being denied. A good general guide would be to set this to the number of processor cores on your computer.
 * Default: 3
 
 **max_retries**:
+
 * Maximum number of times to retry connecting to a URL to sync a podcast or download an episode.
 * Default: 3
 
