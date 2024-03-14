@@ -45,6 +45,11 @@
 
 #max_retries = 3
 
+# Mark episode as played automatically.
+# Default: true
+
+# mark_as_played_on_play = true
+
 
 [keybindings]
 

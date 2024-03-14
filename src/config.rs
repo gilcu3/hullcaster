@@ -49,6 +49,7 @@ pub struct Config {
     pub download_new_episodes: DownloadNewEpisodes,
     pub simultaneous_downloads: usize,
     pub max_retries: usize,
+    pub mark_as_played_on_play: bool,
     pub keybindings: Keybindings,
     pub colors: AppColors,
 }
@@ -62,6 +63,7 @@ struct ConfigFromToml {
     download_new_episodes: Option<String>,
     simultaneous_downloads: Option<usize>,
     max_retries: Option<usize>,
+    mark_as_played_on_play: Option<bool>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
 }
@@ -180,6 +182,7 @@ impl Config {
                     download_new_episodes: None,
                     simultaneous_downloads: None,
                     max_retries: None,
+                    mark_as_played_on_play: None,
                     keybindings: Some(keybindings),
                     colors: Some(colors),
                 }
@@ -240,12 +243,15 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         None => 3,
     };
 
+    let mark_as_played_on_play = config_toml.mark_as_played_on_play.unwrap_or(true);
+
     Ok(Config {
         download_path,
         play_command,
         download_new_episodes,
         simultaneous_downloads,
         max_retries,
+        mark_as_played_on_play,
         keybindings: keymap,
         colors,
     })

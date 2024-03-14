@@ -403,7 +403,9 @@ impl MainController {
     /// Attempts to execute the play command on the given podcast
     /// episode.
     pub fn play_file(&self, pod_id: i64, ep_id: i64) {
-        self.mark_played(pod_id, ep_id, true);
+        if self.config.mark_as_played_on_play {
+            self.mark_played(pod_id, ep_id, true);
+        }
         let episode = self.podcasts.clone_episode(pod_id, ep_id).unwrap();
 
         match episode.path {
