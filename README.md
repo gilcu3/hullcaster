@@ -1,26 +1,19 @@
-<div align="center"><img alt="shellcaster logo: Ferris the crab with headphones" src="https://raw.githubusercontent.com/jeff-hughes/shellcaster/master/img/shellcaster-logo_smol.png"/></div>
+<div align="center"><img alt="shellcaster logo: Ferris the crab with headphones" src="https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/shellcaster-logo_smol.png"/></div>
 
 # Note
 
-This project is no longer maintained. I no longer have the time, nor the motivation, to maintain it. It may still work for you, but I make no guarantees. I may come back to it at some point in the future, but no guarantees on that either.
+This is a fork of the original [shellcaster](https://github.com/jeff-hughes/shellcaster), which is no longer maintained. Currently I am planning to implement the features states in `TODO.md`, while learning `rust` at the same time.
 
 # Shellcaster
 
 Shellcaster is a terminal-based podcast manager, built in Rust. It provides a terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to podcast feeds, and sync feeds to check for new episodes. Episodes may be downloaded locally, played with an external media player, and marked as played/unplayed. Keybindings and other options are configurable via a config file.
 
-<div align="center"><img alt="screenshot of shellcaster" src="https://raw.githubusercontent.com/jeff-hughes/shellcaster/master/img/screenshot.png"/></div>
+<div align="center"><img alt="screenshot of shellcaster" src="https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/screenshot.png"/></div>
 
 ## Installing shellcaster
 
-### On Arch Linux
 
-There are packages available for shellcaster in the Arch User Repository (AUR). Use `makepkg -si` ([see further details](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_and_upgrading_packages)) or your favourite AUR helper program to install one of the following packages:
-
-* [Stable source package](https://aur.archlinux.org/packages/shellcaster/)
-* [Stable binary package](https://aur.archlinux.org/packages/shellcaster-bin/)
-* [Latest development package](https://aur.archlinux.org/packages/shellcaster-git/)
-
-### On other Linux distributions and MacOS
+### On Linux distributions and MacOS
 
 Currently the only option is to build from source.
 
@@ -52,7 +45,7 @@ cargo install shellcaster --no-track --root "$HOME/.local"
 2. You can clone the Github repo and compile it yourself:
 
 ```bash
-git clone https://github.com/jeff-hughes/shellcaster.git
+git clone https://github.com/gilcu3/shellcaster.git
 cd shellcaster
 cargo build --release  # add or remove any features with --features
 
@@ -130,7 +123,7 @@ shellcaster export > /path/to/output/file.opml
 
 ## Configuring shellcaster
 
-If you want to change configuration settings, the sample `config.toml` file can be copied from [here](https://raw.githubusercontent.com/jeff-hughes/shellcaster/master/config.toml). Download it, edit it to your fancy, and place it in the following location:
+If you want to change configuration settings, the sample `config.toml` file can be copied from [here](https://raw.githubusercontent.com/gilcu3/shellcaster/master/config.toml). Download it, edit it to your fancy, and place it in the following location:
 
 ```bash
 # on Linux
@@ -209,18 +202,8 @@ The sample file above provides comments that should walk you through all the ava
 
 #### Customizable colors
 
-You can set the colors in the app with either built-in terminal colors or (provided your terminal supports it) customizable colors as well. See the "colors" section in the [config.toml](https://github.com/jeff-hughes/shellcaster/blob/master/config.toml) for details about how to specify these colors!
+You can set the colors in the app with either built-in terminal colors or (provided your terminal supports it) customizable colors as well. See the "colors" section in the [config.toml](https://github.com/gilcu3/shellcaster/blob/master/config.toml) for details about how to specify these colors!
 
 ## Syncing without the UI
 
 Some users may wish to sync their podcasts automatically on a regular basis, e.g., every morning. The `shellcaster sync` subcommand can be used to do this without opening up the UI, and does a full sync of all podcasts in the database. This could be used to set up a cron job or systemd timer, for example. Please refer to the relevant documentation for these systems for setting it up on the schedule of your choice.
-
-## Contributing
-
-Contributions from others are welcome! If you wish to contribute, feel free to clone the repo and submit pull requests. **Please ensure you are on the `develop` branch when making your edits**, as this is where the continued development of the app is taking place. Pull requests will only be merged to the `develop` branch, so you can help to avoid merge conflicts by doing your work on that branch in the first place.
-
-Thanks to these fine folks who have made contributions: [a-kenji](https://github.com/a-kenji), [dougli1sqrd](https://github.com/dougli1sqrd), [dwvisser](https://github.com/dwvisser), [thunderbiscuit](https://github.com/thunderbiscuit)
-
-## Why "shellcaster"?
-
-I was trying to come up with a play on the word "podcast", and I liked the use of the word "shell" for several reasons. "Shell" is a synonym for the word "pod". The terminal is also referred to as a shell (and shellcaster is a terminal-based program). In addition, the program is built on Rust, whose mascot is Ferris the crab. Finally, I just personally enjoy that "shellcaster" sounds a lot like "spellcaster", so you can feel like a wizard when you use the program...

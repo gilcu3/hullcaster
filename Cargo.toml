@@ -8,9 +8,9 @@ description = "A terminal-based podcast manager to subscribe to and play podcast
 keywords = ["podcast", "terminal", "TUI", "curses"]
 categories = ["multimedia::audio", "command-line-interface"]
 
-homepage = "https://github.com/jeff-hughes/shellcaster"
-repository = "https://github.com/jeff-hughes/shellcaster"
-documentation = "https://github.com/jeff-hughes/shellcaster"
+homepage = "https://github.com/gilcu3/shellcaster"
+repository = "https://github.com/gilcu3/shellcaster"
+documentation = "https://github.com/gilcu3/shellcaster"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

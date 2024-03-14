@@ -153,7 +153,7 @@ impl<'a> PopupWin<'a> {
         );
         let _ = welcome_win.write_wrap_line(
             row + 1,
-            "https://github.com/jeff-hughes/shellcaster",
+            "https://github.com/gilcu3/shellcaster",
             None,
         );
 
