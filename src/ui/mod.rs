@@ -18,12 +18,14 @@ mod panel;
 
 pub mod colors;
 mod details_panel;
+mod keybindings;
 mod menu;
 mod notification;
 mod popup;
 
 use self::colors::AppColors;
 use self::details_panel::{Details, DetailsPanel};
+use self::keybindings::KeybindingsWin;
 use self::menu::Menu;
 use self::notification::NotifWin;
 use self::panel::Panel;
@@ -104,6 +106,7 @@ pub struct Ui<'a> {
     active_panel: ActivePanel,
     notif_win: NotifWin,
     popup_win: PopupWin<'a>,
+    keybindings_win: KeybindingsWin<'a>,
 }
 
 impl<'a> Ui<'a> {
@@ -188,7 +191,7 @@ impl<'a> Ui<'a> {
             "Podcasts".to_string(),
             0,
             colors.clone(),
-            n_row - 1,
+            n_row - 2,
             pod_col,
             0,
             (0, 0, 0, 0),
@@ -199,7 +202,7 @@ impl<'a> Ui<'a> {
             "Episodes".to_string(),
             1,
             colors.clone(),
-            n_row - 1,
+            n_row - 2,
             ep_col,
             pod_col - 1,
             (0, 0, 0, 0),
@@ -212,7 +215,7 @@ impl<'a> Ui<'a> {
                 "Details".to_string(),
                 2,
                 colors.clone(),
-                n_row - 1,
+                n_row - 2,
                 det_col,
                 pod_col + ep_col - 2,
                 (0, 1, 0, 1),
@@ -221,8 +224,11 @@ impl<'a> Ui<'a> {
             None
         };
 
-        let notif_win = NotifWin::new(colors.clone(), n_row - 1, n_row, n_col);
-        let popup_win = PopupWin::new(&config.keybindings, colors.clone(), n_row, n_col);
+        let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_row, n_col);
+        let popup_win = PopupWin::new(&config.keybindings, colors.clone(), n_row - 1, n_col);
+
+        let keybindings_win =
+            KeybindingsWin::new(&config.keybindings, colors.clone(), n_row - 1, n_row, n_col);
 
         Ui {
             n_row,
@@ -235,6 +241,7 @@ impl<'a> Ui<'a> {
             active_panel: ActivePanel::PodcastMenu,
             notif_win,
             popup_win,
+            keybindings_win,
         }
     }
 
@@ -244,9 +251,11 @@ impl<'a> Ui<'a> {
         self.podcast_menu.redraw();
         self.episode_menu.redraw();
         self.podcast_menu.activate();
+
         self.update_details_panel();
 
         self.notif_win.redraw();
+        self.keybindings_win.redraw();
 
         // welcome screen if user does not have any podcasts yet
         if self.podcast_menu.items.is_empty() {
@@ -430,14 +439,14 @@ impl<'a> Ui<'a> {
 
         let (pod_col, ep_col, det_col) = Self::calculate_sizes(n_col);
 
-        self.podcast_menu.resize(n_row - 1, pod_col, 0);
-        self.episode_menu.resize(n_row - 1, ep_col, pod_col - 1);
+        self.podcast_menu.resize(n_row - 2, pod_col, 0);
+        self.episode_menu.resize(n_row - 2, ep_col, pod_col - 1);
         self.highlight_items();
 
         if self.details_panel.is_some() {
             if det_col > 0 {
                 let det = self.details_panel.as_mut().unwrap();
-                det.resize(n_row - 1, det_col, pod_col + ep_col - 2);
+                det.resize(n_row - 2, det_col, pod_col + ep_col - 2);
                 // resizing the menus may change which item is selected
                 self.update_details_panel();
             } else {
@@ -455,7 +464,7 @@ impl<'a> Ui<'a> {
                 "Details".to_string(),
                 2,
                 self.colors.clone(),
-                n_row - 1,
+                n_row - 2,
                 det_col,
                 pod_col + ep_col - 2,
                 (0, 1, 0, 1),
@@ -463,8 +472,9 @@ impl<'a> Ui<'a> {
             self.update_details_panel();
         }
 
-        self.popup_win.resize(n_row, n_col);
-        self.notif_win.resize(n_row, n_col);
+        self.popup_win.resize(n_row - 1, n_col);
+        self.notif_win.resize(n_row - 1, n_col);
+        self.keybindings_win.resize(n_row, n_col);
     }
 
     /// Move the menu cursor around and redraw menus when necessary.

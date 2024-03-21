@@ -151,11 +151,7 @@ impl<'a> PopupWin<'a> {
             "More details of how to customize shellcaster can be found on the Github repo readme:",
             None,
         );
-        let _ = welcome_win.write_wrap_line(
-            row + 1,
-            "https://github.com/gilcu3/shellcaster",
-            None,
-        );
+        let _ = welcome_win.write_wrap_line(row + 1, "https://github.com/gilcu3/shellcaster", None);
 
         welcome_win
     }

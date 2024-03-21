@@ -89,8 +89,8 @@ impl Panel {
                     self.buffer.push(String::new());
                 }
             }
-            Ordering::Less =>  self.buffer.truncate(new_len),
-            Ordering::Equal => {},
+            Ordering::Less => self.buffer.truncate(new_len),
+            Ordering::Equal => {}
         }
     }
 

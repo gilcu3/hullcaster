@@ -384,13 +384,15 @@ mod tests {
 
     fn create_menu(n_row: u16, n_col: u16, top_row: u16, selected: u16) -> Menu<Episode> {
         let colors = Rc::new(crate::ui::AppColors::default());
-        let titles = ["A Very Cool Episode",
+        let titles = [
+            "A Very Cool Episode",
             "This is a very long episode title but we'll get through it together",
             "An episode with le Unicodé",
             "How does an episode with emoji sound? 😉",
             "Here's another title",
             "Un titre, c'est moi!",
-            "One more just for good measure"];
+            "One more just for good measure",
+        ];
         let mut items = Vec::new();
         for (i, t) in titles.iter().enumerate() {
             let played = i % 2 == 0;

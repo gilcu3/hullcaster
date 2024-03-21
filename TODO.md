@@ -4,3 +4,4 @@
 - [ ] Syncing with gpodder api
 - [ ] Queue
 - [ ] Internal Player
+- [x] Show key bindings in a bat on the bottom
