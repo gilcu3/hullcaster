@@ -423,7 +423,7 @@ impl<T: Clone + Menuable> LockVec<T> {
     where
         F: FnMut(&T) -> Option<B>,
     {
-        let (map, order, _) = self.borrow();
+        let (map, order, _u) = self.borrow();
         return order
             .iter()
             .filter_map(|id| f(map.get(id).expect("Index error in LockVec")))
