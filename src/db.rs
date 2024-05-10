@@ -170,6 +170,42 @@ impl Database {
         Ok(())
     }
 
+
+    pub fn update_timestamp(&self, current_timestamp: i64, update: bool) -> Result<()> {
+        let conn = self.conn.as_ref().expect("Error connecting to database.");
+
+        if update {
+            conn.execute(
+                "UPDATE version SET version = ?
+                WHERE id = ?;",
+                params![current_timestamp.to_string(), 2],
+            )?;
+        } else {
+            conn.execute(
+                "INSERT INTO version (id, version)
+                VALUES (?, ?)",
+                params![2, current_timestamp.to_string()],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn get_timestamp(&self) -> Option<i64> {
+        let conn = self.conn.as_ref().expect("Error connecting to database.");
+        let stmt = conn.prepare("SELECT version FROM version WHERE id = ?;");
+        if stmt.is_err() {
+            return None;
+        }
+        let timestamp_str: rusqlite::Result<String> = stmt.unwrap().query_row(rusqlite::params![2], |row| row.get(0));
+        match timestamp_str {
+            Ok(ts) => {
+                let timestamp = ts.parse::<i64>().unwrap();
+                Some(timestamp)
+            }
+            Err(_) => None
+        }
+    }
+
     /// Inserts a new podcast and list of podcast episodes into the
     /// database.
     pub fn insert_podcast(&self, podcast: PodcastNoId) -> Result<SyncResult> {

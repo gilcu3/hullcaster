@@ -15,6 +15,7 @@ mod keymap;
 mod main_controller;
 mod opml;
 mod play_file;
+mod gpodder;
 mod threadpool;
 mod types;
 mod ui;

@@ -50,6 +50,12 @@ pub struct Config {
     pub simultaneous_downloads: usize,
     pub max_retries: usize,
     pub mark_as_played_on_play: bool,
+    pub enable_sync: bool,
+    pub sync_server: String,
+    pub sync_username: String,
+    pub sync_password: String,
+    pub sync_device_id: String,
+    pub sync_device_caption: String,
     pub keybindings: Keybindings,
     pub colors: AppColors,
 }
@@ -64,6 +70,12 @@ struct ConfigFromToml {
     simultaneous_downloads: Option<usize>,
     max_retries: Option<usize>,
     mark_as_played_on_play: Option<bool>,
+    pub enable_sync: Option<bool>,
+    sync_server: Option<String>,
+    sync_username: Option<String>,
+    sync_password: Option<String>,
+    sync_device_id: Option<String>,
+    sync_device_caption: Option<String>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
 }
@@ -182,6 +194,12 @@ impl Config {
                     download_new_episodes: None,
                     simultaneous_downloads: None,
                     max_retries: None,
+                    enable_sync: Some(false),
+                    sync_server: None,
+                    sync_username: None,
+                    sync_password: None,
+                    sync_device_id: None,
+                    sync_device_caption: None,
                     mark_as_played_on_play: None,
                     keybindings: Some(keybindings),
                     colors: Some(colors),
@@ -245,6 +263,14 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     let mark_as_played_on_play = config_toml.mark_as_played_on_play.unwrap_or(true);
 
+    let enable_sync = config_toml.enable_sync.unwrap_or(false);
+
+    let sync_server = config_toml.sync_server.unwrap_or_default();
+    let sync_username = config_toml.sync_username.unwrap_or_default();
+    let sync_password = config_toml.sync_password.unwrap_or_default();
+    let sync_device_id = config_toml.sync_device_id.unwrap_or_default();
+    let sync_device_caption = config_toml.sync_device_caption.unwrap_or_default();
+
     Ok(Config {
         download_path,
         play_command,
@@ -252,6 +278,12 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         simultaneous_downloads,
         max_retries,
         mark_as_played_on_play,
+        enable_sync,
+        sync_server,
+        sync_username,
+        sync_password,
+        sync_device_id,
+        sync_device_caption,
         keybindings: keymap,
         colors,
     })

@@ -19,7 +19,7 @@ readme = "README.md"
 crossterm = "0.23.0"
 rss = "2.0.0"
 rusqlite = "0.26.3"
-ureq = "2.4.0"
+ureq = { version = "2.4.0", features = ["cookies"] }
 native-tls = { version = "0.2.8", optional = true }
 clap = { version = "3.1.2", features = ["cargo", "env"] }
 toml = "0.5.8"
@@ -39,6 +39,8 @@ textwrap = "0.14.2"
 escaper = "0.1.1"
 rfc822_sanitizer = "0.3.6"
 semver = "1.0.6"
+base64 = "0.21.7"
+serde_json = {version = "1.0.116"}
 
 [features]
 default = ["native_certs"]
