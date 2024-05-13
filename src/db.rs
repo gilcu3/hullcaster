@@ -80,6 +80,18 @@ impl Database {
                 }
                 Err(_) => db_conn.update_version(curr_ver, false)?,
             }
+
+            // get timestamp number stored in database
+            let mut stmt = conn.prepare("SELECT version FROM version WHERE id = 2;")?;
+            let tstr: Result<String, rusqlite::Error> =
+                stmt.query_row(params![], |row| row.get("version"));
+
+            match tstr {
+                Ok(_) => { }
+                Err(_) => {
+                    db_conn.update_timestamp(0, false)?;
+                }
+            }
         }
 
         Ok(db_conn)

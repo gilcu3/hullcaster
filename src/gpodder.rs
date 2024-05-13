@@ -288,7 +288,7 @@ impl GpodderController{
             .timeout_connect(Duration::from_secs(10))
             .timeout_read(Duration::from_secs(30));
         let agent = agent_builder.build();
-        let timestamp = timestamp.unwrap_or(current_time() - 3 * 60 * 60);
+        let timestamp = timestamp.unwrap_or(0);
         let credentials = format!("{}:{}", config.sync_username, config.sync_password);
         let encoded_credentials = base64::engine::general_purpose::STANDARD.encode(credentials);
 

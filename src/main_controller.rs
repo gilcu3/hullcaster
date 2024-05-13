@@ -130,8 +130,8 @@ impl MainController {
                 Message::Feed(FeedMsg::SyncData((id, pod))) => self.add_or_sync_data(pod, Some(id)),
 
                 Message::Ui(UiMsg::SyncAll) => {
-                    self.gpodder_sync();
                     self.sync(None);
+                    self.gpodder_sync();
                 },
 
                 Message::Ui(UiMsg::Play(pod_id, ep_id)) => self.play_file(pod_id, ep_id),
