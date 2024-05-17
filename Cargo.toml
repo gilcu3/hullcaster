@@ -41,6 +41,8 @@ rfc822_sanitizer = "0.3.6"
 semver = "1.0.6"
 base64 = "0.21.7"
 serde_json = {version = "1.0.116"}
+log = "0.4.21"
+simplelog = "0.12.2"
 
 [features]
 default = ["native_certs"]

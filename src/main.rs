@@ -1,8 +1,9 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc;
+use std::env;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
@@ -116,6 +117,8 @@ fn main() -> Result<()> {
         });
     let config = Config::new(&config_path)?;
 
+    setup_logs();
+
     let mut db_path = config_path;
     if !db_path.pop() {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
@@ -167,6 +170,37 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
             }
         }
     }
+}
+
+
+fn setup_logs() -> Result<()>{
+    let log_path = 
+    match env::var("XDG_STATE_HOME") {
+        Ok(val) => val + "/shellcaster",
+        Err(_) => "~/.local/state/shellcaster".to_string(),
+    };
+    let log_path = Path::new(log_path.as_str());
+    std::fs::create_dir_all(log_path)?;
+    let file_path = log_path.join("log");
+    let log_file = OpenOptions::new()
+        .append(true)
+        .create(true).truncate(false)
+        .open(file_path)?;
+
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
+    let level_filter = match log_level.to_uppercase().as_str() {
+        "DEBUG" => simplelog::LevelFilter::Debug,
+        "INFO" => simplelog::LevelFilter::Info,
+        "WARN" => simplelog::LevelFilter::Warn,
+        "ERROR" => simplelog::LevelFilter::Error,
+        _ => simplelog::LevelFilter::Info, // Default to INFO if the variable is not set correctly
+    };
+    simplelog::CombinedLogger::init(
+        vec![
+            simplelog::WriteLogger::new(level_filter, simplelog::Config::default(), log_file),
+        ]
+    ).unwrap();
+    Ok(())
 }
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
