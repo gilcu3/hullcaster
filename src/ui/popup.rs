@@ -181,6 +181,7 @@ impl<'a> PopupWin<'a> {
             (Some(UserAction::AddFeed), "Add feed:"),
             (Some(UserAction::Sync), "Sync:"),
             (Some(UserAction::SyncAll), "Sync all:"),
+            (Some(UserAction::SyncGpodder), "Sync Gpodder:"),
             // (None, ""),
             (Some(UserAction::Play), "Play:"),
             (Some(UserAction::MarkPlayed), "Mark as played:"),

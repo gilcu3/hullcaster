@@ -340,7 +340,11 @@ impl GpodderController{
         let actions = [action];
         let msg = serde_json::to_string(&actions).unwrap();
         
-        execute_request_post(&self.agent, _url_mark_played, msg, &self.encoded_credentials)
+        let res = execute_request_post(&self.agent, _url_mark_played, msg, &self.encoded_credentials);
+        if res.is_some() {
+            log::info!("Marked played: {} episode: {} podcast: {}", played, episode_url, podcast_url);
+        }
+        res
     }
 
     pub fn get_episode_action_changes(&self) -> Option<Vec<EpisodeAction>>{
@@ -471,6 +475,7 @@ impl GpodderController{
             "type": "laptop"
         }).to_string();
         let res = execute_request_post(&self.agent, url_register, device, &self.encoded_credentials);
+        log::info!("Registered device {}", self.config.sync_device_id);
         res.is_some()
     }
     

@@ -36,6 +36,7 @@ impl<'a> KeybindingsWin<'a> {
             (UserAction::Help, "Help"),
             (UserAction::Play, "Play"),
             (UserAction::SyncAll, "Sync all"),
+            (UserAction::SyncGpodder, "Sync Gpodder"),
             (UserAction::MarkPlayed, "Mark as played"),
             (UserAction::MarkAllPlayed, "Mark all as played"),
             (UserAction::Download, "Download"),

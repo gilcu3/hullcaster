@@ -63,6 +63,7 @@ pub enum UiMsg {
     MarkAllPlayed(i64, bool),
     Sync(i64),
     SyncAll,
+    SyncGpodder,
     Download(i64, i64),
     DownloadMulti(Vec<(i64, i64)>),
     DownloadAll(i64),
@@ -331,6 +332,10 @@ impl<'a> Ui<'a> {
                             }
                             Some(UserAction::SyncAll) => {
                                 return UiMsg::SyncAll;
+                            }
+
+                            Some(UserAction::SyncGpodder) => {
+                                return UiMsg::SyncGpodder;
                             }
 
                             Some(UserAction::Play) => {

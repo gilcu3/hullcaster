@@ -84,6 +84,7 @@ go_bot = [ "G" ]
 add_feed = [ "a" ]
 sync = [ "s" ]
 sync_all = [ "S" ]
+sync_gpodder = [ "A" ]
 
 play = [ "Enter", "p" ]
 mark_played = [ "m" ]

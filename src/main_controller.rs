@@ -131,6 +131,10 @@ impl MainController {
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);
+                },
+                
+
+                Message::Ui(UiMsg::SyncGpodder) => {
                     self.gpodder_sync();
                 },
 
@@ -365,6 +369,8 @@ impl MainController {
                         }
                         let ep_id = *ep_id_opt.unwrap();
                         last_actions.insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
+
+                        log::info!("EpisodeAction received - podcast: {} episode: {} position: {} total: {}", a.podcast, a.episode, a.position.unwrap(), a.total.unwrap());
                         
                     }
                     Action::download => { }
