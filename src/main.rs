@@ -1,9 +1,9 @@
+use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc;
-use std::env;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
@@ -12,11 +12,11 @@ mod config;
 mod db;
 mod downloads;
 mod feeds;
+mod gpodder;
 mod keymap;
 mod main_controller;
 mod opml;
 mod play_file;
-mod gpodder;
 mod threadpool;
 mod types;
 mod ui;
@@ -174,10 +174,8 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
     }
 }
 
-
-fn setup_logs() -> Result<()>{
-    let log_path = 
-    match env::var("XDG_STATE_HOME") {
+fn setup_logs() -> Result<()> {
+    let log_path = match env::var("XDG_STATE_HOME") {
         Ok(val) => val + "/shellcaster",
         Err(_) => "~/.local/state/shellcaster".to_string(),
     };
@@ -186,7 +184,8 @@ fn setup_logs() -> Result<()>{
     let file_path = log_path.join("log");
     let log_file = OpenOptions::new()
         .append(true)
-        .create(true).truncate(false)
+        .create(true)
+        .truncate(false)
         .open(file_path)?;
 
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
@@ -197,11 +196,12 @@ fn setup_logs() -> Result<()>{
         "ERROR" => simplelog::LevelFilter::Error,
         _ => simplelog::LevelFilter::Info, // Default to INFO if the variable is not set correctly
     };
-    simplelog::CombinedLogger::init(
-        vec![
-            simplelog::WriteLogger::new(level_filter, simplelog::Config::default(), log_file),
-        ]
-    ).unwrap();
+    simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
+        level_filter,
+        simplelog::Config::default(),
+        log_file,
+    )])
+    .unwrap();
     Ok(())
 }
 

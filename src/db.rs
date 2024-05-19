@@ -87,7 +87,7 @@ impl Database {
                 stmt.query_row(params![], |row| row.get("version"));
 
             match tstr {
-                Ok(_) => { }
+                Ok(_) => {}
                 Err(_) => {
                     db_conn.update_timestamp(0, false)?;
                 }
@@ -182,7 +182,6 @@ impl Database {
         Ok(())
     }
 
-
     pub fn update_timestamp(&self, current_timestamp: i64, update: bool) -> Result<()> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
 
@@ -208,13 +207,15 @@ impl Database {
         if stmt.is_err() {
             return None;
         }
-        let timestamp_str: rusqlite::Result<String> = stmt.unwrap().query_row(rusqlite::params![2], |row| row.get(0));
+        let timestamp_str: rusqlite::Result<String> = stmt
+            .unwrap()
+            .query_row(rusqlite::params![2], |row| row.get(0));
         match timestamp_str {
             Ok(ts) => {
                 let timestamp = ts.parse::<i64>().unwrap();
                 Some(timestamp)
             }
-            Err(_) => None
+            Err(_) => None,
         }
     }
 

@@ -275,23 +275,20 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
     let sync_device_id = config_toml.sync_device_id.unwrap_or_default();
     let sync_device_caption = config_toml.sync_device_caption.unwrap_or_default();
 
-    let sync_password = if config_toml.sync_password.is_some(){
+    let sync_password = if config_toml.sync_password.is_some() {
         config_toml.sync_password.unwrap_or_default()
-    }
-    else if config_toml.sync_password_eval.is_some(){
+    } else if config_toml.sync_password_eval.is_some() {
         let sync_password_eval = config_toml.sync_password_eval.unwrap_or_default();
         let tmp_sync_password = evaluate_in_shell(&sync_password_eval);
         if let Some(password) = tmp_sync_password {
             password.trim().to_string()
-        }
-        else {
+        } else {
             "".to_string()
         }
-    }
-    else{
+    } else {
         "".to_string()
     };
-    
+
     Ok(Config {
         download_path,
         play_command,
@@ -349,16 +346,11 @@ fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Result<
     Ok(final_path)
 }
 
-
 fn evaluate_in_shell(value: &str) -> Option<String> {
-    let res = Command::new("sh")
-        .arg("-c")
-        .arg(value)
-        .output();
+    let res = Command::new("sh").arg("-c").arg(value).output();
     if let Ok(res) = res {
         Some(String::from_utf8_lossy(&res.stdout).to_string())
-    }
-    else {
+    } else {
         None
     }
 }

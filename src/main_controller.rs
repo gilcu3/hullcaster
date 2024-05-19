@@ -10,11 +10,11 @@ use crate::config::{Config, DownloadNewEpisodes};
 use crate::db::{Database, SyncResult};
 use crate::downloads::{self, DownloadMsg, EpData};
 use crate::feeds::{self, FeedMsg, PodcastFeed};
+use crate::gpodder::{Action, GpodderController};
 use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
-use crate::gpodder::{Action, GpodderController};
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -68,18 +68,14 @@ impl MainController {
         // necessary
         let podcast_list = LockVec::new(db_inst.get_podcasts()?);
 
-        let sync_agent = 
-        if config.enable_sync{
+        let sync_agent = if config.enable_sync {
             let timestamp = db_inst.get_timestamp();
             let _g = GpodderController::new(config.clone(), timestamp);
             _g.as_ref().unwrap().init();
             _g
-        }
-        else{
+        } else {
             None
         };
-
-
 
         // set up UI in new thread
         let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
@@ -131,12 +127,11 @@ impl MainController {
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);
-                },
-                
+                }
 
                 Message::Ui(UiMsg::SyncGpodder) => {
                     self.gpodder_sync();
-                },
+                }
 
                 Message::Ui(UiMsg::Play(pod_id, ep_id)) => self.play_file(pod_id, ep_id),
 
@@ -340,52 +335,68 @@ impl MainController {
         self.update_tracker_notif();
     }
 
-    fn gpodder_sync(&self){
-        if self.config.enable_sync{
-            let actions = self.sync_agent.as_ref().unwrap().get_episode_action_changes();
-            
-            let pod_data = self.podcasts.map(
-                |pod| (pod.url.clone(), {
-                    (pod.id, 
-                    pod.episodes.map(
-                        |ep| (ep.url.clone(), ep.id),
-                        false
-                    ).into_iter().collect::<HashMap<String, i64>>())
-                }), false).into_iter().collect::<HashMap<String, (i64, HashMap<String, i64>)>>();
-            
+    fn gpodder_sync(&self) {
+        if self.config.enable_sync {
+            let actions = self
+                .sync_agent
+                .as_ref()
+                .unwrap()
+                .get_episode_action_changes();
+
+            let pod_data = self
+                .podcasts
+                .map(
+                    |pod| {
+                        (pod.url.clone(), {
+                            (
+                                pod.id,
+                                pod.episodes
+                                    .map(|ep| (ep.url.clone(), ep.id), false)
+                                    .into_iter()
+                                    .collect::<HashMap<String, i64>>(),
+                            )
+                        })
+                    },
+                    false,
+                )
+                .into_iter()
+                .collect::<HashMap<String, (i64, HashMap<String, i64>)>>();
+
             let mut last_actions = HashMap::new();
-            
-            for a in actions.unwrap(){
+
+            for a in actions.unwrap() {
                 match a.action {
                     Action::play => {
                         let pod_id_opt = pod_data.get(&a.podcast);
-                        if pod_id_opt.is_none(){
+                        if pod_id_opt.is_none() {
                             continue;
                         }
                         let pod_id = pod_id_opt.unwrap().0;
                         let ep_id_opt = pod_id_opt.unwrap().1.get(a.episode.as_str());
-                        if ep_id_opt.is_none(){
+                        if ep_id_opt.is_none() {
                             continue;
                         }
                         let ep_id = *ep_id_opt.unwrap();
-                        last_actions.insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
+                        last_actions
+                            .insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
 
                         log::info!("EpisodeAction received - podcast: {} episode: {} position: {} total: {}", a.podcast, a.episode, a.position.unwrap(), a.total.unwrap());
-                        
                     }
-                    Action::download => { }
+                    Action::download => {}
                     Action::delete => {}
-                    Action::new => { }
+                    Action::new => {}
                 }
             }
 
-            for ((pod_id, ep_id), (position, total)) in last_actions{
-                let played =  (total - position).abs() <= 10;
-                        self.mark_played_db(pod_id, ep_id, played);
+            for ((pod_id, ep_id), (position, total)) in last_actions {
+                let played = (total - position).abs() <= 10;
+                self.mark_played_db(pod_id, ep_id, played);
                 self.mark_played_db(pod_id, ep_id, played);
             }
 
-            let _ = self.db.update_timestamp(self.sync_agent.as_ref().unwrap().get_timestamp(), true);
+            let _ = self
+                .db
+                .update_timestamp(self.sync_agent.as_ref().unwrap().get_timestamp(), true);
         }
     }
 
@@ -503,7 +514,7 @@ impl MainController {
     }
 
     // TODO: Fix this horrible workaround
-    fn mark_played_db(&self, pod_id: i64, ep_id: i64, played: bool){
+    fn mark_played_db(&self, pod_id: i64, ep_id: i64, played: bool) {
         let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
         let mut episode = podcast.episodes.clone_episode(ep_id).unwrap();
         episode.played = played;
@@ -521,7 +532,12 @@ impl MainController {
         let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
         let episode = podcast.episodes.clone_episode(ep_id).unwrap();
         if self.config.enable_sync {
-            self.sync_agent.as_ref().unwrap().mark_played( podcast.url.as_str(), episode.url.as_str(), episode.duration, played);
+            self.sync_agent.as_ref().unwrap().mark_played(
+                podcast.url.as_str(),
+                episode.url.as_str(),
+                episode.duration,
+                played,
+            );
         }
     }
 
@@ -536,7 +552,12 @@ impl MainController {
                 let _ = self.db.set_played_status(*ep, played);
                 let episode = podcast.episodes.clone_episode(*ep).unwrap();
                 if self.config.enable_sync {
-                    self.sync_agent.as_ref().unwrap().mark_played( podcast.url.as_str(), episode.url.as_str(), episode.duration, played);
+                    self.sync_agent.as_ref().unwrap().mark_played(
+                        podcast.url.as_str(),
+                        episode.url.as_str(),
+                        episode.duration,
+                        played,
+                    );
                 }
             }
         }
