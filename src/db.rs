@@ -55,9 +55,9 @@ impl Database {
                 .expect("Could not set database parameters.");
 
             // get version number stored in database
-            let mut stmt = conn.prepare("SELECT version FROM version WHERE id = 1;")?;
+            let mut stmt = conn.prepare("SELECT value FROM params WHERE key = 'version';")?;
             let vstr: Result<String, rusqlite::Error> =
-                stmt.query_row(params![], |row| row.get("version"));
+                stmt.query_row(params![], |row| row.get("value"));
 
             // compare to current app version
             let curr_ver = Version::parse(crate::VERSION)?;
@@ -69,12 +69,6 @@ impl Database {
                         // any version checks for DB migrations should
                         // go here first, before we update the version
 
-                        // adding a column to capture episode guids
-                        if db_version <= Version::parse("1.2.1")? {
-                            conn.execute("ALTER TABLE episodes ADD COLUMN guid TEXT;", params![])
-                                .expect("Could not run database migrations.");
-                        }
-
                         db_conn.update_version(curr_ver, true)?;
                     }
                 }
@@ -82,9 +76,9 @@ impl Database {
             }
 
             // get timestamp number stored in database
-            let mut stmt = conn.prepare("SELECT version FROM version WHERE id = 2;")?;
+            let mut stmt = conn.prepare("SELECT value FROM params WHERE key = 'timestamp';")?;
             let tstr: Result<String, rusqlite::Error> =
-                stmt.query_row(params![], |row| row.get("version"));
+                stmt.query_row(params![], |row| row.get("value"));
 
             match tstr {
                 Ok(_) => {}
@@ -150,13 +144,13 @@ impl Database {
         .with_context(|| "Could not create files database table")?;
 
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS version (
-                id INTEGER PRIMARY KEY NOT NULL,
-                version TEXT NOT NULL
+            "CREATE TABLE IF NOT EXISTS params (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
             );",
             params![],
         )
-        .with_context(|| "Could not create version database table")?;
+        .with_context(|| "Could not create params database table")?;
         Ok(())
     }
 
@@ -168,15 +162,15 @@ impl Database {
 
         if update {
             conn.execute(
-                "UPDATE version SET version = ?
-                WHERE id = ?;",
-                params![current_version.to_string(), 1],
+                "UPDATE params SET value = ?
+                WHERE key = ?;",
+                params![current_version.to_string(), "version"],
             )?;
         } else {
             conn.execute(
-                "INSERT INTO version (id, version)
+                "INSERT INTO params (key, value)
                 VALUES (?, ?)",
-                params![1, current_version.to_string()],
+                params!["version", current_version.to_string()],
             )?;
         }
         Ok(())
@@ -187,15 +181,15 @@ impl Database {
 
         if update {
             conn.execute(
-                "UPDATE version SET version = ?
-                WHERE id = ?;",
-                params![current_timestamp.to_string(), 2],
+                "UPDATE params SET value = ?
+                WHERE key = ?;",
+                params![current_timestamp.to_string(), "timestamp"],
             )?;
         } else {
             conn.execute(
-                "INSERT INTO version (id, version)
+                "INSERT INTO params (key, value)
                 VALUES (?, ?)",
-                params![2, current_timestamp.to_string()],
+                params!["timestamp", current_timestamp.to_string()],
             )?;
         }
         Ok(())
@@ -203,13 +197,13 @@ impl Database {
 
     pub fn get_timestamp(&self) -> Option<i64> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
-        let stmt = conn.prepare("SELECT version FROM version WHERE id = ?;");
+        let stmt = conn.prepare("SELECT value FROM params WHERE key = ?;");
         if stmt.is_err() {
             return None;
         }
         let timestamp_str: rusqlite::Result<String> = stmt
             .unwrap()
-            .query_row(rusqlite::params![2], |row| row.get(0));
+            .query_row(rusqlite::params!["timestamp"], |row| row.get(0));
         match timestamp_str {
             Ok(ts) => {
                 let timestamp = ts.parse::<i64>().unwrap();
