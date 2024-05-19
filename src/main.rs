@@ -117,7 +117,9 @@ fn main() -> Result<()> {
         });
     let config = Config::new(&config_path)?;
 
-    setup_logs();
+    if setup_logs().is_err() {
+        eprintln!("Could not set up logging.");
+    }
 
     let mut db_path = config_path;
     if !db_path.pop() {

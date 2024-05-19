@@ -136,7 +136,8 @@ fn execute_request_get(agent: &Agent, url: String, params: Vec<(&str, &str)>, en
     }
 }
 
-
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct Device {
     deviceid: String,
@@ -148,6 +149,7 @@ pub struct Device {
     id: i32,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug)]
 pub enum Action {
     new,
