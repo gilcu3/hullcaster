@@ -398,12 +398,13 @@ impl MainController {
                     Action::new => {}
                 }
             }
+            let mut updates = Vec::new();
 
             for ((pod_id, ep_id), (position, total)) in last_actions {
                 let played = (total - position).abs() <= 10;
-                self.mark_played_db(pod_id, ep_id, played);
-                self.mark_played_db(pod_id, ep_id, played);
+                updates.push((pod_id, ep_id, played));
             }
+            self.mark_played_db_batch(updates);
 
             let _ = self.db.set_param(
                 "timestamp",
@@ -528,6 +529,36 @@ impl MainController {
                 }
             }
         }
+    }
+
+    fn mark_played_db_batch(&self, updates: Vec<(i64, i64, bool)>) {
+        let mut pod_map = HashMap::new();
+        for (pod_id, ep_id, played) in updates {
+            if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
+                e.insert(vec![(ep_id, played)]);
+            } else {
+                pod_map.get_mut(&pod_id).unwrap().push((ep_id, played));
+            }
+        }
+        //
+        for pod_id in pod_map.keys() {
+            let podcast = self.podcasts.clone_podcast(*pod_id).unwrap();
+            let mut batch = Vec::new();
+            for (ep_id, played) in pod_map.get(pod_id).unwrap() {
+                let mut episode = podcast.episodes.clone_episode(*ep_id).unwrap();
+                episode.played = *played;
+                batch.push((episode.id, *played));
+                podcast.episodes.replace(*ep_id, episode);
+            }
+            if self.db.set_played_status_batch(batch).is_err() {
+                self.notif_to_ui(
+                    "Could not update played status in database.".to_string(),
+                    true,
+                );
+            }
+            self.podcasts.replace(*pod_id, podcast);
+        }
+        self.update_filters(self.filters, true);
     }
 
     // TODO: Fix this horrible workaround
