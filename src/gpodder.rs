@@ -422,7 +422,7 @@ impl GpodderController {
             self.config.sync_server, self.config.sync_username, self.config.sync_device_id
         );
         let device = serde_json::json!({
-            "caption": self.config.sync_device_caption,
+            "caption": "",
             "type": "laptop"
         })
         .to_string();

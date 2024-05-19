@@ -69,7 +69,9 @@ impl MainController {
         let podcast_list = LockVec::new(db_inst.get_podcasts()?);
 
         let sync_agent = if config.enable_sync {
-            let timestamp = db_inst.get_timestamp();
+            let timestamp = db_inst
+                .get_param("timestamp")
+                .and_then(|s| s.parse::<i64>().ok());
             let _g = GpodderController::new(config.clone(), timestamp);
             _g.as_ref().unwrap().init();
             _g
@@ -394,9 +396,15 @@ impl MainController {
                 self.mark_played_db(pod_id, ep_id, played);
             }
 
-            let _ = self
-                .db
-                .update_timestamp(self.sync_agent.as_ref().unwrap().get_timestamp(), true);
+            let _ = self.db.set_param(
+                "timestamp",
+                &self
+                    .sync_agent
+                    .as_ref()
+                    .unwrap()
+                    .get_timestamp()
+                    .to_string(),
+            );
         }
     }
 

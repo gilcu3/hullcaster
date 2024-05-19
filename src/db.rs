@@ -55,40 +55,61 @@ impl Database {
                 .expect("Could not set database parameters.");
 
             // get version number stored in database
-            let mut stmt = conn.prepare("SELECT value FROM params WHERE key = 'version';")?;
-            let vstr: Result<String, rusqlite::Error> =
-                stmt.query_row(params![], |row| row.get("value"));
+            let vstr = db_conn.get_param("version");
 
             // compare to current app version
             let curr_ver = Version::parse(crate::VERSION)?;
 
             match vstr {
-                Ok(vstr) => {
+                Some(vstr) => {
                     let db_version = Version::parse(&vstr)?;
                     if db_version < curr_ver {
                         // any version checks for DB migrations should
                         // go here first, before we update the version
 
-                        db_conn.update_version(curr_ver, true)?;
+                        db_conn.set_param("version", &curr_ver.to_string())?;
                     }
                 }
-                Err(_) => db_conn.update_version(curr_ver, false)?,
+                None => db_conn.set_param("version", &curr_ver.to_string())?,
             }
 
             // get timestamp number stored in database
-            let mut stmt = conn.prepare("SELECT value FROM params WHERE key = 'timestamp';")?;
-            let tstr: Result<String, rusqlite::Error> =
-                stmt.query_row(params![], |row| row.get("value"));
+            let tstr = db_conn.get_param("timestamp");
 
             match tstr {
-                Ok(_) => {}
-                Err(_) => {
-                    db_conn.update_timestamp(0, false)?;
+                Some(_) => {}
+                None => {
+                    db_conn.set_param("timestamp", "0")?;
                 }
             }
         }
 
         Ok(db_conn)
+    }
+
+    pub fn get_param(&self, key: &str) -> Option<String> {
+        let conn = self.conn.as_ref().expect("Error connecting to database.");
+        let stmt = conn.prepare("SELECT value FROM params WHERE key = ?;");
+        if stmt.is_err() {
+            return None;
+        }
+        let param_str: rusqlite::Result<String> = stmt
+            .unwrap()
+            .query_row(rusqlite::params![key], |row| row.get(0));
+        match param_str {
+            Ok(ps) => Some(ps),
+            Err(_) => None,
+        }
+    }
+
+    pub fn set_param(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.as_ref().expect("Error connecting to database.");
+        let mut stmt = conn.prepare_cached(
+            "INSERT OR REPLACE INTO params (key, value)
+                VALUES (?, ?);",
+        )?;
+        stmt.execute(params![key, value])?;
+        Ok(())
     }
 
     /// Creates the necessary database tables, if they do not already
@@ -152,65 +173,6 @@ impl Database {
         )
         .with_context(|| "Could not create params database table")?;
         Ok(())
-    }
-
-    /// If version stored in database is less than the current version
-    /// of the app, this updates the value stored in the database to
-    /// match.
-    fn update_version(&self, current_version: Version, update: bool) -> Result<()> {
-        let conn = self.conn.as_ref().expect("Error connecting to database.");
-
-        if update {
-            conn.execute(
-                "UPDATE params SET value = ?
-                WHERE key = ?;",
-                params![current_version.to_string(), "version"],
-            )?;
-        } else {
-            conn.execute(
-                "INSERT INTO params (key, value)
-                VALUES (?, ?)",
-                params!["version", current_version.to_string()],
-            )?;
-        }
-        Ok(())
-    }
-
-    pub fn update_timestamp(&self, current_timestamp: i64, update: bool) -> Result<()> {
-        let conn = self.conn.as_ref().expect("Error connecting to database.");
-
-        if update {
-            conn.execute(
-                "UPDATE params SET value = ?
-                WHERE key = ?;",
-                params![current_timestamp.to_string(), "timestamp"],
-            )?;
-        } else {
-            conn.execute(
-                "INSERT INTO params (key, value)
-                VALUES (?, ?)",
-                params!["timestamp", current_timestamp.to_string()],
-            )?;
-        }
-        Ok(())
-    }
-
-    pub fn get_timestamp(&self) -> Option<i64> {
-        let conn = self.conn.as_ref().expect("Error connecting to database.");
-        let stmt = conn.prepare("SELECT value FROM params WHERE key = ?;");
-        if stmt.is_err() {
-            return None;
-        }
-        let timestamp_str: rusqlite::Result<String> = stmt
-            .unwrap()
-            .query_row(rusqlite::params!["timestamp"], |row| row.get(0));
-        match timestamp_str {
-            Ok(ts) => {
-                let timestamp = ts.parse::<i64>().unwrap();
-                Some(timestamp)
-            }
-            Err(_) => None,
-        }
     }
 
     /// Inserts a new podcast and list of podcast episodes into the
