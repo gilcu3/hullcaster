@@ -55,7 +55,6 @@ pub struct Config {
     pub sync_server: String,
     pub sync_username: String,
     pub sync_password: String,
-    pub sync_device_id: String,
     pub keybindings: Keybindings,
     pub colors: AppColors,
 }
@@ -75,7 +74,6 @@ struct ConfigFromToml {
     sync_username: Option<String>,
     sync_password: Option<String>,
     sync_password_eval: Option<String>,
-    sync_device_id: Option<String>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
 }
@@ -201,7 +199,6 @@ impl Config {
                     sync_username: None,
                     sync_password: None,
                     sync_password_eval: None,
-                    sync_device_id: None,
                     mark_as_played_on_play: None,
                     keybindings: Some(keybindings),
                     colors: Some(colors),
@@ -269,7 +266,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     let sync_server = config_toml.sync_server.unwrap_or_default();
     let sync_username = config_toml.sync_username.unwrap_or_default();
-    let sync_device_id = config_toml.sync_device_id.unwrap_or_default();
 
     let sync_password = if config_toml.sync_password.is_some() {
         config_toml.sync_password.unwrap_or_default()
@@ -296,7 +292,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         sync_server,
         sync_username,
         sync_password,
-        sync_device_id,
         keybindings: keymap,
         colors,
     })

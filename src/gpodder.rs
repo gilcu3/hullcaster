@@ -157,6 +157,7 @@ pub struct GpodderController {
     config: Config,
     agent: Agent,
     timestamp: Cell<i64>,
+    device_id: String,
     logged_in: Cell<bool>,
     encoded_credentials: String,
 }
@@ -206,7 +207,9 @@ impl GpodderController {
     //     }
     // }
 
-    pub fn new(config: Config, timestamp: Option<i64>) -> Option<GpodderController> {
+    pub fn new(
+        config: Config, timestamp: Option<i64>, device_id: String,
+    ) -> Option<GpodderController> {
         let agent_builder = builder()
             .timeout_connect(Duration::from_secs(10))
             .timeout_read(Duration::from_secs(30));
@@ -219,6 +222,7 @@ impl GpodderController {
             config,
             agent,
             timestamp: timestamp.into(),
+            device_id,
             logged_in: false.into(),
             encoded_credentials,
         })
@@ -234,7 +238,7 @@ impl GpodderController {
         let mut exists = false;
         for dev in res.unwrap() {
             // println!("{:?}", dev);
-            if dev.deviceid == self.config.sync_device_id {
+            if dev.deviceid == self.device_id {
                 exists = true;
                 break;
             }
@@ -253,7 +257,7 @@ impl GpodderController {
         self.require_login();
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
-            self.config.sync_server, self.config.sync_username, self.config.sync_device_id
+            self.config.sync_server, self.config.sync_username, self.device_id
         );
         let action = EpisodeAction {
             podcast: podcast_url.to_string(),
@@ -419,7 +423,7 @@ impl GpodderController {
     fn register_device(&self) -> bool {
         let url_register = format!(
             "{}/api/2/devices/{}/{}.json",
-            self.config.sync_server, self.config.sync_username, self.config.sync_device_id
+            self.config.sync_server, self.config.sync_username, self.device_id
         );
         let device = serde_json::json!({
             "caption": "",
@@ -428,7 +432,7 @@ impl GpodderController {
         .to_string();
         let res =
             execute_request_post(&self.agent, url_register, device, &self.encoded_credentials);
-        log::info!("Registered device {}", self.config.sync_device_id);
+        log::info!("Registered device {}", self.device_id);
         res.is_some()
     }
 

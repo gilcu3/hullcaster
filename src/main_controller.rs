@@ -15,6 +15,7 @@ use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
+use crate::utils::evaluate_in_shell;
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -72,7 +73,15 @@ impl MainController {
             let timestamp = db_inst
                 .get_param("timestamp")
                 .and_then(|s| s.parse::<i64>().ok());
-            let _g = GpodderController::new(config.clone(), timestamp);
+            let device_id = db_inst.get_param("device_id").unwrap_or({
+                let res = evaluate_in_shell("hostname")
+                    .expect("Failed to get hostname")
+                    .trim()
+                    .to_string();
+                db_inst.set_param("device_id", &res)?;
+                res
+            });
+            let _g = GpodderController::new(config.clone(), timestamp, device_id);
             _g.as_ref().unwrap().init();
             _g
         } else {
