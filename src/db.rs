@@ -2,13 +2,13 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rusqlite::{params, Connection};
 use semver::Version;
 
 use crate::types::*;
+use crate::utils::convert_date;
 
 lazy_static! {
     /// Regex for removing "A", "An", and "The" from the beginning of
@@ -592,15 +592,5 @@ impl Database {
         conn.execute("DELETE FROM episodes;", params![])?;
         conn.execute("DELETE FROM podcasts;", params![])?;
         Ok(())
-    }
-}
-
-/// Helper function converting an (optional) Unix timestamp to a
-/// DateTime<Utc> object
-fn convert_date(result: Result<i64, rusqlite::Error>) -> Option<DateTime<Utc>> {
-    match result {
-        Ok(timestamp) => DateTime::from_timestamp(timestamp, 0)
-            .map(|ndt| DateTime::from_naive_utc_and_offset(ndt.naive_utc(), Utc)),
-        Err(_) => None,
     }
 }

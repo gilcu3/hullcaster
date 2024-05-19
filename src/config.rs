@@ -3,10 +3,10 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::keymap::Keybindings;
 use crate::ui::colors::AppColors;
+use crate::utils::evaluate_in_shell;
 
 // Specifies how long, in milliseconds, to display messages at the
 // bottom of the screen in the UI.
@@ -344,13 +344,4 @@ fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Result<
     })?;
 
     Ok(final_path)
-}
-
-fn evaluate_in_shell(value: &str) -> Option<String> {
-    let res = Command::new("sh").arg("-c").arg(value).output();
-    if let Ok(res) = res {
-        Some(String::from_utf8_lossy(&res.stdout).to_string())
-    } else {
-        None
-    }
 }

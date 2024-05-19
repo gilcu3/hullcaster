@@ -7,11 +7,14 @@ use serde_json::Value;
 use std::cell::Cell;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use ureq::{builder, Agent, Error, Response};
+use ureq::{builder, Agent};
 //use crate::opml;
-use crate::config::Config;
+
 use chrono::{DateTime, TimeZone, Utc};
 use std::fmt;
+
+use crate::config::Config;
+use crate::utils::{execute_request_get, execute_request_post};
 
 // #[derive(Debug)]
 // pub struct Podcast {
@@ -54,84 +57,6 @@ use std::fmt;
 //     }
 
 // }
-
-pub fn execute_request_post(
-    agent: &Agent, url: String, body: String, encoded_credentials: &String,
-) -> Option<String> {
-    let mut max_retries = 3;
-
-    let request: Result<Response, ()> = loop {
-        let response = agent
-            .post(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
-            .send_string(&body);
-
-        match response {
-            Ok(resp) => {
-                //println!("Ok code: {:?}", resp);
-                break Ok(resp);
-            }
-            Err(Error::Status(code, _error_response)) => {
-                // Handle HTTP error statuses (e.g., 404, 500)
-                println!("Error code: {}", code);
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(());
-                }
-            }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(());
-                }
-            }
-        }
-    };
-    if let Ok(req) = request {
-        req.into_string().ok()
-    } else {
-        None
-    }
-}
-
-fn execute_request_get(
-    agent: &Agent, url: String, params: Vec<(&str, &str)>, encoded_credentials: &String,
-) -> Option<String> {
-    let mut max_retries = 3;
-
-    let request: Result<Response, ()> = loop {
-        let response = agent
-            .get(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
-            .query_pairs(params.clone())
-            .call();
-
-        match response {
-            Ok(resp) => {
-                // println!("Ok code: {:?}", resp);
-                break Ok(resp);
-            }
-            Err(Error::Status(code, _error_response)) => {
-                println!("Error code: {}", code);
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(());
-                }
-            }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(());
-                }
-            }
-        }
-    };
-    if let Ok(req) = request {
-        req.into_string().ok()
-    } else {
-        None
-    }
-}
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]

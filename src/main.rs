@@ -20,6 +20,7 @@ mod play_file;
 mod threadpool;
 mod types;
 mod ui;
+mod utils;
 
 use crate::config::Config;
 use crate::db::Database;
