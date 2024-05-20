@@ -1,5 +1,11 @@
 use chrono::{DateTime, Utc};
+use std::io::{Cursor, Read};
 use std::process::Command;
+use symphonia::core::codecs::CODEC_TYPE_NULL;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
+use symphonia::core::probe::Hint;
+use symphonia::default::get_probe;
 use ureq::{Agent, Error, Response};
 
 /// Helper function converting an (optional) Unix timestamp to a
@@ -97,4 +103,36 @@ pub fn execute_request_get(
     } else {
         None
     }
+}
+
+pub fn audio_duration(url: &str) -> Option<i64> {
+    log::info!("Getting audio duration for {}", url);
+    let response = ureq::get(url).call().ok()?;
+    let bytes = response
+        .into_reader()
+        .bytes()
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    log::info!("Bytes: {:?}", bytes.len());
+    let cursor = Cursor::new(bytes);
+    let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
+    let probed = get_probe()
+        .format(
+            &Hint::new(),
+            mss,
+            &FormatOptions::default(),
+            &Default::default(),
+        )
+        .ok()?;
+    let mut duration = 0;
+    for track in probed.format.tracks() {
+        if track.codec_params.codec != CODEC_TYPE_NULL {
+            let tt = track
+                .codec_params
+                .time_base?
+                .calc_time(track.codec_params.n_frames?);
+            duration += tt.seconds;
+        }
+    }
+    Some(duration as i64)
 }

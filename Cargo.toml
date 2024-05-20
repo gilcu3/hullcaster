@@ -43,6 +43,7 @@ base64 = "0.21.7"
 serde_json = {version = "1.0.116"}
 log = "0.4.21"
 simplelog = {version = "0.12.2", features = ["local-offset"]}
+symphonia = { version = "0.5.4", features = ["mp3"] }
 
 [features]
 default = ["native_certs"]

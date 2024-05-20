@@ -15,7 +15,7 @@ use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
-use crate::utils::evaluate_in_shell;
+use crate::utils::{audio_duration, evaluate_in_shell};
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -378,6 +378,8 @@ impl MainController {
             for a in actions.unwrap() {
                 match a.action {
                     Action::play => {
+                        log::info!("EpisodeAction received - podcast: {} episode: {} position: {} total: {}", a.podcast, a.episode, a.position.unwrap(), a.total.unwrap());
+
                         let pod_id_opt = pod_data.get(&a.podcast);
                         if pod_id_opt.is_none() {
                             continue;
@@ -390,8 +392,6 @@ impl MainController {
                         let ep_id = *ep_id_opt.unwrap();
                         last_actions
                             .insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
-
-                        log::info!("EpisodeAction received - podcast: {} episode: {} position: {} total: {}", a.podcast, a.episode, a.position.unwrap(), a.total.unwrap());
                     }
                     Action::download => {}
                     Action::delete => {}
@@ -579,11 +579,22 @@ impl MainController {
         self.mark_played_db(pod_id, ep_id, played);
         let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
         let episode = podcast.episodes.clone_episode(ep_id).unwrap();
+        let mut duration = episode.duration;
         if self.config.enable_sync {
+            if duration.is_none() {
+                duration = audio_duration(&episode.url);
+                if duration.is_none() {
+                    self.notif_to_ui(
+                        "Could not mark episode as played: missing duration.".to_string(),
+                        true,
+                    );
+                    return;
+                }
+            }
             self.sync_agent.as_ref().unwrap().mark_played(
                 podcast.url.as_str(),
                 episode.url.as_str(),
-                episode.duration,
+                duration,
                 played,
             );
         }
