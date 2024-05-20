@@ -5,6 +5,7 @@ use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::cell::Cell;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ureq::{builder, Agent};
@@ -154,7 +155,7 @@ impl Serialize for EpisodeAction {
 
 #[derive(Clone, Debug)]
 pub struct GpodderController {
-    config: Config,
+    config: Arc<Config>,
     agent: Agent,
     timestamp: Cell<i64>,
     device_id: String,
@@ -208,7 +209,7 @@ impl GpodderController {
     // }
 
     pub fn new(
-        config: Config, timestamp: Option<i64>, device_id: String,
+        config: Arc<Config>, timestamp: Option<i64>, device_id: String,
     ) -> Option<GpodderController> {
         let agent_builder = builder()
             .timeout_connect(Duration::from_secs(10))

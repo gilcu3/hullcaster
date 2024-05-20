@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
@@ -116,7 +117,7 @@ fn main() -> Result<()> {
             eprintln!("Could not identify your operating system's default directory to store configuration files. Please specify paths manually using config.toml and use `-c` or `--config` flag to specify where config.toml is located when launching the program.");
             process::exit(1);
         });
-    let config = Config::new(&config_path)?;
+    let config = Arc::new(Config::new(&config_path)?);
 
     if setup_logs().is_err() {
         eprintln!("Could not set up logging.");
@@ -213,7 +214,7 @@ fn setup_logs() -> Result<()> {
 }
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
-fn sync_podcasts(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Result<()> {
+fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     let db_inst = Database::connect(db_path)?;
     let podcast_list = db_inst.get_podcasts()?;
 
@@ -279,7 +280,7 @@ fn sync_podcasts(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Res
 /// Imports a list of podcasts from OPML format, either reading from a
 /// file or from stdin. If the `replace` flag is set, this replaces all
 /// existing data in the database.
-fn import(db_path: &Path, config: Config, args: &clap::ArgMatches) -> Result<()> {
+fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     // read from file or from stdin
     let xml = match args.value_of("file") {
         Some(filepath) => {

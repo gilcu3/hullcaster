@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
@@ -96,29 +96,29 @@ enum ActivePanel {
 /// it encapsulates the terminal menus and panels, and holds data about
 /// the size of the screen.
 #[derive(Debug)]
-pub struct Ui<'a> {
+pub struct Ui {
     n_row: u16,
     n_col: u16,
-    keymap: &'a Keybindings,
+    keymap: Keybindings,
     colors: Rc<AppColors>,
     podcast_menu: Menu<Podcast>,
     episode_menu: Menu<Episode>,
     details_panel: Option<DetailsPanel>,
     active_panel: ActivePanel,
     notif_win: NotifWin,
-    popup_win: PopupWin<'a>,
-    keybindings_win: KeybindingsWin<'a>,
+    popup_win: PopupWin,
+    keybindings_win: KeybindingsWin,
 }
 
-impl<'a> Ui<'a> {
+impl Ui {
     /// Spawns a UI object in a new thread, with message channels to send
     /// and receive messages
     pub fn spawn(
-        config: Config, items: LockVec<Podcast>, rx_from_main: mpsc::Receiver<MainMessage>,
+        config: Arc<Config>, items: LockVec<Podcast>, rx_from_main: mpsc::Receiver<MainMessage>,
         tx_to_main: mpsc::Sender<Message>,
     ) -> thread::JoinHandle<()> {
         return thread::spawn(move || {
-            let mut ui = Ui::new(&config, items);
+            let mut ui = Ui::new(config, items);
             ui.init();
             let mut message_iter = rx_from_main.try_iter();
             // this is the main event loop: on each loop, we update
@@ -165,7 +165,7 @@ impl<'a> Ui<'a> {
     /// Initializes the UI with a list of podcasts and podcast episodes,
     /// creates the menus and panels, and returns a UI object for future
     /// manipulation.
-    pub fn new(config: &'a Config, items: LockVec<Podcast>) -> Ui<'a> {
+    pub fn new(config: Arc<Config>, items: LockVec<Podcast>) -> Ui {
         terminal::enable_raw_mode().expect("Terminal can't run in raw mode.");
         execute!(
             io::stdout(),
@@ -175,7 +175,7 @@ impl<'a> Ui<'a> {
         )
         .expect("Can't draw to screen.");
 
-        let colors = Rc::new(config.colors.clone());
+        let colors = Rc::new(config.clone().colors.clone());
 
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
         let (pod_col, ep_col, det_col) = Self::calculate_sizes(n_col);
@@ -234,7 +234,7 @@ impl<'a> Ui<'a> {
         Ui {
             n_row,
             n_col,
-            keymap: &config.keybindings,
+            keymap: config.keybindings.clone(),
             colors,
             podcast_menu,
             episode_menu,
@@ -304,7 +304,7 @@ impl<'a> Ui<'a> {
                         }
                         return popup_msg;
                     } else {
-                        match self.keymap.get_from_input(input) {
+                        match self.keymap.clone().get_from_input(input) {
                             Some(a @ UserAction::Down)
                             | Some(a @ UserAction::Up)
                             | Some(a @ UserAction::Left)

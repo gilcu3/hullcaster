@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
@@ -32,7 +32,7 @@ pub enum MainMessage {
 /// Main application controller, holding all of the main application
 /// state and mechanisms for communicatingg with the rest of the app.
 pub struct MainController {
-    config: Config,
+    config: Arc<Config>,
     db: Database,
     threadpool: Threadpool,
     sync_agent: Option<GpodderController>,
@@ -51,7 +51,7 @@ impl MainController {
     /// Instantiates the main controller (used during app startup), which
     /// sets up the connection to the database, download manager, and UI
     /// thread, and reads the list of podcasts from the database.
-    pub fn new(config: Config, db_path: &Path) -> Result<MainController> {
+    pub fn new(config: Arc<Config>, db_path: &Path) -> Result<MainController> {
         // create transmitters and receivers for passing messages between threads
         let (tx_to_ui, rx_from_main) = mpsc::channel();
         let (tx_to_main, rx_to_main) = mpsc::channel();
@@ -96,7 +96,6 @@ impl MainController {
             rx_from_main,
             tx_ui_to_main,
         );
-        // TODO: Can we do this without cloning the config?
 
         Ok(MainController {
             config,

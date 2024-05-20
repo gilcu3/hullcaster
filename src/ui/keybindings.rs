@@ -8,21 +8,20 @@ use crate::keymap::{Keybindings, UserAction};
 use super::AppColors;
 
 #[derive(Debug)]
-pub struct KeybindingsWin<'a> {
-    keymap: &'a Keybindings,
+pub struct KeybindingsWin {
+    keymap: Keybindings,
     colors: Rc<AppColors>,
     start_y: u16,
     total_rows: u16,
     total_cols: u16,
 }
 
-impl<'a> KeybindingsWin<'a> {
+impl KeybindingsWin {
     pub fn new(
-        keymap: &'a Keybindings, colors: Rc<AppColors>, start_y: u16, total_rows: u16,
-        total_cols: u16,
+        keymap: &Keybindings, colors: Rc<AppColors>, start_y: u16, total_rows: u16, total_cols: u16,
     ) -> Self {
         Self {
-            keymap,
+            keymap: keymap.clone(),
             colors,
             start_y,
             total_rows,

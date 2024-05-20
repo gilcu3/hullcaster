@@ -46,10 +46,10 @@ impl ActivePopup {
 /// for multiple popup windows to exist (though only one is "active" at
 /// any given time).
 #[derive(Debug)]
-pub struct PopupWin<'a> {
+pub struct PopupWin {
     popup: ActivePopup,
     new_episodes: Vec<NewEpisode>,
-    keymap: &'a Keybindings,
+    keymap: Keybindings,
     colors: Rc<AppColors>,
     total_rows: u16,
     total_cols: u16,
@@ -58,15 +58,15 @@ pub struct PopupWin<'a> {
     pub download_win: bool,
 }
 
-impl<'a> PopupWin<'a> {
+impl PopupWin {
     /// Set up struct for handling popup windows.
     pub fn new(
-        keymap: &'a Keybindings, colors: Rc<AppColors>, total_rows: u16, total_cols: u16,
+        keymap: &Keybindings, colors: Rc<AppColors>, total_rows: u16, total_cols: u16,
     ) -> Self {
         Self {
             popup: ActivePopup::None,
             new_episodes: Vec::new(),
-            keymap,
+            keymap: keymap.clone(),
             colors,
             total_rows,
             total_cols,
