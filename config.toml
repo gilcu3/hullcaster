@@ -51,6 +51,40 @@
 # mark_as_played_on_play = true
 
 
+# Enable synchronization with a gpodder server
+# Default: false
+
+# enable_sync = false
+
+
+# Address of the gpodder server
+# Default: None
+
+# sync_server = "https://gpodder.myserver.dev"
+
+
+# Gpodder server username
+# Default: None
+# Required when enable_sync = true
+
+# sync_username = "myusername"
+
+
+# Gpodder server password
+# Default: None
+# Required when enable_sync = true and sync_password_eval is None
+
+# sync_password = "mypassword"
+
+
+# Gpodder server password eval
+# Default: None
+# Required when enable_sync = true and sync_password is None
+
+# sync_password_eval = "pass gpodder"
+
+
+
 [keybindings]
 
 # Keybindings must be an array of one or more strings.
