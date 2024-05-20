@@ -1,13 +1,13 @@
-# Shellcaster settings
+# Hullcaster settings
 # --------------------
 
 # Specifies where podcast episodes that are downloaded will be stored.
 # Defaults:
-# $XDG_DATA_HOME/shellcaster/ or $HOME/.local/share/shellcaster/ on Linux
-# $HOME/Library/Application Support/shellcaster/ on Mac
-# C:\Users\<User>\AppData\Local\shellcaster\ on Windows
+# $XDG_DATA_HOME/hullcaster/ or $HOME/.local/share/hullcaster/ on Linux
+# $HOME/Library/Application Support/hullcaster/ on Mac
+# C:\Users\<User>\AppData\Local\hullcaster\ on Windows
 
-#download_path = "~/.local/share/shellcaster/"
+#download_path = "~/.local/share/hullcaster/"
 
 
 # Command to use to play episodes. Use "%s" to indicate where file/URL
@@ -66,7 +66,7 @@
 # Page up ("PgUp"), Page down ("PgDn"), Tab ("Tab")
 # Enter ("Enter"), Escape ("Esc") -- be aware that on some terminals the
 # Escape key waits for further input before passing it along to
-# shellcaster, so you might notice a delay with this key
+# hullcaster, so you might notice a delay with this key
 
 # Don't try to use backslash, or you're gonna have a bad time
 

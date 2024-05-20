@@ -32,7 +32,7 @@ use crate::types::*;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Main controller for shellcaster program.
+/// Main controller for hullcaster program.
 ///
 /// *Main command:*
 /// Setup involves connecting to the sqlite database (creating it if
@@ -65,8 +65,7 @@ fn main() -> Result<()> {
     // set up the possible command line arguments and subcommands
     let args = Command::new(clap::crate_name!())
         .version(clap::crate_version!())
-        // .author(clap::crate_authors!(", "))
-        .author("Jeff Hughes <jeff.hughes@gmail.com>")
+        .author(clap::crate_authors!(", "))
         .about(clap::crate_description!())
         .arg(Arg::new("config")
             .short('c')
@@ -94,7 +93,7 @@ fn main() -> Result<()> {
                 .short('r')
                 .long("replace")
                 .takes_value(false)
-                .help("If set, the contents of the OPML file will replace all existing data in the shellcaster database."))
+                .help("If set, the contents of the OPML file will replace all existing data in the hullcaster database."))
             .arg(Arg::new("quiet")
                 .short('q')
                 .long("quiet")
@@ -168,7 +167,7 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
             let default_config = dirs::config_dir();
             match default_config {
                 Some(mut path) => {
-                    path.push("shellcaster");
+                    path.push("hullcaster");
                     path.push("config.toml");
                     Some(path)
                 }
@@ -180,8 +179,8 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
 
 fn setup_logs() -> Result<()> {
     let log_path = match env::var("XDG_STATE_HOME") {
-        Ok(val) => val + "/shellcaster",
-        Err(_) => "~/.local/state/shellcaster".to_string(),
+        Ok(val) => val + "/hullcaster",
+        Err(_) => "~/.local/state/hullcaster".to_string(),
     };
     let log_path = Path::new(log_path.as_str());
     std::fs::create_dir_all(log_path)?;

@@ -141,17 +141,17 @@ impl<'a> PopupWin<'a> {
         welcome_win.redraw();
 
         let mut row = 0;
-        row = welcome_win.write_wrap_line(row, "Welcome to shellcaster!", None);
+        row = welcome_win.write_wrap_line(row, "Welcome to hullcaster!", None);
 
         row = welcome_win.write_wrap_line(row + 2,
             &format!("Your podcast list is currently empty. Press {} to add a new podcast feed, {} to quit, or see all available commands by typing {} to get help.", key_strs[0], key_strs[1], key_strs[2]), None);
 
         row = welcome_win.write_wrap_line(
             row + 2,
-            "More details of how to customize shellcaster can be found on the Github repo readme:",
+            "More details of how to customize hullcaster can be found on the Github repo readme:",
             None,
         );
-        let _ = welcome_win.write_wrap_line(row + 1, "https://github.com/gilcu3/shellcaster", None);
+        let _ = welcome_win.write_wrap_line(row + 1, "https://github.com/gilcu3/hullcaster", None);
 
         welcome_win
     }

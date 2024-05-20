@@ -1,7 +1,7 @@
 # Planned changes
 
 - [x] Option to avoid marking as read when playing
-- [ ] Syncing with gpodder api
+- [x] Syncing with gpodder api (rudimentary, tested with micro-gpodder)
 - [ ] Queue
 - [ ] Internal Player
 - [x] Show key bindings in a bat on the bottom

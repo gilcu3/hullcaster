@@ -549,6 +549,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "hullcaster"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "base64",
+ "chrono",
+ "clap",
+ "crossterm",
+ "dirs-next",
+ "escaper",
+ "lazy_static",
+ "log",
+ "native-tls",
+ "nohash-hasher",
+ "opml",
+ "regex",
+ "rfc822_sanitizer",
+ "rss",
+ "rusqlite",
+ "sanitize-filename",
+ "semver",
+ "serde",
+ "serde_json",
+ "shellexpand",
+ "simplelog",
+ "symphonia",
+ "textwrap 0.14.2",
+ "toml",
+ "unicode-segmentation",
+ "ureq",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1159,40 +1193,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "shellcaster"
-version = "2.0.1"
-dependencies = [
- "ahash",
- "anyhow",
- "base64",
- "chrono",
- "clap",
- "crossterm",
- "dirs-next",
- "escaper",
- "lazy_static",
- "log",
- "native-tls",
- "nohash-hasher",
- "opml",
- "regex",
- "rfc822_sanitizer",
- "rss",
- "rusqlite",
- "sanitize-filename",
- "semver",
- "serde",
- "serde_json",
- "shellexpand",
- "simplelog",
- "symphonia",
- "textwrap 0.14.2",
- "toml",
- "unicode-segmentation",
- "ureq",
 ]
 
 [[package]]

@@ -1,17 +1,12 @@
-# Shellcaster
+# Hullcaster
 
-![shellcaster logo: Ferris the crab with headphones](https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/shellcaster-logo_smol.png)
-
-
-Shellcaster is a terminal-based podcast manager, built in Rust. It provides a terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to podcast feeds, and sync feeds to check for new episodes. Episodes may be downloaded locally, played with an external media player, and marked as played/unplayed. Keybindings and other options are configurable via a config file.
-
-![screenshot of shellcaster](https://raw.githubusercontent.com/gilcu3/shellcaster/master/img/screenshot.png)
+Hullcaster is a terminal-based podcast manager, built in Rust. It provides a terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to podcast feeds, and sync feeds to check for new episodes. Episodes may be downloaded locally, played with an external media player, and marked as played/unplayed. Keybindings and other options are configurable via a config file.
 
 ## Note
 
-This is a fork of the original [shellcaster](https://github.com/jeff-hughes/shellcaster), which is no longer maintained. Currently I am planning to implement the features states in `TODO.md`, while learning `rust` at the same time.
+This is a fork of [shellcaster](https://github.com/jeff-hughes/shellcaster), which is no longer maintained. Currently, I am planning to implement the features states in `TODO.md`, while learning `rust` at the same time.
 
-## Installing shellcaster
+## Installing hullcaster
 
 ### On Linux distributions and MacOS
 
@@ -27,73 +22,36 @@ First, ensure you have installed the necessary dependencies:
 **Notes:**
 
 * The names of these dependencies may be slightly different for your system. For `libsqlite3-dev`, you are looking for the development headers for SQLite, which may be separate from the runtime package (e.g., with a `-dev` suffix).
-* If you enable the "native_tls" feature of shellcaster (disabled by default), you will also need `libssl-dev`, the development headers for OpenSSL (not needed on MacOS).
-* If you enable the "sqlite-bundled" feature of shellcaster (disabled by default), `pkg-config` and `libsqlite3-dev` are not necessary.
+* If you enable the "native_tls" feature of hullcaster (disabled by default), you will also need `libssl-dev`, the development headers for OpenSSL (not needed on MacOS).
+* If you enable the "sqlite-bundled" feature of hullcaster (disabled by default), `pkg-config` and `libsqlite3-dev` are not necessary.
 
-Next, there are two options for compiling the program:
-
-- You can install the latest version of the binary directly from crates.io with one command:
+Next, you can clone the Github repo and compile it yourself:
 
 ```bash
-# for MacOS or Linux
-sudo cargo install shellcaster --no-track --root "/usr/local"  # add or remove any features with --features
-
-# or for Linux, without needing root permissions
-cargo install shellcaster --no-track --root "$HOME/.local"
-```
-
-- You can clone the Github repo and compile it yourself:
-
-```bash
-git clone https://github.com/gilcu3/shellcaster.git
-cd shellcaster
+git clone https://github.com/gilcu3/hullcaster.git
+cd hullcaster
 cargo build --release  # add or remove any features with --features
 
 # for MacOS or Linux
-sudo cp target/release/shellcaster /usr/local/bin/
+sudo cp target/release/hullcaster /usr/local/bin/
 
 # or for Linux, no root permissions
-cp target/release/shellcaster ~/.local/bin
+cp target/release/hullcaster ~/.local/bin
 ```
 
 See below for the list of available features when compiling.
 
-### On Windows
 
-Shellcaster is **not currently supported on Windows**, although some work has been done to try to get it working. Unicode support is weak, however, and there are issues when resizing the screen. You *might* have better luck using the new Windows Terminal, but this has not been tested. If you are a Windows user and want to help work out the bugs, pull requests are more than welcome!
 
-### List of compile features
-
-By default, only the `native_certs` feature is enabled. Here is the full list of features:
-
-* `sqlite_bundled`: When disabled, Rust will try to link shellcaster with SQLite header files already present on your system. If enabled, Rust will instead build SQLite from source and bundle the program with shellcaster. Bundling results in a larger application size, but may be suitable if you wish to use a different version of SQLite than the one on your system, or if you are on a system where installing SQLite is more difficult.
-
-* `native_tls`: By default, shellcaster uses the [rustls](https://crates.io/crates/rustls) crate to enable TLS support (i.e., URLs with https). This may cause issues with some podcast feeds that use earlier versions of TLS (below TLS v1.2). If you find that some feeds are unable to update, you can try enabling the `native_tls` feature, which will instead use the [native-tls](https://crates.io/crates/native-tls) crate -- which uses OpenSSL on Linux, Secure Transport on MacOS, and SChannel on Windows.
-
-* `native_certs`: Shellcaster will use the trusted certificate roots from the trust store for your OS in order to validate TLS certificates. Turning this feature off will instead use a bundled copy of the Mozilla Root program, which will only be updated when you recompile shellcaster. Thus, leaving this feature enabled is recommended.
-
-To specify different features when compiling, here is the format:
-
-```bash
-cargo install --no-track --no-default-features --features "<feature1>,<feature2>" --root "$HOME/.local"
-```
-
-The format is the same when using `cargo build` instead:
-
-```bash
-cargo build --release --no-default-features --features "<feature1>,<feature2>"
-cp target/release/shellcaster ~/.local/bin/
-```
-
-## Running shellcaster
+## Running hullcaster
 
 Easy-peasy! In your terminal, run:
 
 ```bash
-shellcaster
+hullcaster
 ```
 
-Note that if you installed shellcaster to a different location, ensure that this location has been added to your `$PATH`:
+Note that if you installed hullcaster to a different location, ensure that this location has been added to your `$PATH`:
 
 ```bash
 export PATH="/path/to/add:$PATH"
@@ -101,44 +59,44 @@ export PATH="/path/to/add:$PATH"
 
 ## Importing/exporting podcasts
 
-Shellcaster supports importing OPML files from other podcast managers. If you can export to an OPML file from another podcast manager, you can import this file with:
+Hullcaster supports importing OPML files from other podcast managers. If you can export to an OPML file from another podcast manager, you can import this file with:
 
 ```bash
-shellcaster import -f /path/to/OPML/file.opml
+hullcaster import -f /path/to/OPML/file.opml
 ```
 
-If the `-r` flag is added to this command, it will overwrite any existing podcasts that are currently stored in shellcaster. You can also pipe in data to `shellcaster import` from stdin by not specifying the `-f <file>`.
+If the `-r` flag is added to this command, it will overwrite any existing podcasts that are currently stored in hullcaster. You can also pipe in data to `hullcaster import` from stdin by not specifying the `-f <file>`.
 
-You can export an OPML file from shellcaster with the following command:
+You can export an OPML file from hullcaster with the following command:
 
 ```bash
-shellcaster export -f /path/to/output/file.opml
+hullcaster export -f /path/to/output/file.opml
 ```
 
 You can also export to stdout by not specifying the `-f <file>`; for example, this command is equivalent:
 
 ```bash
-shellcaster export > /path/to/output/file.opml
+hullcaster export > /path/to/output/file.opml
 ```
 
-## Configuring shellcaster
+## Configuring hullcaster
 
-If you want to change configuration settings, the sample `config.toml` file can be copied from [here](https://raw.githubusercontent.com/gilcu3/shellcaster/master/config.toml). Download it, edit it to your fancy, and place it in the following location:
+If you want to change configuration settings, the sample `config.toml` file can be copied from [here](https://raw.githubusercontent.com/gilcu3/hullcaster/master/config.toml). Download it, edit it to your fancy, and place it in the following location:
 
 ```bash
 # on Linux
-mkdir -p ~/.config/shellcaster
-cp config.toml ~/.config/shellcaster/
+mkdir -p ~/.config/hullcaster
+cp config.toml ~/.config/hullcaster/
 
 # on MacOS
-mkdir -p ~/Library/Preferences/shellcaster
-cp config.toml ~/Library/Preferences/shellcaster/
+mkdir -p ~/Library/Preferences/hullcaster
+cp config.toml ~/Library/Preferences/hullcaster/
 ```
 
 Or you can put `config.toml` in a place of your choosing, and specify the location at runtime:
 
 ```bash
-shellcaster -c /path/to/config.toml
+hullcaster -c /path/to/config.toml
 ```
 
 The sample file above provides comments that should walk you through all the available options. If any field does not appear in the config file, it will be filled in with the default value specified in those comments. The defaults are also listed below, for convenience.
@@ -149,13 +107,13 @@ The sample file above provides comments that should walk you through all the ava
 
 * Specifies where podcast episodes that are downloaded will be stored.
 * Defaults:
-  * On Linux: $XDG_DATA_HOME/shellcaster/ or $HOME/.local/share/shellcaster/
-  * On Mac: $HOME/Library/Application Support/shellcaster/
-  * On Windows: C:\Users\\**username**\AppData\Local\shellcaster\
+  * On Linux: $XDG_DATA_HOME/hullcaster/ or $HOME/.local/share/hullcaster/
+  * On Mac: $HOME/Library/Application Support/hullcaster/
+  * On Windows: C:\Users\\**username**\AppData\Local\hullcaster\
 
 **play_command**:
 
-* Command used to play episodes. Use "%s" to indicate where file/URL will be entered to the command. Note that shellcaster does *not* include a native media player -- it simply passes the file path/URL to the given command with no further checking as to its success or failure. This process is started *in the background*, so be sure to send it to a program that has GUI controls of some kind so you have control over the playback.
+* Command used to play episodes. Use "%s" to indicate where file/URL will be entered to the command. Note that hullcaster does *not* include a native media player -- it simply passes the file path/URL to the given command with no further checking as to its success or failure. This process is started *in the background*, so be sure to send it to a program that has GUI controls of some kind so you have control over the playback.
 * Default: "vlc %s"
 
 **download_new_episodes**:
@@ -207,8 +165,8 @@ The sample file above provides comments that should walk you through all the ava
 
 #### Customizable colors
 
-You can set the colors in the app with either built-in terminal colors or (provided your terminal supports it) customizable colors as well. See the "colors" section in the [config.toml](https://github.com/gilcu3/shellcaster/blob/master/config.toml) for details about how to specify these colors!
+You can set the colors in the app with either built-in terminal colors or (provided your terminal supports it) customizable colors as well. See the "colors" section in the [config.toml](https://github.com/gilcu3/hullcaster/blob/master/config.toml) for details about how to specify these colors!
 
 ## Syncing without the UI
 
-Some users may wish to sync their podcasts automatically on a regular basis, e.g., every morning. The `shellcaster sync` subcommand can be used to do this without opening up the UI, and does a full sync of all podcasts in the database. This could be used to set up a cron job or systemd timer, for example. Please refer to the relevant documentation for these systems for setting it up on the schedule of your choice.
+Some users may wish to sync their podcasts automatically on a regular basis, e.g., every morning. The `hullcaster sync` subcommand can be used to do this without opening up the UI, and does a full sync of all podcasts in the database. This could be used to set up a cron job or systemd timer, for example. Please refer to the relevant documentation for these systems for setting it up on the schedule of your choice.

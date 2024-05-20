@@ -1,19 +1,17 @@
 [package]
-name = "shellcaster"
-version = "2.0.1"
-authors = ["Jeff Hughes <jeff.hughes@gmail.com>"]
+name = "hullcaster"
+version = "0.1.0"
+authors = ["gilcu3"]
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "A terminal-based podcast manager to subscribe to and play podcasts."
-keywords = ["podcast", "terminal", "TUI", "curses"]
+description = "A terminal-based podcast manager to subscribe to and play podcasts with gpodder sync support."
+keywords = ["podcast", "terminal", "TUI", "curses", "gpodder"]
 categories = ["multimedia::audio", "command-line-interface"]
 
-homepage = "https://github.com/gilcu3/shellcaster"
-repository = "https://github.com/gilcu3/shellcaster"
-documentation = "https://github.com/gilcu3/shellcaster"
+homepage = "https://github.com/gilcu3/hullcaster"
+repository = "https://github.com/gilcu3/hullcaster"
+documentation = "https://github.com/gilcu3/hullcaster"
 readme = "README.md"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 crossterm = "0.23.0"
@@ -54,7 +52,7 @@ default = ["native_certs"]
 # adding libsqlite3-dev or sqlite3 as a dependency on the package
 sqlite_bundled = ["rusqlite/bundled"]
 
-# by default, shellcaster uses the `rustls` crate to enable TLS support;
+# by default, hullcaster uses the `rustls` crate to enable TLS support;
 # if this is causing issues for some URLs (e.g., those using TLS 1.0 or
 # 1.1), you can try building it to use the `native-tls` crate instead by
 # specifying `--features "native_tls"`
@@ -63,6 +61,6 @@ native_tls = ["native-tls", "ureq/native-tls"]
 # the `native_certs` feature (enabled by default) extracts the trusted
 # certificate roots from your OS's trust store; you can instead use a
 # bundled copy of the Mozilla Root program (which will thus not update
-# if the program is not updated). To do so, build shellcaster with
+# if the program is not updated). To do so, build hullcaster with
 # `--no-default-features` to turn off use of the native certificates
 native_certs = ["ureq/native-certs"]
