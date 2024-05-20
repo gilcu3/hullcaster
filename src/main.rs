@@ -7,6 +7,7 @@ use std::sync::mpsc;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
+use log::info;
 
 mod config;
 mod db;
@@ -120,6 +121,8 @@ fn main() -> Result<()> {
 
     if setup_logs().is_err() {
         eprintln!("Could not set up logging.");
+    } else {
+        info!("Logging set up.");
     }
 
     let mut db_path = config_path;
@@ -199,7 +202,11 @@ fn setup_logs() -> Result<()> {
     };
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,
-        simplelog::Config::default(),
+        simplelog::ConfigBuilder::new()
+            .set_time_format_rfc2822()
+            .set_time_offset_to_local()
+            .unwrap()
+            .build(),
         log_file,
     )])
     .unwrap();
