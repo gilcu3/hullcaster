@@ -6,6 +6,7 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
+use unicode_segmentation::UnicodeSegmentation;
 use ureq::{Agent, Error, Response};
 
 /// Helper function converting an (optional) Unix timestamp to a
@@ -135,4 +136,27 @@ pub fn audio_duration(url: &str) -> Option<i64> {
         }
     }
     Some(duration as i64)
+}
+
+/// Some helper functions for dealing with Unicode strings.
+pub trait StringUtils {
+    fn substr(&self, start: usize, length: usize) -> String;
+    fn grapheme_len(&self) -> usize;
+}
+
+impl StringUtils for String {
+    /// Takes a slice of the String, properly separated at Unicode
+    /// grapheme boundaries. Returns a new String.
+    fn substr(&self, start: usize, length: usize) -> String {
+        return self
+            .graphemes(true)
+            .skip(start)
+            .take(length)
+            .collect::<String>();
+    }
+
+    /// Counts the total number of Unicode graphemes in the String.
+    fn grapheme_len(&self) -> usize {
+        return self.graphemes(true).count();
+    }
 }

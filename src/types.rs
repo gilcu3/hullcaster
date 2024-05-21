@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use unicode_segmentation::UnicodeSegmentation;
 
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
@@ -12,6 +11,7 @@ use regex::Regex;
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
 use crate::ui::UiMsg;
+use crate::utils::StringUtils;
 
 lazy_static! {
     /// Regex for removing "A", "An", and "The" from the beginning of
@@ -523,28 +523,5 @@ impl Default for Filters {
             played: FilterStatus::All,
             downloaded: FilterStatus::All,
         }
-    }
-}
-
-/// Some helper functions for dealing with Unicode strings.
-pub trait StringUtils {
-    fn substr(&self, start: usize, length: usize) -> String;
-    fn grapheme_len(&self) -> usize;
-}
-
-impl StringUtils for String {
-    /// Takes a slice of the String, properly separated at Unicode
-    /// grapheme boundaries. Returns a new String.
-    fn substr(&self, start: usize, length: usize) -> String {
-        return self
-            .graphemes(true)
-            .skip(start)
-            .take(length)
-            .collect::<String>();
-    }
-
-    /// Counts the total number of Unicode graphemes in the String.
-    fn grapheme_len(&self) -> usize {
-        return self.graphemes(true).count();
     }
 }
