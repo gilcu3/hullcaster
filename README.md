@@ -26,6 +26,9 @@ features stated below, while learning `rust` at the same time.
 - [ ] Show the podcast description only when a podcast is selected
 - [ ] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
 - [ ] Support the syncing subscriptions with gpodder
+- [ ] Migrate to [ratatui](https://ratatui.rs/)
+- [ ] Add option to sync automatically on start, would be enabled by default
+- [ ] If gpodder is on, update actions right after syncing podcasts
 
 ## Installing hullcaster
 
