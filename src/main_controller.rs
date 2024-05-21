@@ -146,11 +146,11 @@ impl MainController {
                 Message::Ui(UiMsg::Play(pod_id, ep_id)) => self.play_file(pod_id, ep_id),
 
                 Message::Ui(UiMsg::MarkPlayed(pod_id, ep_id, played)) => {
-                    self.mark_played(pod_id, ep_id, played)
+                    self.mark_played(pod_id, ep_id, played);
                 }
 
                 Message::Ui(UiMsg::MarkAllPlayed(pod_id, played)) => {
-                    self.mark_all_played(pod_id, played)
+                    self.mark_all_played(pod_id, played);
                 }
 
                 Message::Ui(UiMsg::Download(pod_id, ep_id)) => self.download(pod_id, Some(ep_id)),
@@ -345,7 +345,7 @@ impl MainController {
         self.update_tracker_notif();
     }
 
-    fn gpodder_sync(&self) {
+    fn gpodder_sync(&mut self) {
         if self.config.enable_sync {
             let actions = self
                 .sync_agent
@@ -530,7 +530,7 @@ impl MainController {
         }
     }
 
-    fn mark_played_db_batch(&self, updates: Vec<(i64, i64, bool)>) {
+    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, bool)>) -> Option<()> {
         let mut pod_map = HashMap::new();
         for (pod_id, ep_id, played) in updates {
             if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
@@ -541,92 +541,105 @@ impl MainController {
         }
         //
         for pod_id in pod_map.keys() {
-            let podcast = self.podcasts.clone_podcast(*pod_id).unwrap();
-            let mut batch = Vec::new();
-            for (ep_id, played) in pod_map.get(pod_id).unwrap() {
-                let mut episode = podcast.episodes.clone_episode(*ep_id).unwrap();
-                episode.played = *played;
-                batch.push((episode.id, *played));
-                podcast.episodes.replace(*ep_id, episode);
-            }
+            let batch = {
+                let podcast_map = self.podcasts.borrow_map();
+                let podcast = podcast_map.get(pod_id)?;
+                let mut episode_map = podcast.episodes.borrow_map();
+                let mut batch = Vec::new();
+                for (ep_id, played) in pod_map.get(pod_id).unwrap() {
+                    let episode = episode_map.get_mut(ep_id).unwrap();
+                    episode.played = *played;
+                    batch.push((episode.id, *played));
+                }
+                batch
+            };
             if self.db.set_played_status_batch(batch).is_err() {
                 self.notif_to_ui(
                     "Could not update played status in database.".to_string(),
                     true,
                 );
             }
-            self.podcasts.replace(*pod_id, podcast);
         }
         self.update_filters(self.filters, true);
-    }
-
-    // TODO: Fix this horrible workaround
-    fn mark_played_db(&self, pod_id: i64, ep_id: i64, played: bool) {
-        let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
-        let mut episode = podcast.episodes.clone_episode(ep_id).unwrap();
-        episode.played = played;
-        let _ = self.db.set_played_status(episode.id, played);
-        podcast.episodes.replace(ep_id, episode);
-        self.podcasts.replace(pod_id, podcast);
-        self.update_filters(self.filters, true);
+        Some(())
     }
 
     /// Given a podcast and episode, it marks the given episode as
     /// played/unplayed, sending this info to the database and updating
     /// in self.podcasts
-    pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) {
-        self.mark_played_db(pod_id, ep_id, played);
-        let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
-        let episode = podcast.episodes.clone_episode(ep_id).unwrap();
-        let mut duration = episode.duration;
+    pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
+        let (mut duration, ep_url, pod_url) = {
+            //self.mark_played_db(pod_id, ep_id, played);
+            let podcast_map = self.podcasts.borrow_map();
+            let podcast = podcast_map.get(&pod_id)?;
+            let mut episode_map = podcast.episodes.borrow_map();
+            let episode = episode_map.get_mut(&ep_id)?;
+            episode.played = played;
+            self.db.set_played_status(ep_id, played).ok()?;
+            (episode.duration, episode.url.clone(), podcast.url.clone())
+        };
+        self.update_filters(self.filters, true);
+
         if self.config.enable_sync {
             if duration.is_none() {
-                duration = audio_duration(&episode.url);
+                duration = audio_duration(&ep_url);
                 if duration.is_none() {
                     self.notif_to_ui(
-                        "Could not mark episode as played: missing duration.".to_string(),
+                        "Could not mark episode as played in gpodder: missing duration."
+                            .to_string(),
                         true,
                     );
-                    return;
+                    return None;
                 }
             }
-            self.sync_agent.as_ref().unwrap().mark_played(
-                podcast.url.as_str(),
-                episode.url.as_str(),
-                duration,
-                played,
-            );
+            self.sync_agent
+                .as_ref()
+                .unwrap()
+                .mark_played(&pod_url, &ep_url, duration, played);
         }
+        Some(())
     }
 
     /// Given a podcast, it marks all episodes for that podcast as
     /// played/unplayed, sending this info to the database and updating
     /// in self.podcasts
-    pub fn mark_all_played(&self, pod_id: i64, played: bool) {
-        let podcast = self.podcasts.clone_podcast(pod_id).unwrap();
-        {
-            let borrowed_ep_list = podcast.episodes.borrow_order();
-            for ep in borrowed_ep_list.iter() {
-                let _ = self.db.set_played_status(*ep, played);
-                let episode = podcast.episodes.clone_episode(*ep).unwrap();
+    pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Option<()> {
+        let (sync_list, db_list) = {
+            let podcast_map = self.podcasts.borrow_map();
+            let podcast = podcast_map.get(&pod_id)?;
+            let podcast_url = podcast.url.clone();
+
+            let mut sync_list = Vec::new();
+            let mut db_list = Vec::new();
+            let mut episode_map = podcast.episodes.borrow_map();
+            for (ep_id, episode) in episode_map.iter_mut() {
+                db_list.push((*ep_id, played));
+                episode.played = played;
                 if self.config.enable_sync {
-                    self.sync_agent.as_ref().unwrap().mark_played(
-                        podcast.url.as_str(),
-                        episode.url.as_str(),
+                    sync_list.push((
+                        podcast_url.to_owned(),
+                        episode.url.to_owned(),
                         episode.duration,
                         played,
-                    );
+                    ));
                 }
             }
-        }
-        podcast.episodes.replace_all(
-            self.db
-                .get_episodes(podcast.id, false)
-                .expect("Error retrieving info from database."),
-        );
+            (sync_list, db_list)
+        };
 
-        self.podcasts.replace(pod_id, podcast);
         self.update_filters(self.filters, true);
+
+        self.db.set_played_status_batch(db_list).ok()?;
+
+        if self.config.enable_sync {
+            self.sync_agent.as_ref().unwrap().mark_played_batch(
+                sync_list
+                    .iter()
+                    .map(|(pod, ep, dur, p)| (pod.as_str(), ep.as_str(), *dur, *p))
+                    .collect(),
+            );
+        }
+        Some(())
     }
 
     /// Given a podcast index (and not an episode index), this will send

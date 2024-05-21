@@ -289,6 +289,41 @@ impl GpodderController {
         res
     }
 
+    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, Option<i64>, bool)>) -> Option<String> {
+        self.require_login();
+        let _url_mark_played = format!(
+            "{}/api/2/episodes/{}/{}.json",
+            self.config.sync_server, self.config.sync_username, self.device_id
+        );
+        let actions: Vec<EpisodeAction> = eps
+            .iter()
+            .filter(|(_, _, duration, _)| duration.is_some())
+            .map(
+                |(podcast_url, episode_url, duration, played)| EpisodeAction {
+                    podcast: podcast_url.to_string(),
+                    episode: episode_url.to_string(),
+                    action: Action::play,
+                    timestamp: current_time(),
+                    started: Some(0),
+                    position: if *played { *duration } else { Some(0) },
+                    total: *duration,
+                },
+            )
+            .collect();
+        let msg = serde_json::to_string(&actions).unwrap();
+
+        let res = execute_request_post(
+            &self.agent,
+            _url_mark_played,
+            msg,
+            &self.encoded_credentials,
+        );
+        if res.is_some() {
+            log::info!("Marked played: {} actions", actions.len());
+        }
+        res
+    }
+
     pub fn get_episode_action_changes(&self) -> Option<Vec<EpisodeAction>> {
         self.require_login();
         let url_episode_action_changes = format!(

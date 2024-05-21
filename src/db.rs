@@ -455,13 +455,16 @@ impl Database {
     }
 
     /// Updates an episode to mark it as played or unplayed.
-    pub fn set_played_status_batch(&self, eps: Vec<(i64, bool)>) -> Result<()> {
-        let conn = self.conn.as_ref().expect("Error connecting to database.");
-
-        let mut stmt = conn.prepare_cached("UPDATE episodes SET played = ? WHERE id = ?;")?;
-        for (episode_id, played) in eps {
-            stmt.execute(params![played, episode_id])?;
+    pub fn set_played_status_batch(&mut self, eps: Vec<(i64, bool)>) -> Result<()> {
+        let conn = self.conn.as_mut().expect("Error connecting to database.");
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare("UPDATE episodes SET played = ? WHERE id = ?;")?;
+            for (episode_id, played) in eps {
+                stmt.execute(params![played, episode_id])?;
+            }
         }
+        tx.commit()?;
         Ok(())
     }
 
