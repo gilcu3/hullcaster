@@ -128,16 +128,18 @@ impl<T: Clone + Menuable> Menu<T> {
     /// This function examines the new selected value, ensures it does
     /// not fall out of bounds, and then updates the panel to
     /// represent the new visible list.
-    pub fn scroll(&mut self, lines: Scroll) {
+    pub fn scroll(&mut self, lines: Scroll) -> bool {
         let list_len = self.items.len(true) as u16;
         if list_len == 0 {
-            return;
+            return false;
         }
 
         match lines {
             Scroll::Up(v) => {
                 let selected_adj = self.selected - self.start_row;
-                if v <= selected_adj {
+                if selected_adj == 0 {
+                    return false;
+                } else if v <= selected_adj {
                     self.unhighlight_item(self.selected);
                     self.selected -= v;
                 } else {
@@ -156,7 +158,7 @@ impl<T: Clone + Menuable> Menu<T> {
             Scroll::Down(v) => {
                 if self.get_menu_idx(self.selected) >= list_len as usize - 1 {
                     // we're at the bottom of the list
-                    return;
+                    return false;
                 }
 
                 let n_row = self.panel.get_rows();
@@ -184,6 +186,7 @@ impl<T: Clone + Menuable> Menu<T> {
                 self.highlight_item(self.selected, self.active);
             }
         }
+        true
     }
 
     /// Highlights the item in the menu, given a y-value.

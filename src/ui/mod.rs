@@ -37,7 +37,7 @@ use crate::keymap::{Keybindings, UserAction};
 use crate::types::*;
 
 /// Amount of time between ticks in the event loop
-const TICK_RATE: u64 = 20;
+const TICK_RATE: u64 = 10;
 
 static RE_BR_TAGS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
@@ -149,9 +149,6 @@ impl Ui {
                 }
 
                 io::stdout().flush().unwrap();
-
-                // slight delay to avoid excessive CPU usage
-                thread::sleep(Duration::from_millis(TICK_RATE));
             }
         });
     }
@@ -268,7 +265,7 @@ impl Ui {
     /// new podcast feed spawns a UI window to capture the feed URL, and
     /// only then passes this data back to the main controller.
     pub fn getch(&mut self) -> UiMsg {
-        if event::poll(Duration::from_secs(0)).expect("Can't poll for inputs") {
+        if event::poll(Duration::from_millis(TICK_RATE)).expect("Can't poll for inputs") {
             match event::read().expect("Can't read inputs") {
                 Event::Resize(n_col, n_row) => self.resize(n_col, n_row),
                 Event::Key(input) => {
@@ -298,7 +295,8 @@ impl Ui {
                         }
                         return popup_msg;
                     } else {
-                        match self.keymap.clone().get_from_input(input) {
+                        let action = self.keymap.get_from_input(input).cloned();
+                        match action {
                             Some(a @ UserAction::Down)
                             | Some(a @ UserAction::Up)
                             | Some(a @ UserAction::Left)
@@ -309,7 +307,7 @@ impl Ui {
                             | Some(a @ UserAction::BigDown)
                             | Some(a @ UserAction::GoTop)
                             | Some(a @ UserAction::GoBot) => {
-                                self.move_cursor(a, curr_pod_id, curr_ep_id)
+                                self.move_cursor(&a, curr_pod_id, curr_ep_id)
                             }
 
                             Some(UserAction::AddFeed) => {
@@ -419,6 +417,7 @@ impl Ui {
                 _ => (),
             }
         } // end of poll()
+        std::thread::sleep(Duration::from_millis(TICK_RATE));
         UiMsg::Noop
     }
 
@@ -559,7 +558,9 @@ impl Ui {
         match self.active_panel {
             ActivePanel::PodcastMenu => {
                 if pod_id.is_some() {
-                    self.podcast_menu.scroll(scroll);
+                    if !self.podcast_menu.scroll(scroll) {
+                        return;
+                    }
 
                     self.episode_menu.top_row = 0;
                     self.episode_menu.selected = 0;

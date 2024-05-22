@@ -30,7 +30,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add option to sync automatically on start, would be enabled by default
 - [ ] If gpodder is on, update actions right after syncing podcasts
 - [x] Prevent screen flickering while syncing podcasts
-- [ ] Prevent screen flickering at the end of lists
+- [x] Prevent screen flickering at the end of lists
 
 ## Installing hullcaster
 
@@ -38,7 +38,7 @@ features stated below, while learning `rust` at the same time.
 
 Currently, the only option is to build from source.
 
-First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite` (names in Archlinux).
+First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite` (package names in Archlinux).
 
 Next, you can clone the Github repo and compile it yourself:
 
@@ -51,11 +51,9 @@ cargo build --release  # add or remove any features with --features
 cp target/release/hullcaster ~/.local/bin
 ```
 
-See below for the list of available features when compiling.
-
 ## Running hullcaster
 
-Easy-peasy! In your terminal, run:
+In your terminal, run:
 
 ```bash
 hullcaster

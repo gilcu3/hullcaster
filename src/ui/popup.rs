@@ -390,8 +390,12 @@ impl PopupWin {
                 }
             }
             ActivePopup::DownloadWin(ref mut menu) => match self.keymap.get_from_input(input) {
-                Some(UserAction::Down) => menu.scroll(Scroll::Down(1)),
-                Some(UserAction::Up) => menu.scroll(Scroll::Up(1)),
+                Some(UserAction::Down) => {
+                    menu.scroll(Scroll::Down(1));
+                }
+                Some(UserAction::Up) => {
+                    menu.scroll(Scroll::Up(1));
+                }
 
                 Some(UserAction::MarkPlayed) => {
                     menu.select_item();
