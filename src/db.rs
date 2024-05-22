@@ -144,8 +144,8 @@ impl Database {
                 description TEXT,
                 pubdate INTEGER,
                 duration INTEGER,
+                position INTEGER,
                 played INTEGER,
-                hidden INTEGER,
                 FOREIGN KEY(podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
             );",
             params![],
@@ -230,7 +230,7 @@ impl Database {
 
         let mut stmt = conn.prepare_cached(
             "INSERT INTO episodes (podcast_id, title, url, guid,
-                description, pubdate, duration, played, hidden)
+                description, pubdate, duration, played, position)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
         )?;
         stmt.execute(params![
@@ -242,7 +242,7 @@ impl Database {
             pubdate,
             episode.duration,
             false,
-            false,
+            0,
         ])?;
         Ok(conn.last_insert_rowid())
     }
@@ -330,7 +330,7 @@ impl Database {
     fn update_episodes(
         &self, podcast_id: i64, podcast_title: String, episodes: Vec<EpisodeNoId>,
     ) -> Result<SyncResult> {
-        let old_episodes = self.get_episodes(podcast_id, true)?;
+        let old_episodes = self.get_episodes(podcast_id)?;
         let mut old_ep_map = AHashMap::new();
         for ep in old_episodes.iter() {
             if !ep.guid.is_empty() {
@@ -475,7 +475,7 @@ impl Database {
         let mut stmt = conn.prepare_cached("SELECT * FROM podcasts;")?;
         let podcast_iter = stmt.query_map(params![], |row| {
             let pod_id = row.get("id")?;
-            let episodes = match self.get_episodes(pod_id, false) {
+            let episodes = match self.get_episodes(pod_id) {
                 Ok(ep_list) => Ok(ep_list),
                 Err(_) => Err(rusqlite::Error::QueryReturnedNoRows),
             }?;
@@ -503,24 +503,15 @@ impl Database {
     }
 
     /// Generates list of episodes for a given podcast.
-    pub fn get_episodes(&self, pod_id: i64, include_hidden: bool) -> Result<Vec<Episode>> {
+    pub fn get_episodes(&self, pod_id: i64) -> Result<Vec<Episode>> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
-        let mut stmt = if include_hidden {
-            conn.prepare_cached(
-                "SELECT * FROM episodes
-                        LEFT JOIN files ON episodes.id = files.episode_id
-                        WHERE episodes.podcast_id = ?
-                        ORDER BY pubdate DESC;",
-            )?
-        } else {
-            conn.prepare_cached(
-                "SELECT * FROM episodes
-                        LEFT JOIN files ON episodes.id = files.episode_id
-                        WHERE episodes.podcast_id = ?
-                        AND episodes.hidden = 0
-                        ORDER BY pubdate DESC;",
-            )?
-        };
+
+        let mut stmt = conn.prepare_cached(
+            "SELECT * FROM episodes
+                    LEFT JOIN files ON episodes.id = files.episode_id
+                    WHERE episodes.podcast_id = ?
+                    ORDER BY pubdate DESC;",
+        )?;
         let episode_iter = stmt.query_map(params![pod_id], |row| {
             let path = match row.get::<&str, String>("path") {
                 Ok(val) => Some(PathBuf::from(val)),
