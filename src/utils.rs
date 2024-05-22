@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::io::{Cursor, Read};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,6 +11,14 @@ use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
 use ureq::{Agent, Error, Response};
+
+static RE_BR_TAGS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
+
+static RE_HTML_TAGS: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^<>]*>").expect("Regex error"));
+
+static RE_MULT_LINE_BREAKS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error"));
 
 /// Helper function converting an (optional) Unix timestamp to a
 /// DateTime<Utc> object
@@ -168,4 +178,23 @@ pub fn current_time_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     since_the_epoch.as_millis()
+}
+
+pub fn clean_html(text: &str) -> String {
+    // convert <br/> tags to a single line break
+    let br_to_lb = RE_BR_TAGS.replace_all(text, "\n");
+
+    // strip all HTML tags
+    let stripped_tags = RE_HTML_TAGS.replace_all(&br_to_lb, "");
+
+    // convert HTML entities (e.g., &amp;)
+    let decoded = match escaper::decode_html(&stripped_tags) {
+        Err(_) => stripped_tags.to_string(),
+        Ok(s) => s,
+    };
+
+    // remove anything more than two line breaks (i.e., one blank line)
+    let no_line_breaks = RE_MULT_LINE_BREAKS.replace_all(&decoded, "\n\n");
+
+    no_line_breaks.to_string()
 }

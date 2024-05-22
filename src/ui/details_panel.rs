@@ -21,12 +21,13 @@ pub enum DetailsLine {
 /// Struct holding the raw data used for building the details panel.
 #[derive(Debug)]
 pub struct Details {
-    pub pod_title: Option<String>,
-    pub ep_title: Option<String>,
     pub pubdate: Option<DateTime<Utc>>,
     pub duration: Option<String>,
     pub explicit: Option<bool>,
     pub description: Option<String>,
+    pub author: Option<String>,
+    pub last_checked: Option<DateTime<Utc>>,
+    pub title: Option<String>,
 }
 
 #[derive(Debug)]
@@ -122,71 +123,81 @@ impl DetailsPanel {
     fn stringify_content(&mut self) {
         if let Some(details) = &self.details {
             let num_cols = self.panel.get_cols() as usize;
-            let bold = style::ContentStyle::new()
-                .with(self.panel.colors.bold.0)
-                .on(self.panel.colors.bold.1)
-                .attribute(style::Attribute::Bold);
-            let underlined = style::ContentStyle::new()
+            let italic = style::ContentStyle::new()
                 .with(self.panel.colors.normal.0)
                 .on(self.panel.colors.normal.1)
-                .attribute(style::Attribute::Underlined);
+                .attribute(style::Attribute::Italic);
 
             self.content.clear();
 
-            // podcast title
-            let text = match &details.pod_title {
-                Some(t) => t,
-                None => "No title",
-            };
-            let wrapper = textwrap::wrap(text, num_cols);
-            for line in wrapper {
-                self.content
-                    .push(DetailsLine::Line(line.to_string(), Some(bold)));
-            }
-
-            // episode title
-            let text = match &details.ep_title {
-                Some(t) => t,
-                None => "No title",
-            };
-            let wrapper = textwrap::wrap(text, num_cols);
-            for line in wrapper {
-                self.content
-                    .push(DetailsLine::Line(line.to_string(), Some(bold)));
-            }
-
             self.content.push(DetailsLine::Blank); // blank line
+
+            let mut anything = false;
+
+            // title
+            if let Some(title) = &details.title {
+                anything = true;
+                self.content
+                    .push(DetailsLine::Line("Title:".to_owned(), Some(italic)));
+                let wrapper = textwrap::wrap(title, num_cols);
+                for line in wrapper {
+                    self.content.push(DetailsLine::Line(line.to_string(), None));
+                }
+                self.content.push(DetailsLine::Blank); // blank line
+            }
+
+            // author
+            if let Some(author) = &details.author {
+                anything = true;
+                self.content.push(DetailsLine::KeyValueLine(
+                    ("Author".to_string(), Some(italic)),
+                    (author.clone(), None),
+                ));
+            }
+
+            // author
+            if let Some(last_checked) = details.last_checked {
+                anything = true;
+                self.content.push(DetailsLine::KeyValueLine(
+                    ("Last checked".to_string(), Some(italic)),
+                    (format!("{}", last_checked), None),
+                ));
+            }
 
             // published date
             if let Some(date) = details.pubdate {
+                anything = true;
                 self.content.push(DetailsLine::KeyValueLine(
-                    ("Published".to_string(), Some(underlined)),
-                    (format!("{}", date.format("%B %-d, %Y")), None),
+                    ("Published".to_string(), Some(italic)),
+                    (format!("{}", date), None),
                 ));
             }
 
             // duration
             if let Some(dur) = &details.duration {
+                anything = true;
                 self.content.push(DetailsLine::KeyValueLine(
-                    ("Duration".to_string(), Some(underlined)),
+                    ("Duration".to_string(), Some(italic)),
                     (dur.clone(), None),
                 ));
             }
 
             // explicit
             if let Some(exp) = details.explicit {
+                anything = true;
                 let exp_string = if exp {
                     "Yes".to_string()
                 } else {
                     "No".to_string()
                 };
                 self.content.push(DetailsLine::KeyValueLine(
-                    ("Explicit".to_string(), Some(underlined)),
+                    ("Explicit".to_string(), Some(italic)),
                     (exp_string, None),
                 ));
             }
-
-            self.content.push(DetailsLine::Blank); // blank line
+            if anything {
+                self.content.push(DetailsLine::Blank); // blank line
+            }
 
             // description
             match &details.description {
@@ -194,7 +205,7 @@ impl DetailsPanel {
                     let wrapper = textwrap::wrap("Description:", num_cols);
                     for line in wrapper {
                         self.content
-                            .push(DetailsLine::Line(line.to_string(), Some(bold)));
+                            .push(DetailsLine::Line(line.to_string(), Some(italic)));
                     }
                     let wrapper = textwrap::wrap(desc, num_cols);
                     for line in wrapper {

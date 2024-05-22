@@ -9,8 +9,6 @@ use crossterm::{
     event::{self, Event},
     execute, terminal,
 };
-use once_cell::sync::Lazy;
-use regex::Regex;
 
 #[cfg_attr(not(test), path = "panel.rs")]
 #[cfg_attr(test, path = "mock_panel.rs")]
@@ -35,17 +33,10 @@ use super::MainMessage;
 use crate::config::Config;
 use crate::keymap::{Keybindings, UserAction};
 use crate::types::*;
+use crate::utils::clean_html;
 
 /// Amount of time between ticks in the event loop
 const TICK_RATE: u64 = 10;
-
-static RE_BR_TAGS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
-
-static RE_HTML_TAGS: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^<>]*>").expect("Regex error"));
-
-static RE_MULT_LINE_BREAKS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error"));
 
 /// Enum used for communicating back to the main controller after user
 /// input has been captured by the UI. usize values always represent the
@@ -487,6 +478,7 @@ impl Ui {
                             self.active_panel = ActivePanel::PodcastMenu;
                             self.podcast_menu.activate();
                             self.episode_menu.deactivate(false);
+                            self.update_details_panel();
                         }
                         ActivePanel::DetailsPanel => {
                             self.active_panel = ActivePanel::EpisodeMenu;
@@ -503,6 +495,7 @@ impl Ui {
                             self.active_panel = ActivePanel::EpisodeMenu;
                             self.podcast_menu.deactivate();
                             self.episode_menu.activate();
+                            self.update_details_panel();
                         }
                         ActivePanel::EpisodeMenu => {
                             if self.details_panel.is_some() {
@@ -573,7 +566,7 @@ impl Ui {
             }
             ActivePanel::EpisodeMenu => {
                 if pod_id.is_some() {
-                    if !self.episode_menu.scroll(scroll){
+                    if !self.episode_menu.scroll(scroll) {
                         return;
                     }
                     self.update_details_panel();
@@ -806,65 +799,68 @@ impl Ui {
 
     /// Updates the details panel with information about the current
     /// podcast and episode, and redraws to the screen.
-    pub fn update_details_panel(&mut self) {
+    pub fn update_details_panel(&mut self) -> Option<()> {
         if self.details_panel.is_some() {
             let (curr_pod_id, curr_ep_id) = self.get_current_ids();
             let det = self.details_panel.as_mut().unwrap();
             if let Some(pod_id) = curr_pod_id {
-                if let Some(ep_id) = curr_ep_id {
-                    // get a couple details from the current podcast
-                    let mut pod_title = None;
-                    let mut pod_explicit = None;
-                    if let Some(pod) = self.podcast_menu.items.borrow_map().get(&pod_id) {
-                        pod_title = if pod.title.is_empty() {
-                            None
-                        } else {
-                            Some(pod.title.clone())
-                        };
-                        pod_explicit = pod.explicit;
-                    };
-
-                    // the rest of the details come from the current episode
-                    if let Some(ep) = self.episode_menu.items.borrow_map().get(&ep_id) {
-                        let ep_title = if ep.title.is_empty() {
-                            None
-                        } else {
-                            Some(ep.title.clone())
-                        };
-
-                        let desc = if ep.description.is_empty() {
-                            None
-                        } else {
-                            // convert <br/> tags to a single line break
-                            let br_to_lb = RE_BR_TAGS.replace_all(&ep.description, "\n");
-
-                            // strip all HTML tags
-                            let stripped_tags = RE_HTML_TAGS.replace_all(&br_to_lb, "");
-
-                            // convert HTML entities (e.g., &amp;)
-                            let decoded = match escaper::decode_html(&stripped_tags) {
-                                Err(_) => stripped_tags.to_string(),
-                                Ok(s) => s,
-                            };
-
-                            // remove anything more than two line breaks (i.e., one blank line)
-                            let no_line_breaks = RE_MULT_LINE_BREAKS.replace_all(&decoded, "\n\n");
-
-                            Some(no_line_breaks.to_string())
+                match self.active_panel {
+                    ActivePanel::PodcastMenu => {
+                        let (description, author, last_checked, title) = {
+                            let podcast_map = self.podcast_menu.items.borrow_map();
+                            let podcast = podcast_map.get(&pod_id)?;
+                            (
+                                if podcast.description.is_none() {
+                                    None
+                                } else {
+                                    Some(clean_html(podcast.description.as_ref().unwrap()))
+                                },
+                                podcast.author.clone(),
+                                podcast.last_checked,
+                                podcast.title.clone(),
+                            )
                         };
 
                         let details = Details {
-                            pod_title,
-                            ep_title,
-                            pubdate: ep.pubdate,
-                            duration: Some(ep.format_duration()),
-                            explicit: pod_explicit,
-                            description: desc,
+                            pubdate: None,
+                            duration: None,
+                            explicit: None,
+                            description,
+                            author,
+                            last_checked: Some(last_checked),
+                            title: Some(title),
                         };
                         det.change_details(details);
-                    };
+                    }
+                    _ => {
+                        if let Some(ep_id) = curr_ep_id {
+                            // get a couple details from the current podcast
+                            let pod_explicit = {
+                                let podcast_map = self.podcast_menu.items.borrow_map();
+                                let podcast = podcast_map.get(&pod_id)?;
+                                podcast.explicit
+                            };
+
+                            // the rest of the details come from the current episode
+                            if let Some(ep) = self.episode_menu.items.borrow_map().get(&ep_id) {
+                                let desc = clean_html(&ep.description);
+
+                                let details = Details {
+                                    pubdate: ep.pubdate,
+                                    duration: Some(ep.format_duration()),
+                                    explicit: pod_explicit,
+                                    description: Some(desc),
+                                    author: None,
+                                    last_checked: None,
+                                    title: Some(ep.title.clone()),
+                                };
+                                det.change_details(details);
+                            };
+                        }
+                    }
                 }
             }
         }
+        Some(())
     }
 }

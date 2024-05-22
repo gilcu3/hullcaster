@@ -149,25 +149,11 @@ impl Menuable for Episode {
             let dur = self.format_duration();
             let meta_dur = format!("[{dur}]");
 
-            if let Some(pubdate) = self.pubdate {
-                // print pubdate and duration
-                let pd = pubdate.format("%F");
-                let meta_str = format!("({pd}) {meta_dur}");
-                let added_len = meta_str.chars().count();
-
-                let out_added = out.substr(0, length - added_len - 3);
-                format!(
-                    " {out_added} {meta_str:>width$} ",
-                    width = length - out_added.grapheme_len() - 3
-                )
-            } else {
-                // just print duration
-                let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
-                format!(
-                    " {out_added} {meta_dur:>width$} ",
-                    width = length - out_added.grapheme_len() - 3
-                )
-            }
+            let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
+            format!(
+                " {out_added} {meta_dur:>width$} ",
+                width = length - out_added.grapheme_len() - 3
+            )
         } else if length > crate::config::EPISODE_DURATION_LENGTH {
             let dur = self.format_duration();
             let meta_dur = format!("[{dur}]");
