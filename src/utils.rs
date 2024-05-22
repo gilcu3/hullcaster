@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use std::io::{Cursor, Read};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
@@ -159,4 +160,12 @@ impl StringUtils for String {
     fn grapheme_len(&self) -> usize {
         return self.graphemes(true).count();
     }
+}
+
+pub fn current_time_ms() -> u128 {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    since_the_epoch.as_millis()
 }

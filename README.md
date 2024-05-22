@@ -29,7 +29,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~ [Cursive](https://github.com/gyscos/cursive)
 - [ ] Add option to sync automatically on start, would be enabled by default
 - [ ] If gpodder is on, update actions right after syncing podcasts
-- [ ] Prevent screen flickering while syncing podcasts
+- [x] Prevent screen flickering while syncing podcasts
 - [ ] Prevent screen flickering at the end of lists
 
 ## Installing hullcaster

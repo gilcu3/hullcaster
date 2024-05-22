@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +16,7 @@ use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
-use crate::utils::{audio_duration, evaluate_in_shell};
+use crate::utils::{audio_duration, current_time_ms, evaluate_in_shell};
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -41,6 +42,7 @@ pub struct MainController {
     sync_counter: usize,
     sync_tracker: Vec<SyncResult>,
     download_tracker: HashSet<i64>,
+    last_filter_time_ms: Cell<u128>,
     pub ui_thread: std::thread::JoinHandle<()>,
     pub tx_to_ui: mpsc::Sender<MainMessage>,
     pub tx_to_main: mpsc::Sender<Message>,
@@ -108,6 +110,7 @@ impl MainController {
             sync_counter: 0,
             sync_tracker: Vec::new(),
             download_tracker: HashSet::new(),
+            last_filter_time_ms: 0.into(),
             tx_to_ui,
             tx_to_main,
             rx_to_main,
@@ -236,7 +239,7 @@ impl MainController {
                         }
                     }
                     self.notif_to_ui(format!("Filter: {message}"), false);
-                    self.update_filters(self.filters, true);
+                    self.update_filters(self.filters, true, false);
                 }
 
                 Message::Ui(UiMsg::Noop) => (),
@@ -439,7 +442,9 @@ impl MainController {
                             .expect("Error retrieving info from database."),
                     );
                 }
-                self.update_filters(self.filters, true);
+                if !result.added.is_empty() || !result.updated.is_empty() {
+                    self.update_filters(self.filters, true, true);
+                }
 
                 if pod_id.is_some() {
                     self.sync_tracker.push(result);
@@ -457,6 +462,10 @@ impl MainController {
                             updated += res.updated.len();
                             new_eps.extend(res.added.clone());
                         }
+                        if added + updated + new_eps.len() > 0 {
+                            self.update_filters(self.filters, true, false);
+                        }
+
                         self.sync_tracker = Vec::new();
                         self.notif_to_ui(
                             format!("Sync complete: Added {added}, updated {updated} episodes."),
@@ -542,7 +551,7 @@ impl MainController {
                 pod_map.get_mut(&pod_id).unwrap().push((ep_id, played));
             }
         }
-        //
+        let mut changed = false;
         for pod_id in pod_map.keys() {
             let batch = {
                 let podcast_map = self.podcasts.borrow_map();
@@ -551,7 +560,10 @@ impl MainController {
                 let mut batch = Vec::new();
                 for (ep_id, played) in pod_map.get(pod_id).unwrap() {
                     let episode = episode_map.get_mut(ep_id).unwrap();
-                    episode.played = *played;
+                    if episode.played != *played {
+                        changed = true;
+                        episode.played = *played;
+                    }
                     batch.push((episode.id, *played));
                 }
                 batch
@@ -563,7 +575,9 @@ impl MainController {
                 );
             }
         }
-        self.update_filters(self.filters, true);
+        if changed {
+            self.update_filters(self.filters, true, false);
+        }
         Some(())
     }
 
@@ -571,17 +585,23 @@ impl MainController {
     /// played/unplayed, sending this info to the database and updating
     /// in self.podcasts
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
+        let mut changed = false;
         let (mut duration, ep_url, pod_url) = {
             //self.mark_played_db(pod_id, ep_id, played);
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?;
             let mut episode_map = podcast.episodes.borrow_map();
             let episode = episode_map.get_mut(&ep_id)?;
-            episode.played = played;
+            if episode.played != played {
+                changed = true;
+                episode.played = played;
+            }
             self.db.set_played_status(ep_id, played).ok()?;
             (episode.duration, episode.url.clone(), podcast.url.clone())
         };
-        self.update_filters(self.filters, true);
+        if changed {
+            self.update_filters(self.filters, true, false);
+        }
 
         if self.config.enable_sync {
             if duration.is_none() {
@@ -607,6 +627,7 @@ impl MainController {
     /// played/unplayed, sending this info to the database and updating
     /// in self.podcasts
     pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Option<()> {
+        let mut changed = false;
         let (sync_list, db_list) = {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?;
@@ -617,7 +638,10 @@ impl MainController {
             let mut episode_map = podcast.episodes.borrow_map();
             for (ep_id, episode) in episode_map.iter_mut() {
                 db_list.push((*ep_id, played));
-                episode.played = played;
+                if episode.played != played {
+                    changed = true;
+                    episode.played = played;
+                }
                 if self.config.enable_sync {
                     sync_list.push((
                         podcast_url.to_owned(),
@@ -629,8 +653,9 @@ impl MainController {
             }
             (sync_list, db_list)
         };
-
-        self.update_filters(self.filters, true);
+        if changed {
+            self.update_filters(self.filters, true, false);
+        }
 
         self.db.set_played_status_batch(db_list).ok()?;
 
@@ -763,7 +788,7 @@ impl MainController {
             self.notif_to_ui("Downloads complete.".to_string(), false);
         }
 
-        self.update_filters(self.filters, true);
+        self.update_filters(self.filters, true, false);
         Some(())
     }
 
@@ -801,7 +826,7 @@ impl MainController {
                     );
                     return None;
                 }
-                self.update_filters(self.filters, true);
+                self.update_filters(self.filters, true, false);
                 self.notif_to_ui(format!("Deleted \"{title}\""), false);
             }
             Err(_) => self.notif_to_ui(format!("Error deleting \"{title}\""), true),
@@ -840,10 +865,14 @@ impl MainController {
         if res.is_err() {
             success = false;
         }
-        self.update_filters(self.filters, true);
 
         if success {
-            self.notif_to_ui("Files successfully deleted.".to_string(), false);
+            if !eps_id_to_remove.is_empty() {
+                self.update_filters(self.filters, true, false);
+                self.notif_to_ui("Files successfully deleted.".to_string(), false);
+            } else {
+                self.notif_to_ui("There are no downloads to delete".to_string(), false);
+            }
         } else {
             self.notif_to_ui("Error while deleting files".to_string(), true);
         }
@@ -876,8 +905,14 @@ impl MainController {
 
     /// Updates the user-selected filters to show only played/unplayed
     /// or downloaded/not downloaded episodes.
-    pub fn update_filters(&self, filters: Filters, update_menus: bool) {
+    pub fn update_filters(&self, filters: Filters, update_menus: bool, in_loop: bool) {
         {
+            let current_time = current_time_ms();
+            if in_loop && current_time - self.last_filter_time_ms.get() < 200 {
+                return;
+            }
+            self.last_filter_time_ms.set(current_time);
+
             let (pod_map, pod_order, mut pod_filtered_order) = self.podcasts.borrow();
             let mut new_filtered_pods = Vec::new();
             for pod_id in pod_order.iter() {
