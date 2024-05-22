@@ -97,7 +97,6 @@ impl DetailsPanel {
                 }
                 if self.top_row != old_top_row {
                     self.panel.clear_inner();
-                    // self.details_template(self.top_row);
                     self.write_details();
                 }
             }
@@ -111,7 +110,6 @@ impl DetailsPanel {
                 self.top_row += move_dist;
                 if self.top_row != old_top_row {
                     self.panel.clear_inner();
-                    // self.details_template(self.top_row);
                     self.write_details();
                 }
             }

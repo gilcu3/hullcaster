@@ -573,7 +573,9 @@ impl Ui {
             }
             ActivePanel::EpisodeMenu => {
                 if pod_id.is_some() {
-                    self.episode_menu.scroll(scroll);
+                    if !self.episode_menu.scroll(scroll){
+                        return;
+                    }
                     self.update_details_panel();
                 }
             }
