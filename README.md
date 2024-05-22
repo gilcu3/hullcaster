@@ -21,8 +21,8 @@ features stated below, while learning `rust` at the same time.
 - [ ] Queue
 - [ ] Internal Player
 - [x] Show key bindings in a bar on the bottom
-- [ ] Fix performance of mark-all as read
-- [ ] Fix bug deleting file
+- [x] Fix performance of mark-all as read
+- [x] Fix bug deleting file
 - [ ] Show the podcast description only when a podcast is selected
 - [ ] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
 - [ ] Support the syncing subscriptions with gpodder

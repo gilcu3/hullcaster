@@ -177,8 +177,9 @@ impl MainController {
                     self.notif_to_ui("Error downloading episode.".to_string(), true)
                 }
 
-                Message::Ui(UiMsg::Delete(pod_id, ep_id)) => self.delete_file(pod_id, ep_id),
-
+                Message::Ui(UiMsg::Delete(pod_id, ep_id)) => {
+                    self.delete_file(pod_id, ep_id);
+                }
                 Message::Ui(UiMsg::DeleteAll(pod_id)) => self.delete_files(pod_id),
 
                 Message::Ui(UiMsg::RemovePodcast(pod_id, delete_files)) => {
@@ -779,39 +780,41 @@ impl MainController {
 
     /// Deletes a downloaded file for an episode from the user's local
     /// system.
-    pub fn delete_file(&self, pod_id: i64, ep_id: i64) {
-        let borrowed_map = self.podcasts.borrow_map();
-        let podcast = borrowed_map.get(&pod_id).unwrap();
+    pub fn delete_file(&self, pod_id: i64, ep_id: i64) -> Option<()> {
+        let (file_path, title) = {
+            let borrowed_map = self.podcasts.borrow_map();
+            let podcast = borrowed_map.get(&pod_id).unwrap();
+            let mut episode_map = podcast.episodes.borrow_map();
+            let episode = episode_map.get_mut(&ep_id)?;
+            let _path = episode.path.clone()?;
+            episode.path = None;
+            (_path, episode.title.clone())
+        };
 
-        let mut episode = podcast.episodes.clone_episode(ep_id).unwrap();
-        if episode.path.is_some() {
-            let title = episode.title.clone();
-            match fs::remove_file(episode.path.unwrap()) {
-                Ok(_) => {
-                    let res = self.db.remove_file(episode.id);
-                    if res.is_err() {
-                        self.notif_to_ui(
-                            format!("Could not remove file from database: {title}"),
-                            true,
-                        );
-                        return;
-                    }
-                    episode.path = None;
-                    podcast.episodes.replace(ep_id, episode);
-
-                    self.update_filters(self.filters, true);
-                    self.notif_to_ui(format!("Deleted \"{title}\""), false);
+        match fs::remove_file(file_path) {
+            Ok(_) => {
+                let res = self.db.remove_file(ep_id);
+                if res.is_err() {
+                    self.notif_to_ui(
+                        format!("Could not remove file from database: {title}"),
+                        true,
+                    );
+                    return None;
                 }
-                Err(_) => self.notif_to_ui(format!("Error deleting \"{title}\""), true),
+                self.update_filters(self.filters, true);
+                self.notif_to_ui(format!("Deleted \"{title}\""), false);
             }
+            Err(_) => self.notif_to_ui(format!("Error deleting \"{title}\""), true),
         }
+        Some(())
     }
 
     /// Deletes all downloaded files for a given podcast from the user's
     /// local system.
     pub fn delete_files(&self, pod_id: i64) {
-        let mut eps_to_remove = Vec::new();
-        let mut success = true;
+        let mut eps_id_to_remove = Vec::new();
+        let mut eps_path_to_remove = Vec::new();
+
         {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map.get(&pod_id).unwrap();
@@ -819,20 +822,21 @@ impl MainController {
 
             for (_, ep) in borrowed_ep_map.iter_mut() {
                 if ep.path.is_some() {
-                    let mut episode = ep.clone();
-                    match fs::remove_file(episode.path.unwrap()) {
-                        Ok(_) => {
-                            eps_to_remove.push(episode.id);
-                            episode.path = None;
-                            *ep = episode;
-                        }
-                        Err(_) => success = false,
-                    }
+                    eps_path_to_remove.push(ep.path.clone().unwrap());
+                    eps_id_to_remove.push(ep.id);
+                    ep.path = None;
                 }
             }
         }
+        let mut success = true;
+        for path in eps_path_to_remove.iter() {
+            match fs::remove_file(path) {
+                Ok(_) => {}
+                Err(_) => success = false,
+            }
+        }
 
-        let res = self.db.remove_files(&eps_to_remove);
+        let res = self.db.remove_files(&eps_id_to_remove);
         if res.is_err() {
             success = false;
         }
