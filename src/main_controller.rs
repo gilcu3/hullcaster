@@ -186,14 +186,6 @@ impl MainController {
                     self.remove_podcast(pod_id, delete_files)
                 }
 
-                Message::Ui(UiMsg::RemoveEpisode(pod_id, ep_id, delete_files)) => {
-                    self.remove_episode(pod_id, ep_id, delete_files)
-                }
-
-                Message::Ui(UiMsg::RemoveAllEpisodes(pod_id, delete_files)) => {
-                    self.remove_all_episodes(pod_id, delete_files)
-                }
-
                 Message::Ui(UiMsg::FilterChange(filter_type)) => {
                     let new_filter;
                     let message;
@@ -509,9 +501,15 @@ impl MainController {
         if self.config.mark_as_played_on_play {
             self.mark_played(pod_id, ep_id, true);
         }
-        let episode = self.podcasts.clone_episode(pod_id, ep_id).unwrap();
+        let (ep_path, ep_url) = {
+            let podcast_map = self.podcasts.borrow_map();
+            let podcast = podcast_map.get(&pod_id).unwrap();
+            let episode_map = podcast.episodes.borrow_map();
+            let episode = episode_map.get(&ep_id).unwrap();
+            (episode.path.clone(), episode.url.clone())
+        };
 
-        match episode.path {
+        match ep_path {
             // if there is a local file, try to play that
             Some(path) => match path.to_str() {
                 Some(p) => {
@@ -526,7 +524,7 @@ impl MainController {
             },
             // otherwise, try to stream the URL
             None => {
-                if play_file::execute(&self.config.play_command, &episode.url).is_err() {
+                if play_file::execute(&self.config.play_command, &ep_url).is_err() {
                     self.notif_to_ui("Error: Could not stream URL.".to_string(), true);
                 }
             }
@@ -869,50 +867,6 @@ impl MainController {
                     .expect("Error retrieving info from database."),
             );
         }
-        self.tx_to_ui
-            .send(MainMessage::UiUpdateMenus)
-            .expect("Thread messaging error");
-    }
-
-    /// Removes an episode from the list, optionally deleting local files
-    /// first
-    pub fn remove_episode(&self, pod_id: i64, ep_id: i64, delete_files: bool) {
-        if delete_files {
-            self.delete_file(pod_id, ep_id);
-        }
-
-        let _ = self.db.hide_episode(ep_id, true);
-        {
-            let mut borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map.get_mut(&pod_id).unwrap();
-            podcast.episodes.replace_all(
-                self.db
-                    .get_episodes(pod_id, false)
-                    .expect("Error retrieving info from database."),
-            );
-        }
-        self.tx_to_ui
-            .send(MainMessage::UiUpdateMenus)
-            .expect("Thread messaging error");
-    }
-
-    /// Removes all episodes for a podcast from the list, optionally
-    /// deleting local files first
-    pub fn remove_all_episodes(&self, pod_id: i64, delete_files: bool) {
-        if delete_files {
-            self.delete_files(pod_id);
-        }
-
-        let mut podcast = self.podcasts.clone_podcast(pod_id).unwrap();
-        podcast.episodes.map(
-            |ep| {
-                let _ = self.db.hide_episode(ep.id, true);
-            },
-            false,
-        );
-        podcast.episodes = LockVec::new(Vec::new());
-        self.podcasts.replace(pod_id, podcast);
-
         self.tx_to_ui
             .send(MainMessage::UiUpdateMenus)
             .expect("Thread messaging error");

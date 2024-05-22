@@ -70,8 +70,6 @@ pub enum UiMsg {
     Delete(i64, i64),
     DeleteAll(i64),
     RemovePodcast(i64, bool),
-    RemoveEpisode(i64, i64, bool),
-    RemoveAllEpisodes(i64, bool),
     FilterChange(FilterType),
     Quit,
     Noop,
@@ -393,21 +391,12 @@ impl Ui {
                                         return ui_msg;
                                     }
                                 }
-                                ActivePanel::EpisodeMenu => {
-                                    if let Some(ui_msg) =
-                                        self.remove_episode(curr_pod_id, curr_ep_id)
-                                    {
-                                        return ui_msg;
-                                    }
-                                }
-                                _ => (),
+                                ActivePanel::EpisodeMenu => {}
+                                ActivePanel::DetailsPanel => {}
                             },
                             Some(UserAction::RemoveAll) => {
                                 let ui_msg = match self.active_panel {
                                     ActivePanel::PodcastMenu => self.remove_podcast(curr_pod_id),
-                                    ActivePanel::EpisodeMenu => {
-                                        self.remove_all_episodes(curr_pod_id)
-                                    }
                                     _ => None,
                                 };
                                 if let Some(ui_msg) = ui_msg {
@@ -653,51 +642,6 @@ impl Ui {
             }
 
             return Some(UiMsg::RemovePodcast(pod_id, delete));
-        }
-        None
-    }
-
-    /// Remove an episode from the list for the current podcast.
-    fn remove_episode(
-        &mut self, curr_pod_id: Option<i64>, curr_ep_id: Option<i64>,
-    ) -> Option<UiMsg> {
-        let confirm = self.ask_for_confirmation("Are you sure you want to remove the episode?");
-        // If we don't get a confirmation to delete, then don't remove
-        if !confirm {
-            return None;
-        }
-        let mut delete = false;
-        if let Some(pod_id) = curr_pod_id {
-            if let Some(ep_id) = curr_ep_id {
-                // check if we have local files first
-                let is_downloaded = self
-                    .episode_menu
-                    .items
-                    .map_single(ep_id, |ep| ep.path.is_some())
-                    .unwrap_or(false);
-                if is_downloaded {
-                    let ask_delete = self.spawn_yes_no_notif("Delete local file too?");
-                    delete = ask_delete.unwrap_or(false); // default not to delete
-                }
-
-                return Some(UiMsg::RemoveEpisode(pod_id, ep_id, delete));
-            }
-        }
-        None
-    }
-
-    /// Remove all episodes from the list for the current podcast.
-    fn remove_all_episodes(&mut self, curr_pod_id: Option<i64>) -> Option<UiMsg> {
-        if let Some(pod_id) = curr_pod_id {
-            let mut delete = false;
-
-            // check if we have local files first and if so, ask whether
-            // to delete those too
-            if self.check_for_local_files(pod_id) {
-                let ask_delete = self.spawn_yes_no_notif("Delete local files too?");
-                delete = ask_delete.unwrap_or(false); // default not to delete
-            }
-            return Some(UiMsg::RemoveAllEpisodes(pod_id, delete));
         }
         None
     }

@@ -468,17 +468,6 @@ impl Database {
         Ok(())
     }
 
-    /// Updates an episode to "remove" it by hiding it. "Removed"
-    /// episodes need to stay in the database so that they don't get
-    /// re-added when the podcast is synced again.
-    pub fn hide_episode(&self, episode_id: i64, hide: bool) -> Result<()> {
-        let conn = self.conn.as_ref().expect("Error connecting to database.");
-
-        let mut stmt = conn.prepare_cached("UPDATE episodes SET hidden = ? WHERE id = ?;")?;
-        stmt.execute(params![hide, episode_id])?;
-        Ok(())
-    }
-
     /// Generates list of all podcasts in database.
     /// TODO: This should probably use a JOIN statement instead.
     pub fn get_podcasts(&self) -> Result<Vec<Podcast>> {

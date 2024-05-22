@@ -337,13 +337,6 @@ impl<T: Clone + Menuable> LockVec<T> {
         );
     }
 
-    /// Given an id, this takes a new T and replaces the old T with that
-    /// id.
-    pub fn replace(&self, id: i64, t: T) {
-        let mut borrowed = self.borrow_map();
-        borrowed.insert(id, t);
-    }
-
     /// Empty out and replace all the data in the LockVec.
     pub fn replace_all(&self, data: Vec<T>) {
         let (mut map, mut order, mut filtered_order) = self.borrow();
@@ -452,36 +445,6 @@ impl<T: Clone + Menuable> Clone for LockVec<T> {
             order: Arc::clone(&self.order),
             filtered_order: Arc::clone(&self.filtered_order),
         }
-    }
-}
-
-impl LockVec<Podcast> {
-    /// This clones the podcast with the given id.
-    pub fn clone_podcast(&self, id: i64) -> Option<Podcast> {
-        let pod_map = self.borrow_map();
-        return pod_map.get(&id).cloned();
-    }
-
-    /// This clones the episode with the given id (`ep_id`), from
-    /// the podcast with the given id (`pod_id`). Note that if you
-    /// are already borrowing the episode list for a podcast, you can
-    /// also use `clone_episode()` directly on that list.
-    pub fn clone_episode(&self, pod_id: i64, ep_id: i64) -> Option<Episode> {
-        let pod_map = self.borrow_map();
-        if let Some(pod) = pod_map.get(&pod_id) {
-            return pod.episodes.clone_episode(ep_id);
-        }
-        None
-    }
-}
-
-impl LockVec<Episode> {
-    /// This clones the episode with the given id (`ep_id`). Note
-    /// that `clone_episode()` is also implemented for LockVec<Podcast>,
-    /// and can be used at that level as well if given a podcast id.
-    pub fn clone_episode(&self, ep_id: i64) -> Option<Episode> {
-        let ep_map = self.borrow_map();
-        return ep_map.get(&ep_id).cloned();
     }
 }
 

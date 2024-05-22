@@ -29,6 +29,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Migrate to [ratatui](https://ratatui.rs/)
 - [ ] Add option to sync automatically on start, would be enabled by default
 - [ ] If gpodder is on, update actions right after syncing podcasts
+- [ ] Prevent screen flickering while syncing podcasts
 
 ## Installing hullcaster
 
@@ -155,8 +156,8 @@ filled in with the default value specified in those comments.
 | Shift+D                           | Download all episodes                    |
 | x                                 | Delete downloaded file                   |
 | Shift+X                           | Delete all downloaded files              |
-| r                                 | Remove selected feed/episode from list   |
-| Shift+R                           | Remove all feeds/episodes from list      |
+| r                                 | Remove selected feed from list           |
+| Shift+R                           | Remove all feeds from list               |
 | 1                                 | Toggle played/unplayed filter            |
 | 2                                 | Toggle downloaded/not downloaded filter  |
 
