@@ -164,7 +164,9 @@ impl MainController {
                 Message::Ui(UiMsg::DownloadAll(pod_id)) => self.download(pod_id, None),
 
                 // downloading can produce any one of these responses
-                Message::Dl(DownloadMsg::Complete(ep_data)) => self.download_complete(ep_data),
+                Message::Dl(DownloadMsg::Complete(ep_data)) => {
+                    self.download_complete(ep_data);
+                }
                 Message::Dl(DownloadMsg::ResponseError(_)) => {
                     self.notif_to_ui("Error sending download request.".to_string(), true)
                 }
@@ -733,7 +735,7 @@ impl MainController {
     }
 
     /// Handles logic for what to do when a download successfully completes.
-    pub fn download_complete(&mut self, ep_data: EpData) {
+    pub fn download_complete(&mut self, ep_data: EpData) -> Option<()> {
         let file_path = ep_data.file_path.unwrap();
         let res = self.db.insert_file(ep_data.id, &file_path);
         if res.is_err() {
@@ -744,14 +746,14 @@ impl MainController {
                 ),
                 true,
             );
-            return;
+            return None;
         }
         {
-            // TODO: Try to do this without cloning the podcast...
-            let podcast = self.podcasts.clone_podcast(ep_data.pod_id).unwrap();
-            let mut episode = podcast.episodes.clone_episode(ep_data.id).unwrap();
+            let borrowed_map = self.podcasts.borrow_map();
+            let podcast = borrowed_map.get(&ep_data.pod_id).unwrap();
+            let mut episode_map = podcast.episodes.borrow_map();
+            let episode = episode_map.get_mut(&ep_data.id)?;
             episode.path = Some(file_path);
-            podcast.episodes.replace(ep_data.id, episode);
         }
 
         self.download_tracker.remove(&ep_data.id);
@@ -761,6 +763,7 @@ impl MainController {
         }
 
         self.update_filters(self.filters, true);
+        Some(())
     }
 
     /// Given a podcast title, creates a download directory for that
