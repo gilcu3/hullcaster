@@ -17,7 +17,7 @@ readme = "README.md"
 crossterm = "0.23.0"
 rss = "2.0.0"
 rusqlite = "0.26.3"
-ureq = { version = "2.4.0", features = ["cookies"] }
+ureq = { version = "2.4.0", features = ["cookies", "native-certs"] }
 native-tls = { version = "0.2.8", optional = true }
 clap = { version = "3.1.2", features = ["cargo", "env"] }
 toml = "0.5.8"
@@ -42,25 +42,3 @@ serde_json = {version = "1.0.116"}
 log = "0.4.21"
 simplelog = {version = "0.12.2", features = ["local-offset"]}
 symphonia = { version = "0.5.4", features = ["mp3"] }
-
-[features]
-default = ["native_certs"]
-
-# bundle sqlite library with app; recommended for Windows. This is
-# turned on by default, but if you are building this for a package
-# manager, consider building with `--no-default-features` specified, and
-# adding libsqlite3-dev or sqlite3 as a dependency on the package
-sqlite_bundled = ["rusqlite/bundled"]
-
-# by default, hullcaster uses the `rustls` crate to enable TLS support;
-# if this is causing issues for some URLs (e.g., those using TLS 1.0 or
-# 1.1), you can try building it to use the `native-tls` crate instead by
-# specifying `--features "native_tls"`
-native_tls = ["native-tls", "ureq/native-tls"]
-
-# the `native_certs` feature (enabled by default) extracts the trusted
-# certificate roots from your OS's trust store; you can instead use a
-# bundled copy of the Mozilla Root program (which will thus not update
-# if the program is not updated). To do so, build hullcaster with
-# `--no-default-features` to turn off use of the native certificates
-native_certs = ["ureq/native-certs"]

@@ -38,18 +38,7 @@ features stated below, while learning `rust` at the same time.
 
 Currently, the only option is to build from source.
 
-First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite`
-
-**Notes:**
-
-* The names of these dependencies may be slightly different for your system. For
-  `sqlite`, you are looking for the development headers for SQLite,
-  which may be separate from the runtime package (e.g., with a `-dev` suffix).
-* If you enable the "native_tls" feature of hullcaster (disabled by default),
-  you will also need `libssl-dev`, the development headers for OpenSSL (not
-  needed on MacOS).
-* If you enable the "sqlite-bundled" feature of hullcaster (disabled by
-  default), `pkg-config` and `sqlite` are not necessary.
+First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite` (names in Archlinux).
 
 Next, you can clone the Github repo and compile it yourself:
 
