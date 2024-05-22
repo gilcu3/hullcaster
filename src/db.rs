@@ -480,16 +480,11 @@ impl Database {
                 Err(_) => Err(rusqlite::Error::QueryReturnedNoRows),
             }?;
 
-            // create a sort title that is lowercased and removes
-            // articles from the beginning
             let title: String = row.get("title")?;
-            let title_lower = title.to_lowercase();
-            let sort_title = RE_ARTICLES.replace(&title_lower, "").to_string();
 
             Ok(Podcast {
                 id: pod_id,
                 title,
-                sort_title,
                 url: row.get("url")?,
                 description: row.get("description")?,
                 author: row.get("author")?,

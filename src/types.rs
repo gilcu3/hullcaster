@@ -33,7 +33,6 @@ pub trait Menuable {
 pub struct Podcast {
     pub id: i64,
     pub title: String,
-    pub sort_title: String,
     pub url: String,
     pub description: Option<String>,
     pub author: Option<String>,
@@ -87,7 +86,7 @@ impl Menuable for Podcast {
 
 impl PartialEq for Podcast {
     fn eq(&self, other: &Self) -> bool {
-        self.sort_title == other.sort_title
+        self.title == other.title
     }
 }
 impl Eq for Podcast {}
@@ -100,7 +99,7 @@ impl PartialOrd for Podcast {
 
 impl Ord for Podcast {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.sort_title.cmp(&other.sort_title)
+        self.title.cmp(&other.title)
     }
 }
 
