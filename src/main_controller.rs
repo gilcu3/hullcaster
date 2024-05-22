@@ -126,9 +126,11 @@ impl MainController {
 
                 Message::Feed(FeedMsg::Error(feed)) => match feed.title {
                     Some(t) => {
-                        self.notif_to_ui(format!("Error retrieving RSS feed for {t}."), true)
+                        self.sync_counter -= 1;
+                        self.notif_to_ui(format!("Error retrieving RSS feed for {t}"), true)
                     }
-                    None => self.notif_to_ui("Error retrieving RSS feed.".to_string(), true),
+                    None => self
+                        .notif_to_ui("Error retrieving RSS feed for (no_title)".to_string(), true),
                 },
 
                 Message::Ui(UiMsg::Sync(pod_id)) => self.sync(Some(pod_id)),
