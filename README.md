@@ -26,10 +26,11 @@ features stated below, while learning `rust` at the same time.
 - [ ] Show the podcast description only when a podcast is selected
 - [ ] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
 - [ ] Support the syncing subscriptions with gpodder
-- [ ] Migrate to [ratatui](https://ratatui.rs/)
+- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~ [Cursive](https://github.com/gyscos/cursive)
 - [ ] Add option to sync automatically on start, would be enabled by default
 - [ ] If gpodder is on, update actions right after syncing podcasts
 - [ ] Prevent screen flickering while syncing podcasts
+- [ ] Prevent screen flickering at the end of lists
 
 ## Installing hullcaster
 
@@ -37,23 +38,18 @@ features stated below, while learning `rust` at the same time.
 
 Currently, the only option is to build from source.
 
-First, ensure you have installed the necessary dependencies:
-
-* rust
-* gcc
-* pkg-config
-* libsqlite3-dev
+First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite`
 
 **Notes:**
 
 * The names of these dependencies may be slightly different for your system. For
-  `libsqlite3-dev`, you are looking for the development headers for SQLite,
+  `sqlite`, you are looking for the development headers for SQLite,
   which may be separate from the runtime package (e.g., with a `-dev` suffix).
 * If you enable the "native_tls" feature of hullcaster (disabled by default),
   you will also need `libssl-dev`, the development headers for OpenSSL (not
   needed on MacOS).
 * If you enable the "sqlite-bundled" feature of hullcaster (disabled by
-  default), `pkg-config` and `libsqlite3-dev` are not necessary.
+  default), `pkg-config` and `sqlite` are not necessary.
 
 Next, you can clone the Github repo and compile it yourself:
 
