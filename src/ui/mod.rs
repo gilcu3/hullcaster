@@ -9,7 +9,7 @@ use crossterm::{
     event::{self, Event},
     execute, terminal,
 };
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 #[cfg_attr(not(test), path = "panel.rs")]
@@ -39,17 +39,13 @@ use crate::types::*;
 /// Amount of time between ticks in the event loop
 const TICK_RATE: u64 = 20;
 
-lazy_static! {
-    /// Regex for finding <br/> tags -- also captures any surrounding
-    /// line breaks
-    static ref RE_BR_TAGS: Regex = Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error");
+static RE_BR_TAGS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
 
-    /// Regex for finding HTML tags
-    static ref RE_HTML_TAGS: Regex = Regex::new(r"<[^<>]*>").expect("Regex error");
+static RE_HTML_TAGS: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^<>]*>").expect("Regex error"));
 
-    /// Regex for finding more than two line breaks
-    static ref RE_MULT_LINE_BREAKS: Regex = Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error");
-}
+static RE_MULT_LINE_BREAKS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error"));
 
 /// Enum used for communicating back to the main controller after user
 /// input has been captured by the UI. usize values always represent the

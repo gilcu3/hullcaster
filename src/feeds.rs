@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
+use once_cell::sync::Lazy;
 use std::io::Read;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use lazy_static::lazy_static;
 use regex::{Match, Regex};
 use rfc822_sanitizer::parse_from_rfc2822_with_fallback;
 use rss::{Channel, Item};
@@ -12,11 +12,8 @@ use rss::{Channel, Item};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 
-lazy_static! {
-    /// Regex for parsing an episode "duration", which could take the form
-    /// of HH:MM:SS, MM:SS, or SS.
-    static ref RE_DURATION: Regex = Regex::new(r"(\d+)(?::(\d+))?(?::(\d+))?").expect("Regex error");
-}
+static RE_DURATION: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(\d+)(?::(\d+))?(?::(\d+))?").expect("Regex error"));
 
 /// Enum for communicating back to the main thread after feed data has
 /// been retrieved.

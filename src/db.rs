@@ -2,19 +2,11 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use lazy_static::lazy_static;
-use regex::Regex;
 use rusqlite::{params, Connection};
 use semver::Version;
 
 use crate::types::*;
 use crate::utils::convert_date;
-
-lazy_static! {
-    /// Regex for removing "A", "An", and "The" from the beginning of
-    /// podcast titles
-    static ref RE_ARTICLES: Regex = Regex::new(r"^(a|an|the) ").expect("Regex error.");
-}
 
 pub struct SyncResult {
     pub added: Vec<NewEpisode>,

@@ -4,20 +4,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
-use lazy_static::lazy_static;
 use nohash_hasher::BuildNoHashHasher;
-use regex::Regex;
 
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
 use crate::ui::UiMsg;
 use crate::utils::StringUtils;
-
-lazy_static! {
-    /// Regex for removing "A", "An", and "The" from the beginning of
-    /// podcast titles
-    static ref RE_ARTICLES: Regex = Regex::new(r"^(a|an|the) ").expect("Regex error");
-}
 
 /// Defines interface used for both podcasts and episodes, to be
 /// used and displayed in menus.

@@ -1,18 +1,16 @@
 use anyhow::{anyhow, Result};
 
 use crossterm::style::Color;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::config::AppColorsFromToml;
 
-lazy_static! {
-    /// Regex for parsing a color specified as hex code.
-    static ref RE_COLOR_HEX: Regex = Regex::new(r"(?i)#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})").expect("Regex error");
+static RE_COLOR_HEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})").expect("Regex error"));
 
-    /// Regex for parsing a color specified as an rgb(x, y, z) value.
-    static ref RE_COLOR_RGB: Regex = Regex::new(r"(?i)rgb\(([0-9]+), ?([0-9]+), ?([0-9]+)\)").expect("Regex error");
-}
+static RE_COLOR_RGB: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)rgb\(([0-9]+), ?([0-9]+), ?([0-9]+)\)").expect("Regex error"));
 
 /// Holds information about the colors to use in the application. Tuple
 /// values represent (foreground, background), respectively.
