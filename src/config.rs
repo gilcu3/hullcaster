@@ -55,6 +55,7 @@ pub struct Config {
     pub sync_server: String,
     pub sync_username: String,
     pub sync_password: String,
+    pub sync_on_start: bool,
     pub keybindings: Keybindings,
     pub colors: AppColors,
 }
@@ -69,11 +70,12 @@ struct ConfigFromToml {
     simultaneous_downloads: Option<usize>,
     max_retries: Option<usize>,
     mark_as_played_on_play: Option<bool>,
-    pub enable_sync: Option<bool>,
+    enable_sync: Option<bool>,
     sync_server: Option<String>,
     sync_username: Option<String>,
     sync_password: Option<String>,
     sync_password_eval: Option<String>,
+    sync_on_start: Option<bool>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
 }
@@ -200,6 +202,7 @@ impl Config {
                     sync_password: None,
                     sync_password_eval: None,
                     mark_as_played_on_play: None,
+                    sync_on_start: Some(true),
                     keybindings: Some(keybindings),
                     colors: Some(colors),
                 }
@@ -281,6 +284,8 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         "".to_string()
     };
 
+    let sync_on_start = config_toml.sync_on_start.unwrap_or(true);
+
     Ok(Config {
         download_path,
         play_command,
@@ -292,6 +297,7 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         sync_server,
         sync_username,
         sync_password,
+        sync_on_start,
         keybindings: keymap,
         colors,
     })

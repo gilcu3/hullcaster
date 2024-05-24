@@ -84,6 +84,10 @@
 # sync_password_eval = "pass gpodder"
 
 
+# Sync on start, podcasts and gpodder
+# Default: True
+
+# sync_on_start = true
 
 [keybindings]
 

@@ -119,6 +119,10 @@ impl MainController {
 
     /// Initiates the main loop where the controller waits for messages coming in from the UI and other threads, and processes them.
     pub fn loop_msgs(&mut self) {
+        if self.config.sync_on_start {
+            self.sync(None);
+        }
+
         while let Some(message) = self.rx_to_main.iter().next() {
             match message {
                 Message::Ui(UiMsg::Quit) => break,
@@ -145,7 +149,9 @@ impl MainController {
                 }
 
                 Message::Ui(UiMsg::SyncGpodder) => {
-                    self.gpodder_sync();
+                    if self.config.enable_sync {
+                        self.gpodder_sync();
+                    }
                 }
 
                 Message::Ui(UiMsg::Play(pod_id, ep_id)) => self.play_file(pod_id, ep_id),
@@ -346,75 +352,83 @@ impl MainController {
     }
 
     fn gpodder_sync(&mut self) {
-        if self.config.enable_sync {
-            let actions = self
+        let actions = self
+            .sync_agent
+            .as_ref()
+            .unwrap()
+            .get_episode_action_changes();
+
+        let pod_data = self
+            .podcasts
+            .map(
+                |pod| {
+                    (pod.url.clone(), {
+                        (
+                            pod.id,
+                            pod.episodes
+                                .map(|ep| (ep.url.clone(), ep.id), false)
+                                .into_iter()
+                                .collect::<HashMap<String, i64>>(),
+                        )
+                    })
+                },
+                false,
+            )
+            .into_iter()
+            .collect::<HashMap<String, (i64, HashMap<String, i64>)>>();
+
+        let mut last_actions = HashMap::new();
+
+        for a in actions.unwrap() {
+            match a.action {
+                Action::play => {
+                    log::info!(
+                        "EpisodeAction received - podcast: {} episode: {} position: {} total: {}",
+                        a.podcast,
+                        a.episode,
+                        a.position.unwrap(),
+                        a.total.unwrap()
+                    );
+
+                    let pod_id_opt = pod_data.get(&a.podcast);
+                    if pod_id_opt.is_none() {
+                        continue;
+                    }
+                    let pod_id = pod_id_opt.unwrap().0;
+                    let ep_id_opt = pod_id_opt.unwrap().1.get(a.episode.as_str());
+                    if ep_id_opt.is_none() {
+                        continue;
+                    }
+                    let ep_id = *ep_id_opt.unwrap();
+                    last_actions.insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
+                }
+                Action::download => {}
+                Action::delete => {}
+                Action::new => {}
+            }
+        }
+        let mut updates = Vec::new();
+
+        for ((pod_id, ep_id), (position, total)) in last_actions {
+            let played = (total - position).abs() <= 10;
+            updates.push((pod_id, ep_id, played));
+        }
+        let number_updates = updates.len();
+        self.mark_played_db_batch(updates);
+
+        let _ = self.db.set_param(
+            "timestamp",
+            &self
                 .sync_agent
                 .as_ref()
                 .unwrap()
-                .get_episode_action_changes();
-
-            let pod_data = self
-                .podcasts
-                .map(
-                    |pod| {
-                        (pod.url.clone(), {
-                            (
-                                pod.id,
-                                pod.episodes
-                                    .map(|ep| (ep.url.clone(), ep.id), false)
-                                    .into_iter()
-                                    .collect::<HashMap<String, i64>>(),
-                            )
-                        })
-                    },
-                    false,
-                )
-                .into_iter()
-                .collect::<HashMap<String, (i64, HashMap<String, i64>)>>();
-
-            let mut last_actions = HashMap::new();
-
-            for a in actions.unwrap() {
-                match a.action {
-                    Action::play => {
-                        log::info!("EpisodeAction received - podcast: {} episode: {} position: {} total: {}", a.podcast, a.episode, a.position.unwrap(), a.total.unwrap());
-
-                        let pod_id_opt = pod_data.get(&a.podcast);
-                        if pod_id_opt.is_none() {
-                            continue;
-                        }
-                        let pod_id = pod_id_opt.unwrap().0;
-                        let ep_id_opt = pod_id_opt.unwrap().1.get(a.episode.as_str());
-                        if ep_id_opt.is_none() {
-                            continue;
-                        }
-                        let ep_id = *ep_id_opt.unwrap();
-                        last_actions
-                            .insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
-                    }
-                    Action::download => {}
-                    Action::delete => {}
-                    Action::new => {}
-                }
-            }
-            let mut updates = Vec::new();
-
-            for ((pod_id, ep_id), (position, total)) in last_actions {
-                let played = (total - position).abs() <= 10;
-                updates.push((pod_id, ep_id, played));
-            }
-            self.mark_played_db_batch(updates);
-
-            let _ = self.db.set_param(
-                "timestamp",
-                &self
-                    .sync_agent
-                    .as_ref()
-                    .unwrap()
-                    .get_timestamp()
-                    .to_string(),
-            );
-        }
+                .get_timestamp()
+                .to_string(),
+        );
+        self.notif_to_ui(
+            format!("Gpodder sync finished with {} updates", number_updates).to_string(),
+            false,
+        );
     }
 
     /// Handles the application logic for adding a new podcast, or
@@ -493,6 +507,10 @@ impl MainController {
                                 }
                                 _ => (),
                             }
+                        }
+
+                        if self.config.enable_sync {
+                            self.gpodder_sync();
                         }
                     }
                 } else {
