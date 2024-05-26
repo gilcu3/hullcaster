@@ -71,7 +71,7 @@ fn main() -> Result<()> {
         .arg(Arg::new("config")
             .short('c')
             .long("config")
-            .env("SHELLCASTER_CONFIG")
+            .env("HULLCASTER_CONFIG")
             .global(true)
             .takes_value(true)
             .value_name("FILE")
@@ -110,7 +110,7 @@ fn main() -> Result<()> {
         .get_matches();
 
     // figure out where config file is located -- either specified from
-    // command line args, set via $SHELLCASTER_CONFIG, or using default
+    // command line args, set via $HULLCASTER_CONFIG, or using default
     // config location for OS
     let config_path = get_config_path(args.value_of("config"))
         .unwrap_or_else(|| {
@@ -178,6 +178,8 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
     }
 }
 
+
+// this should be improved to use default dirs-next crate
 fn setup_logs() -> Result<()> {
     let log_path = match env::var("XDG_STATE_HOME") {
         Ok(val) => val + "/hullcaster",

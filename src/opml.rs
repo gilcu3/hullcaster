@@ -41,7 +41,7 @@ pub fn export(podcasts: Vec<Podcast>) -> OPML {
     let date = Utc::now();
     let mut opml = OPML {
         head: Some(Head {
-            title: Some("Shellcaster Podcast Feeds".to_string()),
+            title: Some("Hullcaster Podcast Feeds".to_string()),
             date_created: Some(date.to_rfc2822()),
             ..Head::default()
         }),

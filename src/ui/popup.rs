@@ -130,7 +130,7 @@ impl PopupWin {
         // confused between panel.rs and mock_panel.rs
         #[allow(unused_mut)]
         let mut welcome_win = Panel::new(
-            "Shellcaster".to_string(),
+            "Hullcaster".to_string(),
             0,
             self.colors.clone(),
             self.total_rows - 1,

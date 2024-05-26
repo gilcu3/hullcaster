@@ -57,10 +57,6 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     let agent_builder = ureq::builder()
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(Duration::from_secs(120));
-    #[cfg(feature = "native_tls")]
-    let tls_connector = std::sync::Arc::new(native_tls::TlsConnector::new().unwrap());
-    #[cfg(feature = "native_tls")]
-    let agent_builder = agent_builder.tls_connector(tls_connector);
     let agent = agent_builder.build();
 
     let request: Result<ureq::Response, ()> = loop {

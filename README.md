@@ -26,11 +26,13 @@ features stated below, while learning `rust` at the same time.
 - [x] Show the podcast description only when a podcast is selected
 - [x] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
 - [ ] Support the syncing subscriptions with gpodder
-- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~ [Cursive](https://github.com/gyscos/cursive)
+- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~
+  [Cursive](https://github.com/gyscos/cursive)
 - [x] Add option to sync automatically on start, would be enabled by default
 - [x] If gpodder is on, update actions right after syncing podcasts
 - [x] Prevent screen flickering while syncing podcasts
 - [x] Prevent screen flickering at the end of lists
+- [ ] Add periodic synchronization
 
 ## Installing hullcaster
 
@@ -38,7 +40,8 @@ features stated below, while learning `rust` at the same time.
 
 Currently, the only option is to build from source.
 
-First, ensure you have installed the necessary dependencies: `rust`, `gcc`, `pkgconf`, `sqlite` (package names in Archlinux).
+First, ensure you have installed the necessary dependencies: `rust`, `gcc`,
+`pkgconf`, `sqlite` (package names in Archlinux).
 
 Next, you can clone the Github repo and compile it yourself:
 

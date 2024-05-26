@@ -67,10 +67,6 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
     let agent_builder = ureq::builder()
         .timeout_connect(Duration::from_secs(5))
         .timeout_read(Duration::from_secs(20));
-    #[cfg(feature = "native_tls")]
-    let tls_connector = std::sync::Arc::new(native_tls::TlsConnector::new().unwrap());
-    #[cfg(feature = "native_tls")]
-    let agent_builder = agent_builder.tls_connector(tls_connector);
     let agent = agent_builder.build();
 
     let request: Result<ureq::Response> = loop {
