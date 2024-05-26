@@ -137,7 +137,7 @@ impl<T: Clone + Menuable> Menu<T> {
         match lines {
             Scroll::Up(v) => {
                 let selected_adj = self.selected - self.start_row;
-                if selected_adj == 0 {
+                if selected_adj == 0 && self.start_row == self.top_row {
                     return false;
                 } else if v <= selected_adj {
                     self.unhighlight_item(self.selected);
@@ -450,7 +450,6 @@ mod tests {
             .items
             .map_single_by_index(5, |ep| ep.get_title(real_cols as usize))
             .unwrap();
-
         assert_eq!(menu.panel.get_row(0), expected_top);
         assert_eq!(menu.panel.get_row(4), expected_bot);
     }
