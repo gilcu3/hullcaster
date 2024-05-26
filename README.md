@@ -138,7 +138,8 @@ filled in with the default value specified in those comments.
 | s                                 | Synchronize selected feed                |
 | Shift+S                           | Synchronize all feeds                    |
 | Shift+A                           | Synchronize with gpodder                 |
-| Enter / p                         | Play selected episode                    |
+| p                                 | Play selected episode                    |
+| Enter                             | Play selected episode/open sel. podcast  |
 | m                                 | Mark selected episode as played/unplayed |
 | Shift+M                           | Mark all episodes as played/unplayed     |
 | d                                 | Download selected episode                |
@@ -149,6 +150,7 @@ filled in with the default value specified in those comments.
 | Shift+R                           | Remove all feeds from list               |
 | 1                                 | Toggle played/unplayed filter            |
 | 2                                 | Toggle downloaded/not downloaded filter  |
+| e                                 | Push episode in queue                    |
 
 **Note:** Actions can be mapped to more than one key (e.g., "Enter" and "p" both
 play an episode), but a single key may not do more than one action (e.g., you

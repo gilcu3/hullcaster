@@ -39,6 +39,7 @@ where
     pub top_row: u16,   // top row of text shown in window
     pub selected: u16,  // which line of text is highlighted
     pub active: bool,
+    pub visible: bool,
 }
 
 impl<T: Clone + Menuable> Menu<T> {
@@ -52,14 +53,17 @@ impl<T: Clone + Menuable> Menu<T> {
             top_row: 0,
             selected: 0,
             active: false,
+            visible: false,
         }
     }
 
     /// Clears the terminal, and then prints the list of visible items
     /// to the terminal.
     pub fn redraw(&mut self) {
-        self.panel.redraw();
-        self.update_items();
+        if self.visible {
+            self.panel.redraw();
+            self.update_items();
+        }
     }
 
     /// Prints the list of visible items to the terminal.
@@ -430,6 +434,7 @@ mod tests {
             top_row,
             selected,
             active: true,
+            visible: true,
         }
     }
 

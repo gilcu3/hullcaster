@@ -11,6 +11,7 @@ pub enum UserAction {
     Right,
     Up,
     Down,
+    Enter,
 
     BigUp,
     BigDown,
@@ -37,6 +38,8 @@ pub enum UserAction {
 
     FilterPlayed,
     FilterDownloaded,
+
+    Enqueue,
 
     Help,
     Quit,
@@ -84,6 +87,7 @@ impl Keybindings {
             (config.sync_all, UserAction::SyncAll),
             (config.sync_gpodder, UserAction::SyncGpodder),
             (config.play, UserAction::Play),
+            (config.enter, UserAction::Enter),
             (config.mark_played, UserAction::MarkPlayed),
             (config.mark_all_played, UserAction::MarkAllPlayed),
             (config.download, UserAction::Download),
@@ -94,6 +98,7 @@ impl Keybindings {
             (config.remove_all, UserAction::RemoveAll),
             (config.filter_played, UserAction::FilterPlayed),
             (config.filter_downloaded, UserAction::FilterDownloaded),
+            (config.enqueue, UserAction::Enqueue),
             (config.help, UserAction::Help),
             (config.quit, UserAction::Quit),
         ];
@@ -166,7 +171,8 @@ impl Keybindings {
             (UserAction::Sync, vec!["s".to_string()]),
             (UserAction::SyncAll, vec!["S".to_string()]),
             (UserAction::SyncGpodder, vec!["A".to_string()]),
-            (UserAction::Play, vec!["Enter".to_string(), "p".to_string()]),
+            (UserAction::Play, vec!["p".to_string()]),
+            (UserAction::Enter, vec!["Enter".to_string()]),
             (UserAction::MarkPlayed, vec!["m".to_string()]),
             (UserAction::MarkAllPlayed, vec!["M".to_string()]),
             (UserAction::Download, vec!["d".to_string()]),
@@ -177,6 +183,7 @@ impl Keybindings {
             (UserAction::RemoveAll, vec!["R".to_string()]),
             (UserAction::FilterPlayed, vec!["1".to_string()]),
             (UserAction::FilterDownloaded, vec!["2".to_string()]),
+            (UserAction::Enqueue, vec!["e".to_string()]),
             (UserAction::Help, vec!["?".to_string()]),
             (UserAction::Quit, vec!["q".to_string()]),
         ]

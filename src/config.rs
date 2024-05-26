@@ -99,6 +99,7 @@ pub struct KeybindingsFromToml {
     pub sync_all: Option<Vec<String>>,
     pub sync_gpodder: Option<Vec<String>>,
     pub play: Option<Vec<String>>,
+    pub enter: Option<Vec<String>>,
     pub mark_played: Option<Vec<String>>,
     pub mark_all_played: Option<Vec<String>>,
     pub download: Option<Vec<String>>,
@@ -109,6 +110,7 @@ pub struct KeybindingsFromToml {
     pub remove_all: Option<Vec<String>>,
     pub filter_played: Option<Vec<String>>,
     pub filter_downloaded: Option<Vec<String>>,
+    pub enqueue: Option<Vec<String>>,
     pub help: Option<Vec<String>>,
     pub quit: Option<Vec<String>>,
 }
@@ -164,6 +166,7 @@ impl Config {
                     sync_all: None,
                     sync_gpodder: None,
                     play: None,
+                    enter: None,
                     mark_played: None,
                     mark_all_played: None,
                     download: None,
@@ -174,6 +177,7 @@ impl Config {
                     remove_all: None,
                     filter_played: None,
                     filter_downloaded: None,
+                    enqueue: None,
                     help: None,
                     quit: None,
                 };

@@ -124,7 +124,8 @@ sync = [ "s" ]
 sync_all = [ "S" ]
 sync_gpodder = [ "A" ]
 
-play = [ "Enter", "p" ]
+play = [ "p" ]
+enter = [ "Enter" ]
 mark_played = [ "m" ]
 mark_all_played = [ "M" ]
 
@@ -137,6 +138,8 @@ remove_all = [ "R" ]
 
 filter_played = [ "1" ]
 filter_downloaded = [ "2" ]
+
+enqueue = [ "e" ]
 
 help = [ "?" ]
 quit = [ "q" ]

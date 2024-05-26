@@ -283,6 +283,26 @@ impl<T: Clone + Menuable> LockVec<T> {
         }
     }
 
+    pub fn push(&self, item: T) {
+        let id = item.get_id();
+        let (mut map, mut order, mut filtered_order) = self.borrow();
+        map.insert(id, item);
+        order.push(id);
+        filtered_order.push(id);
+    }
+
+    pub fn remove(&self, id: i64) {
+        let (mut map, mut order, mut filtered_order) = self.borrow();
+        map.remove(&id);
+        order.retain(|&x| x != id);
+        filtered_order.retain(|&x| x != id);
+    }
+
+    pub fn get(&self, id: i64) -> Option<T> {
+        let borrowed = self.borrow_map();
+        return borrowed.get(&id).cloned();
+    }
+
     /// Lock the LockVec hashmap for reading/writing.
     pub fn borrow_map(&self) -> MutexGuard<HashMap<i64, T, BuildNoHashHasher<i64>>> {
         return self.data.lock().expect("Mutex error");

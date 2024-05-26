@@ -74,6 +74,7 @@ pub enum Scroll {
 enum ActivePanel {
     PodcastMenu,
     EpisodeMenu,
+    QueueMenu,
     DetailsPanel,
 }
 
@@ -88,6 +89,7 @@ pub struct Ui {
     colors: Rc<AppColors>,
     podcast_menu: Menu<Podcast>,
     episode_menu: Menu<Episode>,
+    queue_menu: Menu<Episode>,
     details_panel: Option<DetailsPanel>,
     active_panel: ActivePanel,
     notif_win: NotifWin,
@@ -160,7 +162,7 @@ impl Ui {
         let colors = Rc::new(config.clone().colors.clone());
 
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
-        let (pod_col, ep_col, det_col) = Self::calculate_sizes(n_col);
+        let (pod_col, queue_col, det_col) = Self::calculate_sizes(n_col);
 
         let first_pod = match items.borrow_filtered_order().first() {
             Some(first_id) => match items.borrow_map().get(first_id) {
@@ -183,11 +185,11 @@ impl Ui {
 
         let episode_panel = Panel::new(
             "Episodes".to_string(),
-            1,
+            0,
             colors.clone(),
             n_row - 2,
-            ep_col,
-            pod_col - 1,
+            pod_col,
+            0,
             (0, 0, 0, 0),
         );
 
@@ -200,12 +202,25 @@ impl Ui {
                 colors.clone(),
                 n_row - 2,
                 det_col,
-                pod_col + ep_col - 2,
+                pod_col - 1,
                 (0, 1, 0, 1),
             ))
         } else {
             None
         };
+
+        let queue_panel = Panel::new(
+            "Queue".to_string(),
+            1,
+            colors.clone(),
+            n_row - 2,
+            queue_col,
+            pod_col + queue_col - 2,
+            (0, 0, 0, 0),
+        );
+        // This should load from the database
+        let queue_items: LockVec<Episode> = LockVec::new(Vec::new());
+        let queue_menu = Menu::new(queue_panel, None, queue_items);
 
         let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_row, n_col);
         let popup_win = PopupWin::new(&config.keybindings, colors.clone(), n_row - 1, n_col);
@@ -220,6 +235,7 @@ impl Ui {
             colors,
             podcast_menu,
             episode_menu,
+            queue_menu,
             details_panel,
             active_panel: ActivePanel::PodcastMenu,
             notif_win,
@@ -231,9 +247,14 @@ impl Ui {
     /// This should be called immediately after creating the UI, in order
     /// to draw everything to the screen.
     pub fn init(&mut self) {
+        self.podcast_menu.visible = true;
+        self.queue_menu.visible = true;
+        self.episode_menu.visible = false;
         self.podcast_menu.redraw();
-        self.episode_menu.redraw();
+        //self.episode_menu.redraw();
+        self.queue_menu.redraw();
         self.podcast_menu.activate();
+        self.active_panel = ActivePanel::PodcastMenu;
 
         self.update_details_panel();
 
@@ -260,7 +281,7 @@ impl Ui {
             match event::read().expect("Can't read inputs") {
                 Event::Resize(n_col, n_row) => self.resize(n_col, n_row),
                 Event::Key(input) => {
-                    let (curr_pod_id, curr_ep_id) = self.get_current_ids();
+                    let (curr_pod_id, curr_sel_id) = self.get_current_ids();
 
                     // get rid of the "welcome" window once the podcast
                     // list is no longer empty
@@ -297,9 +318,7 @@ impl Ui {
                             | Some(a @ UserAction::BigUp)
                             | Some(a @ UserAction::BigDown)
                             | Some(a @ UserAction::GoTop)
-                            | Some(a @ UserAction::GoBot) => {
-                                self.move_cursor(&a, curr_pod_id, curr_ep_id)
-                            }
+                            | Some(a @ UserAction::GoBot) => self.move_cursor(&a, curr_sel_id),
 
                             Some(UserAction::AddFeed) => {
                                 let url = &self.spawn_input_notif("Feed URL: ");
@@ -309,8 +328,10 @@ impl Ui {
                             }
 
                             Some(UserAction::Sync) => {
-                                if let Some(pod_id) = curr_pod_id {
-                                    return UiMsg::Sync(pod_id);
+                                if let ActivePanel::PodcastMenu = self.active_panel {
+                                    if let Some(pod_id) = curr_sel_id {
+                                        return UiMsg::Sync(pod_id);
+                                    }
                                 }
                             }
                             Some(UserAction::SyncAll) => {
@@ -321,16 +342,54 @@ impl Ui {
                                 return UiMsg::SyncGpodder;
                             }
 
+                            Some(UserAction::Enter) => match self.active_panel {
+                                ActivePanel::PodcastMenu => {
+                                    self.active_panel = ActivePanel::EpisodeMenu;
+                                    self.episode_menu.visible = true;
+                                    self.podcast_menu.visible = false;
+                                    self.podcast_menu.deactivate();
+                                    self.episode_menu.activate();
+                                    self.episode_menu.redraw();
+                                    self.episode_menu.highlight_selected();
+                                    self.update_details_panel();
+                                }
+                                ActivePanel::QueueMenu => {
+                                    if let Some(pod_id) = curr_pod_id {
+                                        if let Some(ep_id) = curr_sel_id {
+                                            return UiMsg::Play(pod_id, ep_id);
+                                        }
+                                    }
+                                }
+                                ActivePanel::EpisodeMenu => {
+                                    if let Some(pod_id) = curr_pod_id {
+                                        if let Some(ep_id) = curr_sel_id {
+                                            return UiMsg::Play(pod_id, ep_id);
+                                        }
+                                    }
+                                }
+                                ActivePanel::DetailsPanel => {}
+                            },
+
+                            Some(UserAction::Enqueue) => {
+                                if let ActivePanel::EpisodeMenu = self.active_panel {
+                                    if let Some(ep_id) = curr_sel_id {
+                                        let ep = self.episode_menu.items.get(ep_id).unwrap();
+                                        self.queue_menu.items.push(ep);
+                                        self.queue_menu.redraw();
+                                    }
+                                }
+                            }
+
                             Some(UserAction::Play) => {
                                 if let Some(pod_id) = curr_pod_id {
-                                    if let Some(ep_id) = curr_ep_id {
+                                    if let Some(ep_id) = curr_sel_id {
                                         return UiMsg::Play(pod_id, ep_id);
                                     }
                                 }
                             }
                             Some(UserAction::MarkPlayed) => {
                                 if let ActivePanel::EpisodeMenu = self.active_panel {
-                                    if let Some(ui_msg) = self.mark_played(curr_pod_id, curr_ep_id)
+                                    if let Some(ui_msg) = self.mark_played(curr_pod_id, curr_sel_id)
                                     {
                                         return ui_msg;
                                     }
@@ -344,7 +403,7 @@ impl Ui {
 
                             Some(UserAction::Download) => {
                                 if let Some(pod_id) = curr_pod_id {
-                                    if let Some(ep_id) = curr_ep_id {
+                                    if let Some(ep_id) = curr_sel_id {
                                         return UiMsg::Download(pod_id, ep_id);
                                     }
                                 }
@@ -358,7 +417,7 @@ impl Ui {
                             Some(UserAction::Delete) => {
                                 if let ActivePanel::EpisodeMenu = self.active_panel {
                                     if let Some(pod_id) = curr_pod_id {
-                                        if let Some(ep_id) = curr_ep_id {
+                                        if let Some(ep_id) = curr_sel_id {
                                             return UiMsg::Delete(pod_id, ep_id);
                                         }
                                     }
@@ -374,6 +433,13 @@ impl Ui {
                                 ActivePanel::PodcastMenu => {
                                     if let Some(ui_msg) = self.remove_podcast(curr_pod_id) {
                                         return ui_msg;
+                                    }
+                                }
+                                ActivePanel::QueueMenu => {
+                                    if let Some(ep_id) = curr_sel_id {
+                                        self.queue_menu.items.remove(ep_id);
+                                        self.queue_menu.redraw();
+                                        self.update_details_panel();
                                     }
                                 }
                                 ActivePanel::EpisodeMenu => {}
@@ -417,16 +483,17 @@ impl Ui {
         self.n_row = n_row;
         self.n_col = n_col;
 
-        let (pod_col, ep_col, det_col) = Self::calculate_sizes(n_col);
+        let (pod_col, queue_col, det_col) = Self::calculate_sizes(n_col);
 
         self.podcast_menu.resize(n_row - 2, pod_col, 0);
-        self.episode_menu.resize(n_row - 2, ep_col, pod_col - 1);
+        self.episode_menu.resize(n_row - 2, pod_col, 0);
+        self.queue_menu.resize(n_row - 2, queue_col, pod_col - 1);
         self.highlight_items();
 
         if self.details_panel.is_some() {
             if det_col > 0 {
                 let det = self.details_panel.as_mut().unwrap();
-                det.resize(n_row - 2, det_col, pod_col + ep_col - 2);
+                det.resize(n_row - 2, det_col, pod_col + queue_col - 2);
                 // resizing the menus may change which item is selected
                 self.update_details_panel();
             } else {
@@ -435,8 +502,8 @@ impl Ui {
                 // terminal is resized so the panel disappears, switch
                 // the active focus to the episode menu automatically
                 if let ActivePanel::DetailsPanel = self.active_panel {
-                    self.active_panel = ActivePanel::EpisodeMenu;
-                    self.episode_menu.activate();
+                    self.active_panel = ActivePanel::PodcastMenu;
+                    self.podcast_menu.activate();
                 }
             }
         } else if det_col > 0 {
@@ -446,7 +513,7 @@ impl Ui {
                 self.colors.clone(),
                 n_row - 2,
                 det_col,
-                pod_col + ep_col - 2,
+                pod_col + queue_col - 2,
                 (0, 1, 0, 1),
             ));
             self.update_details_panel();
@@ -458,84 +525,104 @@ impl Ui {
     }
 
     /// Move the menu cursor around and redraw menus when necessary.
-    pub fn move_cursor(
-        &mut self, action: &UserAction, curr_pod_id: Option<i64>, curr_ep_id: Option<i64>,
-    ) {
+    pub fn move_cursor(&mut self, action: &UserAction, curr_sel_id: Option<i64>) {
         match action {
             UserAction::Down => {
-                self.scroll_current_window(curr_pod_id, Scroll::Down(1));
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Down(1));
+                }
             }
 
             UserAction::Up => {
-                self.scroll_current_window(curr_pod_id, Scroll::Up(1));
-            }
-
-            UserAction::Left => {
-                if curr_pod_id.is_some() {
-                    match self.active_panel {
-                        ActivePanel::PodcastMenu => (),
-                        ActivePanel::EpisodeMenu => {
-                            self.active_panel = ActivePanel::PodcastMenu;
-                            self.podcast_menu.activate();
-                            self.episode_menu.deactivate(false);
-                            self.update_details_panel();
-                        }
-                        ActivePanel::DetailsPanel => {
-                            self.active_panel = ActivePanel::EpisodeMenu;
-                            self.episode_menu.activate();
-                        }
-                    }
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Up(1));
                 }
             }
 
-            UserAction::Right => {
-                if curr_pod_id.is_some() && curr_ep_id.is_some() {
-                    match self.active_panel {
-                        ActivePanel::PodcastMenu => {
-                            self.active_panel = ActivePanel::EpisodeMenu;
-                            self.podcast_menu.deactivate();
-                            self.episode_menu.activate();
-                            self.update_details_panel();
-                        }
-                        ActivePanel::EpisodeMenu => {
-                            if self.details_panel.is_some() {
-                                self.active_panel = ActivePanel::DetailsPanel;
-                                self.episode_menu.deactivate(true);
-                            }
-                        }
-                        ActivePanel::DetailsPanel => (),
-                    }
+            UserAction::Left => match self.active_panel {
+                ActivePanel::PodcastMenu => {}
+                ActivePanel::EpisodeMenu => {
+                    self.active_panel = ActivePanel::PodcastMenu;
+                    self.episode_menu.visible = false;
+                    self.podcast_menu.visible = true;
+                    self.podcast_menu.activate();
+                    self.episode_menu.deactivate(true);
+                    self.podcast_menu.redraw();
+                    self.update_details_panel();
                 }
-            }
+                ActivePanel::QueueMenu => {
+                    self.queue_menu.deactivate(false);
+                    self.active_panel = ActivePanel::DetailsPanel;
+                }
+                ActivePanel::DetailsPanel => {
+                    if self.podcast_menu.visible {
+                        self.podcast_menu.activate();
+                        self.active_panel = ActivePanel::PodcastMenu;
+                    } else if self.episode_menu.visible {
+                        self.episode_menu.activate();
+                        self.active_panel = ActivePanel::EpisodeMenu;
+                    } else {
+                        log::error!("No menu is visible on the left");
+                    }
+                    self.update_details_panel();
+                }
+            },
+
+            UserAction::Right => match self.active_panel {
+                ActivePanel::PodcastMenu => {
+                    self.active_panel = ActivePanel::DetailsPanel;
+                    self.podcast_menu.deactivate();
+                }
+                ActivePanel::EpisodeMenu => {
+                    self.active_panel = ActivePanel::DetailsPanel;
+                    self.episode_menu.deactivate(true);
+                }
+                ActivePanel::QueueMenu => {}
+                ActivePanel::DetailsPanel => {
+                    self.active_panel = ActivePanel::QueueMenu;
+                    self.queue_menu.activate();
+                    self.update_details_panel();
+                }
+            },
 
             UserAction::PageUp => {
-                self.scroll_current_window(curr_pod_id, Scroll::Up(self.n_row - 3));
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Up(self.n_row - 3));
+                }
             }
 
             UserAction::PageDown => {
-                self.scroll_current_window(curr_pod_id, Scroll::Down(self.n_row - 3));
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Down(self.n_row - 3));
+                }
             }
 
             UserAction::BigUp => {
-                self.scroll_current_window(
-                    curr_pod_id,
-                    Scroll::Up(self.n_row / crate::config::BIG_SCROLL_AMOUNT),
-                );
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Up(
+                        self.n_row / crate::config::BIG_SCROLL_AMOUNT,
+                    ));
+                }
             }
 
             UserAction::BigDown => {
-                self.scroll_current_window(
-                    curr_pod_id,
-                    Scroll::Down(self.n_row / crate::config::BIG_SCROLL_AMOUNT),
-                );
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Down(
+                        self.n_row / crate::config::BIG_SCROLL_AMOUNT,
+                    ));
+                }
             }
 
             UserAction::GoTop => {
-                self.scroll_current_window(curr_pod_id, Scroll::Up(u16::MAX));
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Up(u16::MAX));
+                }
             }
 
             UserAction::GoBot => {
-                self.scroll_current_window(curr_pod_id, Scroll::Down(u16::MAX));
+                if curr_sel_id.is_some() {
+                    self.scroll_current_window(Scroll::Down(u16::MAX));
+                }
             }
 
             // this shouldn't occur because we only trigger this
@@ -547,33 +634,35 @@ impl Ui {
 
     /// Scrolls the current active menu by the specified amount and
     /// refreshes the window.
-    pub fn scroll_current_window(&mut self, pod_id: Option<i64>, scroll: Scroll) {
+    pub fn scroll_current_window(&mut self, scroll: Scroll) {
         match self.active_panel {
             ActivePanel::PodcastMenu => {
-                if pod_id.is_some() {
-                    if !self.podcast_menu.scroll(scroll) {
-                        return;
-                    }
-
-                    self.episode_menu.top_row = 0;
-                    self.episode_menu.selected = 0;
-
-                    // update episodes menu with new list
-                    self.episode_menu.items = self.podcast_menu.get_episodes();
-                    self.episode_menu.redraw();
-                    self.update_details_panel();
+                if !self.podcast_menu.scroll(scroll) {
+                    return;
                 }
+
+                self.episode_menu.top_row = 0;
+                self.episode_menu.selected = 0;
+
+                // update episodes menu with new list
+                self.episode_menu.items = self.podcast_menu.get_episodes();
+                self.update_details_panel();
             }
             ActivePanel::EpisodeMenu => {
-                if pod_id.is_some() {
-                    if !self.episode_menu.scroll(scroll) {
-                        return;
-                    }
-                    self.update_details_panel();
+                if !self.episode_menu.scroll(scroll) {
+                    return;
                 }
+                self.update_details_panel();
+            }
+            ActivePanel::QueueMenu => {
+                if !self.queue_menu.scroll(scroll) {
+                    return;
+                }
+                self.update_details_panel();
             }
             ActivePanel::DetailsPanel => {
                 if let Some(ref mut det) = self.details_panel {
+                    log::info!("Scrolling details panel");
                     det.scroll(scroll);
                 }
             }
@@ -643,21 +732,40 @@ impl Ui {
     /// they exist).
     pub fn get_current_ids(&self) -> (Option<i64>, Option<i64>) {
         let current_pod_index = (self.podcast_menu.selected + self.podcast_menu.top_row) as usize;
-        let current_ep_index = (self.episode_menu.selected + self.episode_menu.top_row) as usize;
-
-        let current_pod_id = self
+        let pod_id = self
             .podcast_menu
             .items
             .borrow_filtered_order()
             .get(current_pod_index)
             .copied();
-        let current_ep_id = self
-            .episode_menu
-            .items
-            .borrow_filtered_order()
-            .get(current_ep_index)
-            .copied();
-        (current_pod_id, current_ep_id)
+        match self.active_panel {
+            ActivePanel::PodcastMenu => (pod_id, pod_id),
+            ActivePanel::EpisodeMenu => {
+                let current_ep_index =
+                    (self.episode_menu.selected + self.episode_menu.top_row) as usize;
+                (
+                    pod_id,
+                    self.episode_menu
+                        .items
+                        .borrow_filtered_order()
+                        .get(current_ep_index)
+                        .copied(),
+                )
+            }
+            ActivePanel::QueueMenu => {
+                let current_ep_index =
+                    (self.queue_menu.selected + self.queue_menu.top_row) as usize;
+                (
+                    pod_id,
+                    self.queue_menu
+                        .items
+                        .borrow_filtered_order()
+                        .get(current_ep_index)
+                        .copied(),
+                )
+            }
+            ActivePanel::DetailsPanel => (pod_id, pod_id),
+        }
     }
 
     /// Calculates the number of columns to allocate for each of the
@@ -767,6 +875,7 @@ impl Ui {
             LockVec::new(Vec::new())
         };
         self.episode_menu.redraw();
+        self.queue_menu.redraw();
         self.highlight_items();
     }
 
@@ -832,23 +941,16 @@ impl Ui {
                         };
                         det.change_details(details);
                     }
-                    _ => {
+                    ActivePanel::EpisodeMenu => {
                         if let Some(ep_id) = curr_ep_id {
-                            // get a couple details from the current podcast
-                            let pod_explicit = {
-                                let podcast_map = self.podcast_menu.items.borrow_map();
-                                let podcast = podcast_map.get(&pod_id)?;
-                                podcast.explicit
-                            };
-
                             // the rest of the details come from the current episode
-                            if let Some(ep) = self.episode_menu.items.borrow_map().get(&ep_id) {
+                            if let Some(ep) = self.episode_menu.items.get(ep_id) {
                                 let desc = clean_html(&ep.description);
 
                                 let details = Details {
                                     pubdate: ep.pubdate,
                                     duration: Some(ep.format_duration()),
-                                    explicit: pod_explicit,
+                                    explicit: None,
                                     description: Some(desc),
                                     author: None,
                                     last_checked: None,
@@ -858,6 +960,26 @@ impl Ui {
                             };
                         }
                     }
+                    ActivePanel::QueueMenu => {
+                        if let Some(ep_id) = curr_ep_id {
+                            // the rest of the details come from the current episode
+                            if let Some(ep) = self.queue_menu.items.get(ep_id) {
+                                let desc = clean_html(&ep.description);
+
+                                let details = Details {
+                                    pubdate: ep.pubdate,
+                                    duration: Some(ep.format_duration()),
+                                    explicit: None,
+                                    description: Some(desc),
+                                    author: None,
+                                    last_checked: None,
+                                    title: Some(ep.title.clone()),
+                                };
+                                det.change_details(details);
+                            };
+                        }
+                    }
+                    ActivePanel::DetailsPanel => {}
                 }
             }
         }

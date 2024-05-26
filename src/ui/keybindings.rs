@@ -39,8 +39,10 @@ impl KeybindingsWin {
             (UserAction::MarkPlayed, "Mark as played"),
             (UserAction::MarkAllPlayed, "Mark all as played"),
             (UserAction::Download, "Download"),
-            (UserAction::Delete, "Delete file"),
+            (UserAction::Delete, "Delete"),
             (UserAction::AddFeed, "Add feed"),
+            (UserAction::Enqueue, "Enqueue"),
+            (UserAction::Remove, "Remove"),
         ];
         let mut key_strs = Vec::new();
         for (action, action_str) in actions {
