@@ -18,8 +18,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Option to avoid marking as read when playing
 - [x] Syncing with gpodder episode actions api (rudimentary, tested with
   [opodsync](https://github.com/kd2org/opodsync))
-- [ ] Queue
-- [ ] Internal Player
+- [ ] Add playing queue
+- [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
 - [x] Fix performance of mark-all as read
 - [x] Fix bug deleting file
@@ -34,6 +34,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Prevent screen flickering while syncing podcasts
 - [x] Prevent screen flickering at the end of lists
 - [ ] Add periodic synchronization
+- [ ] Fix vertical screens
+- [ ] Clear details panel when nothing is selected
 
 ## Installing hullcaster
 
