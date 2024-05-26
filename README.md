@@ -25,7 +25,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Fix bug deleting file
 - [x] Show the podcast description only when a podcast is selected
 - [x] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
-- [ ] Support the syncing subscriptions with gpodder
+- [x] Support downloading subscriptions with gpodder
+- [ ] Support uploading subscriptions with gpodder
 - [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~
   [Cursive](https://github.com/gyscos/cursive)
 - [x] Add option to sync automatically on start, would be enabled by default

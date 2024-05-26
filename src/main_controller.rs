@@ -16,7 +16,7 @@ use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
-use crate::utils::{audio_duration, current_time_ms, evaluate_in_shell};
+use crate::utils::{audio_duration, current_time_ms, evaluate_in_shell, resolve_redirection};
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -352,11 +352,37 @@ impl MainController {
     }
 
     fn gpodder_sync(&mut self) {
-        let actions = self
-            .sync_agent
-            .as_ref()
-            .unwrap()
-            .get_episode_action_changes();
+        let sync_agent = self.sync_agent.as_ref().unwrap();
+        let subcription_changes = sync_agent.get_subscription_changes();
+
+        let removed_pods = if let Some((added, deleted)) = subcription_changes {
+            for url in added {
+                let url_resolved = resolve_redirection(&url).unwrap_or(url);
+                self.add_podcast(url_resolved);
+            }
+            let mut resolve_deleted = Vec::new();
+            for url in deleted {
+                let url_resolved = resolve_redirection(&url).unwrap_or(url);
+                resolve_deleted.push(url_resolved);
+            }
+            let mut removed_pods = Vec::new();
+            let pod_map = self
+                .podcasts
+                .borrow_map()
+                .iter()
+                .map(|(id, pod)| (pod.url.clone(), *id))
+                .collect::<HashMap<String, i64>>();
+            for url in resolve_deleted {
+                if let Some(id) = pod_map.get(&url) {
+                    removed_pods.push(*id);
+                }
+            }
+            removed_pods
+        } else {
+            Vec::new()
+        };
+
+        let actions = sync_agent.get_episode_action_changes();
 
         let pod_data = self
             .podcasts
@@ -414,17 +440,14 @@ impl MainController {
             updates.push((pod_id, ep_id, played));
         }
         let number_updates = updates.len();
-        self.mark_played_db_batch(updates);
+        let timestamp = &sync_agent.get_timestamp().to_string();
 
-        let _ = self.db.set_param(
-            "timestamp",
-            &self
-                .sync_agent
-                .as_ref()
-                .unwrap()
-                .get_timestamp()
-                .to_string(),
-        );
+        // mutable actions on self
+        self.mark_played_db_batch(updates);
+        for pod_id in removed_pods {
+            self.remove_podcast(pod_id, true);
+        }
+        let _ = self.db.set_param("timestamp", timestamp);
         self.notif_to_ui(
             format!("Gpodder sync finished with {} updates", number_updates).to_string(),
             false,

@@ -178,7 +178,6 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
     }
 }
 
-
 // this should be improved to use default dirs-next crate
 fn setup_logs() -> Result<()> {
     let log_path = match env::var("XDG_STATE_HOME") {

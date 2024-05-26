@@ -198,3 +198,13 @@ pub fn clean_html(text: &str) -> String {
 
     no_line_breaks.to_string()
 }
+
+// Probably should be done better, without downloading the page
+pub fn resolve_redirection(url: &str) -> Option<String> {
+    let agent = Agent::new();
+
+    let response = agent.get(url).call().ok()?;
+
+    let final_url = response.get_url().to_string();
+    Some(final_url)
+}
