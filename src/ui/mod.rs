@@ -162,7 +162,7 @@ impl Ui {
         let colors = Rc::new(config.clone().colors.clone());
 
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
-        let (pod_col, queue_col, det_col) = Self::calculate_sizes(n_col);
+        let (pod_col, det_col, queue_col ) = Self::calculate_sizes(n_col);
 
         let first_pod = match items.borrow_filtered_order().first() {
             Some(first_id) => match items.borrow_map().get(first_id) {
@@ -198,7 +198,7 @@ impl Ui {
         let details_panel = if n_col > crate::config::DETAILS_PANEL_LENGTH {
             Some(DetailsPanel::new(
                 "Details".to_string(),
-                2,
+                1,
                 colors.clone(),
                 n_row - 2,
                 det_col,
@@ -211,11 +211,11 @@ impl Ui {
 
         let queue_panel = Panel::new(
             "Queue".to_string(),
-            1,
+            2,
             colors.clone(),
             n_row - 2,
             queue_col,
-            pod_col + queue_col - 2,
+            pod_col + det_col - 2,
             (0, 0, 0, 0),
         );
         // This should load from the database
@@ -348,9 +348,8 @@ impl Ui {
                                     self.episode_menu.visible = true;
                                     self.podcast_menu.visible = false;
                                     self.podcast_menu.deactivate();
-                                    self.episode_menu.activate();
                                     self.episode_menu.redraw();
-                                    self.episode_menu.highlight_selected();
+                                    self.episode_menu.activate();
                                     self.update_details_panel();
                                 }
                                 ActivePanel::QueueMenu => {
@@ -439,6 +438,7 @@ impl Ui {
                                     if let Some(ep_id) = curr_sel_id {
                                         self.queue_menu.items.remove(ep_id);
                                         self.queue_menu.redraw();
+                                        self.queue_menu.activate();
                                         self.update_details_panel();
                                     }
                                 }
@@ -545,9 +545,9 @@ impl Ui {
                     self.active_panel = ActivePanel::PodcastMenu;
                     self.episode_menu.visible = false;
                     self.podcast_menu.visible = true;
-                    self.podcast_menu.activate();
                     self.episode_menu.deactivate(true);
                     self.podcast_menu.redraw();
+                    self.podcast_menu.activate();
                     self.update_details_panel();
                 }
                 ActivePanel::QueueMenu => {
@@ -867,14 +867,18 @@ impl Ui {
     /// Forces the menus to check the list of podcasts/episodes again and
     /// update.
     pub fn update_menus(&mut self) {
-        self.podcast_menu.redraw();
 
         self.episode_menu.items = if !self.podcast_menu.items.is_empty() {
             self.podcast_menu.get_episodes()
         } else {
             LockVec::new(Vec::new())
         };
-        self.episode_menu.redraw();
+        if self.podcast_menu.visible {
+            self.podcast_menu.redraw();
+        }
+        if self.episode_menu.visible {
+            self.episode_menu.redraw();
+        }
         self.queue_menu.redraw();
         self.highlight_items();
     }
@@ -886,8 +890,10 @@ impl Ui {
                 self.podcast_menu.highlight_selected();
             }
             ActivePanel::EpisodeMenu => {
-                self.podcast_menu.highlight_selected();
                 self.episode_menu.highlight_selected();
+            }
+            ActivePanel::QueueMenu => {
+                self.queue_menu.highlight_selected();
             }
             _ => (),
         }

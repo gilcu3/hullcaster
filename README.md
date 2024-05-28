@@ -36,6 +36,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add periodic synchronization
 - [ ] Fix vertical screens
 - [ ] Clear details panel when nothing is selected
+- [ ] Make queue persistent
 
 ## Installing hullcaster
 

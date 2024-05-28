@@ -944,8 +944,9 @@ impl MainController {
             .expect("Thread messaging error");
     }
 
-    /// Updates the user-selected filters to show only played/unplayed
-    /// or downloaded/not downloaded episodes.
+    // Updates the user-selected filters to show only played/unplayed
+    // or downloaded/not downloaded episodes.
+    // TODO: this needs to be optimized, I think it is provoking screen issues
     pub fn update_filters(&self, filters: Filters, update_menus: bool, in_loop: bool) {
         {
             let current_time = current_time_ms();
@@ -975,9 +976,7 @@ impl MainController {
                         None
                     }
                 });
-                if !new_filter.is_empty() {
-                    new_filtered_pods.push(pod.id);
-                }
+                new_filtered_pods.push(pod.id);
                 let mut filtered_order = pod.episodes.borrow_filtered_order();
                 *filtered_order = new_filter;
             }
