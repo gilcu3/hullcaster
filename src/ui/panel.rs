@@ -115,8 +115,17 @@ impl Panel {
             border_top.push(HORIZONTAL);
             border_bottom.push(HORIZONTAL);
         }
-        border_top.push(TOP_RIGHT);
-        border_bottom.push(BOTTOM_RIGHT);
+        match self.screen_pos {
+            2 => {
+                border_top.push(TOP_RIGHT);
+                border_bottom.push(BOTTOM_RIGHT);
+            }
+            _ => {
+                border_top.push(TOP_TEE);
+                border_bottom.push(BOTTOM_TEE);
+            }
+        }
+        
 
         queue!(
             io::stdout(),
