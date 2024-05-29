@@ -125,7 +125,6 @@ impl Panel {
                 border_bottom.push(BOTTOM_TEE);
             }
         }
-        
 
         queue!(
             io::stdout(),

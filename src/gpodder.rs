@@ -165,7 +165,6 @@ impl GpodderController {
     }
 
     pub fn init(&self) {
-        self.require_login();
         let res = self.get_devices();
         let mut exists = false;
         for dev in res.unwrap() {
@@ -294,6 +293,7 @@ impl GpodderController {
         if !self.logged_in.get() {
             if self.login() {
                 self.logged_in.set(true);
+                self.init();
                 true
             } else {
                 false
@@ -542,9 +542,7 @@ mod tests {
         let mut db_path = config_path;
         db_path.pop();
         let sync_agent = if config.enable_sync {
-            let _g = GpodderController::new(config.clone(), Some(0), "msigil".to_string());
-            _g.as_ref().unwrap().init();
-            _g
+            GpodderController::new(config.clone(), Some(0), "msigil".to_string())
         } else {
             None
         };

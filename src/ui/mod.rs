@@ -162,7 +162,7 @@ impl Ui {
         let colors = Rc::new(config.clone().colors.clone());
 
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
-        let (pod_col, det_col, queue_col ) = Self::calculate_sizes(n_col);
+        let (pod_col, det_col, queue_col) = Self::calculate_sizes(n_col);
 
         let first_pod = match items.borrow_filtered_order().first() {
             Some(first_id) => match items.borrow_map().get(first_id) {
@@ -867,7 +867,6 @@ impl Ui {
     /// Forces the menus to check the list of podcasts/episodes again and
     /// update.
     pub fn update_menus(&mut self) {
-
         self.episode_menu.items = if !self.podcast_menu.items.is_empty() {
             self.podcast_menu.get_episodes()
         } else {

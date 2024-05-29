@@ -83,9 +83,7 @@ impl MainController {
                 db_inst.set_param("device_id", &res)?;
                 res
             });
-            let _g = GpodderController::new(config.clone(), timestamp, device_id);
-            _g.as_ref().unwrap().init();
-            _g
+            GpodderController::new(config.clone(), timestamp, device_id)
         } else {
             None
         };
