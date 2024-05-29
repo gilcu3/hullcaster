@@ -69,6 +69,13 @@ impl DetailsPanel {
         self.write_details();
     }
 
+    pub fn clear_details(&mut self) {
+        self.top_row = 0;
+        self.details = None;
+        self.content.clear();
+        self.redraw();
+    }
+
     /// Updates window size.
     pub fn resize(&mut self, n_row: u16, n_col: u16, start_x: u16) {
         self.panel.resize(n_row, n_col, start_x);

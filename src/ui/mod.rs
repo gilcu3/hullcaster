@@ -877,6 +877,7 @@ impl Ui {
         }
         if self.episode_menu.visible {
             self.episode_menu.redraw();
+            self.update_details_panel();
         }
         self.queue_menu.redraw();
         self.highlight_items();
@@ -963,6 +964,8 @@ impl Ui {
                                 };
                                 det.change_details(details);
                             };
+                        } else {
+                            det.clear_details();
                         }
                     }
                     ActivePanel::QueueMenu => {
@@ -982,10 +985,14 @@ impl Ui {
                                 };
                                 det.change_details(details);
                             };
+                        } else {
+                            det.clear_details();
                         }
                     }
                     ActivePanel::DetailsPanel => {}
                 }
+            } else {
+                det.clear_details();
             }
         }
         Some(())
