@@ -300,9 +300,6 @@ impl Ui {
                         // closing the popup window
                         if !self.popup_win.is_popup_active() {
                             self.update_menus();
-                            if self.details_panel.is_some() {
-                                self.update_details_panel();
-                            }
                             io::stdout().flush().unwrap();
                         }
                         return popup_msg;
@@ -867,19 +864,14 @@ impl Ui {
     /// Forces the menus to check the list of podcasts/episodes again and
     /// update.
     pub fn update_menus(&mut self) {
-        self.episode_menu.items = if !self.podcast_menu.items.is_empty() {
-            self.podcast_menu.get_episodes()
-        } else {
-            LockVec::new(Vec::new())
-        };
         if self.podcast_menu.visible {
             self.podcast_menu.redraw();
         }
         if self.episode_menu.visible {
             self.episode_menu.redraw();
-            self.update_details_panel();
         }
         self.queue_menu.redraw();
+        self.update_details_panel();
         self.highlight_items();
     }
 

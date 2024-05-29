@@ -953,8 +953,7 @@ impl MainController {
             }
             self.last_filter_time_ms.set(current_time);
 
-            let (pod_map, pod_order, mut pod_filtered_order) = self.podcasts.borrow();
-            let mut new_filtered_pods = Vec::new();
+            let (pod_map, pod_order, _unused) = self.podcasts.borrow();
             for pod_id in pod_order.iter() {
                 let pod = pod_map.get(pod_id).unwrap();
                 let new_filter = pod.episodes.filter_map(|ep| {
@@ -974,11 +973,9 @@ impl MainController {
                         None
                     }
                 });
-                new_filtered_pods.push(pod.id);
                 let mut filtered_order = pod.episodes.borrow_filtered_order();
                 *filtered_order = new_filter;
             }
-            *pod_filtered_order = new_filtered_pods;
         }
         if update_menus {
             self.tx_to_ui
