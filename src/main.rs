@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 use log::info;
 
 mod config;
@@ -73,7 +73,8 @@ fn main() -> Result<()> {
             .long("config")
             .env("HULLCASTER_CONFIG")
             .global(true)
-            .takes_value(true)
+            //.takes_value(true)
+            .action(ArgAction::Set)
             .value_name("FILE")
             .help("Sets a custom config file location. Can also be set with environment variable."))
         .subcommand(Command::new("sync")
@@ -87,13 +88,13 @@ fn main() -> Result<()> {
             .arg(Arg::new("file")
                 .short('f')
                 .long("file")
-                .takes_value(true)
+                //.takes_value(true)
                 .value_name("FILE")
                 .help("Specifies the filepath to the OPML file to be imported. If this flag is not set, the command will read from stdin."))
             .arg(Arg::new("replace")
                 .short('r')
                 .long("replace")
-                .takes_value(false)
+                //.takes_value(false)
                 .help("If set, the contents of the OPML file will replace all existing data in the hullcaster database."))
             .arg(Arg::new("quiet")
                 .short('q')
@@ -104,7 +105,7 @@ fn main() -> Result<()> {
             .arg(Arg::new("file")
                 .short('f')
                 .long("file")
-                .takes_value(true)
+                //.takes_value(true)
                 .value_name("FILE")
                 .help("Specifies the filepath for where the OPML file will be exported. If this flag is not set, the command will print to stdout.")))
         .get_matches();
@@ -112,7 +113,7 @@ fn main() -> Result<()> {
     // figure out where config file is located -- either specified from
     // command line args, set via $HULLCASTER_CONFIG, or using default
     // config location for OS
-    let config_path = get_config_path(args.value_of("config"))
+    let config_path = get_config_path(args.get_one::<String>("config").map(String::as_str))
         .unwrap_or_else(|| {
             eprintln!("Could not identify your operating system's default directory to store configuration files. Please specify paths manually using config.toml and use `-c` or `--config` flag to specify where config.toml is located when launching the program.");
             process::exit(1);
@@ -218,9 +219,8 @@ fn setup_logs() -> Result<()> {
 fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     let db_inst = Database::connect(db_path)?;
     let podcast_list = db_inst.get_podcasts()?;
-
     if podcast_list.is_empty() {
-        if !args.is_present("quiet") {
+        if !args.contains_id("quiet") {
             println!("No podcasts to sync.");
         }
         return Ok(());
@@ -243,7 +243,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
                 let db_result = db_inst.update_podcast(pod_id, pod);
                 match db_result {
                     Ok(_) => {
-                        if !args.is_present("quiet") {
+                        if !args.contains_id("quiet") {
                             println!("Synced {title}");
                         }
                     }
@@ -272,7 +272,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
 
     if failure {
         return Err(anyhow!("Process finished with errors."));
-    } else if !args.is_present("quiet") {
+    } else if !args.contains_id("quiet") {
         println!("Sync successful.");
     }
     Ok(())
@@ -283,7 +283,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
 /// existing data in the database.
 fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     // read from file or from stdin
-    let xml = match args.value_of("file") {
+    let xml = match args.get_one::<String>("file").map(String::as_str) {
         Some(filepath) => {
             let mut f = File::open(filepath)
                 .with_context(|| format!("Could not open OPML file: {filepath}"))?;
@@ -306,7 +306,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
     })?;
 
     if podcast_list.is_empty() {
-        if !args.is_present("quiet") {
+        if !args.contains_id("quiet") {
             println!("No podcasts to import.");
         }
         return Ok(());
@@ -315,7 +315,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
     let db_inst = Database::connect(db_path)?;
 
     // delete database if we are replacing the data
-    if args.is_present("replace") {
+    if args.contains_id("replace") {
         db_inst
             .clear_db()
             .with_context(|| "Error clearing database")?;
@@ -336,7 +336,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
     // check again, now that we may have removed feeds after looking at
     // the database
     if podcast_list.is_empty() {
-        if !args.is_present("quiet") {
+        if !args.contains_id("quiet") {
             println!("No podcasts to import.");
         }
         return Ok(());
@@ -365,7 +365,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
                 let db_result = db_inst.insert_podcast(pod);
                 match db_result {
                     Ok(_) => {
-                        if !args.is_present("quiet") {
+                        if !args.contains_id("quiet") {
                             println!("Added {title}");
                         }
                     }
@@ -395,7 +395,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
 
     if failure {
         return Err(anyhow!("Process finished with errors."));
-    } else if !args.is_present("quiet") {
+    } else if !args.contains_id("quiet") {
         println!("Import successful.");
     }
     Ok(())
@@ -413,7 +413,7 @@ fn export(db_path: &Path, args: &clap::ArgMatches) -> Result<()> {
         .map_err(|err| anyhow!(err))
         .with_context(|| "Could not create OPML format")?;
 
-    match args.value_of("file") {
+    match args.get_one::<String>("file").map(String::as_str) {
         // export to file
         Some(file) => {
             let mut dst = File::create(file)

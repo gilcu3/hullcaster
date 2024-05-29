@@ -14,30 +14,30 @@ documentation = "https://github.com/gilcu3/hullcaster"
 readme = "README.md"
 
 [dependencies]
-crossterm = "0.23.0"
-rss = "2.0.0"
-rusqlite = "0.26.3"
-ureq = { version = "2.4.0", features = ["cookies", "native-certs"] }
-native-tls = { version = "0.2.8", optional = true }
-clap = { version = "3.1.2", features = ["cargo", "env"] }
-toml = "0.5.8"
-anyhow = "1.0.55"
-serde = { version = "1.0.136", features = ["derive"] }
-chrono = "0.4.19"
-regex = "1.5.4"
-sanitize-filename = "0.3.0"
-shellexpand = "2.1.0"
+crossterm = "0.27.0"
+rss = "2.0.8"
+rusqlite = "0.31.0"
+ureq = { version = "2.9.7", features = ["cookies", "native-certs"] }
+native-tls = { version = "0.2.12", optional = true }
+clap = { version = "4.5.4", features = ["cargo", "env"] }
+toml = "0.8.13"
+anyhow = "1.0.86"
+serde = { version = "1.0.203", features = ["derive"] }
+chrono = "0.4.38"
+regex = "1.10.4"
+sanitize-filename = "0.5.0"
+shellexpand = "3.1.0"
 dirs = { package = "dirs-next", version = "2.0.0" }
-opml = "1.1.3"
-ahash = "0.7.6"
+opml = "1.1.6"
+ahash = "0.8.11"
 nohash-hasher = "0.2.0"
-unicode-segmentation = "1.8.0"
-textwrap = "0.14.2"
+unicode-segmentation = "1.11.0"
+textwrap = "0.16.1"
 escaper = "0.1.1"
 rfc822_sanitizer = "0.3.6"
-semver = "1.0.6"
-base64 = "0.21.7"
-serde_json = {version = "1.0.116"}
+semver = "1.0.23"
+base64 = "0.22.1"
+serde_json = {version = "1.0.117"}
 log = "0.4.21"
 simplelog = {version = "0.12.2", features = ["local-offset"]}
 symphonia = { version = "0.5.4", features = ["mp3"] }
