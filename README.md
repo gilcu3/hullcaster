@@ -16,26 +16,30 @@ features stated below, while learning `rust` at the same time.
 ### Planned changes
 
 - [x] Option to avoid marking as read when playing
-- [x] Syncing with gpodder episode actions api (rudimentary, tested with
-  [opodsync](https://github.com/kd2org/opodsync))
+- [ ] Syncing with the gpodder API
 - [ ] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
+- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~
+  [Cursive](https://github.com/gyscos/cursive)
+- [x] Add option to sync automatically on start, enabled by default
+- [ ] Add periodic synchronization
+
+### TODO
+
+- [x] Syncing with gpodder episode actions API (rudimentary, tested with
+  [opodsync](https://github.com/kd2org/opodsync))
 - [x] Fix performance of mark-all as read
 - [x] Fix bug deleting file
 - [x] Show the podcast description only when a podcast is selected
 - [x] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
-- [x] Support downloading subscriptions with gpodder
-- [ ] Support uploading subscriptions with gpodder
-- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~
-  [Cursive](https://github.com/gyscos/cursive)
-- [x] Add option to sync automatically on start, would be enabled by default
+- [x] Support downloading subscriptions from gpodder
+- [ ] Support uploading subscriptions to gpodder
 - [x] If gpodder is on, update actions right after syncing podcasts
 - [x] Prevent screen flickering while syncing podcasts
 - [x] Prevent screen flickering at the end of lists
-- [ ] Add periodic synchronization
 - [ ] Fix vertical screens
-- [ ] Clear details panel when nothing is selected
+- [x] Clear details panel when nothing is selected
 - [ ] Make queue persistent
 
 ## Installing hullcaster
