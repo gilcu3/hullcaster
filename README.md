@@ -20,8 +20,8 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
-- [ ] Migrate to ~~[ratatui](https://ratatui.rs/)~~
-  [Cursive](https://github.com/gyscos/cursive)
+- [ ] Migrate to [ratatui](https://ratatui.rs/) or 
+[Cursive](https://github.com/gyscos/cursive)
 - [x] Add option to sync automatically on start, enabled by default
 - [ ] Add periodic synchronization
 
@@ -41,6 +41,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Fix vertical screens
 - [x] Clear details panel when nothing is selected
 - [ ] Make queue persistent
+- [x] Fix crash when playing from queue
 
 ## Installing hullcaster
 

@@ -740,26 +740,34 @@ impl Ui {
             ActivePanel::EpisodeMenu => {
                 let current_ep_index =
                     (self.episode_menu.selected + self.episode_menu.top_row) as usize;
-                (
-                    pod_id,
-                    self.episode_menu
-                        .items
-                        .borrow_filtered_order()
-                        .get(current_ep_index)
-                        .copied(),
-                )
+                let ep_id = self
+                    .episode_menu
+                    .items
+                    .borrow_filtered_order()
+                    .get(current_ep_index)
+                    .copied();
+                if ep_id.is_none() {
+                    (None, None)
+                } else {
+                    let ep = self.episode_menu.items.get(ep_id.unwrap());
+                    (ep.as_ref().map(|e| e.pod_id), ep.as_ref().map(|e| e.id))
+                }
             }
             ActivePanel::QueueMenu => {
                 let current_ep_index =
                     (self.queue_menu.selected + self.queue_menu.top_row) as usize;
-                (
-                    pod_id,
-                    self.queue_menu
-                        .items
-                        .borrow_filtered_order()
-                        .get(current_ep_index)
-                        .copied(),
-                )
+                let ep_id = self
+                    .queue_menu
+                    .items
+                    .borrow_filtered_order()
+                    .get(current_ep_index)
+                    .copied();
+                if ep_id.is_none() {
+                    (None, None)
+                } else {
+                    let ep = self.queue_menu.items.get(ep_id.unwrap());
+                    (ep.as_ref().map(|e| e.pod_id), ep.as_ref().map(|e| e.id))
+                }
             }
             ActivePanel::DetailsPanel => (pod_id, pod_id),
         }
