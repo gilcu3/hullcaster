@@ -38,6 +38,7 @@ pub struct MainController {
     threadpool: Threadpool,
     sync_agent: Option<GpodderController>,
     podcasts: LockVec<Podcast>,
+    queue: LockVec<Episode>,
     filters: Filters,
     sync_counter: usize,
     sync_tracker: Vec<SyncResult>,
@@ -88,11 +89,15 @@ impl MainController {
             None
         };
 
+        // TODO: queue_items should be taken from the database
+        let queue_items = LockVec::new(Vec::new());
+
         // set up UI in new thread
         let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
         let ui_thread = Ui::spawn(
             config.clone(),
             podcast_list.clone(),
+            queue_items.clone(),
             rx_from_main,
             tx_ui_to_main,
         );
@@ -103,6 +108,7 @@ impl MainController {
             threadpool,
             sync_agent,
             podcasts: podcast_list,
+            queue: queue_items,
             filters: Filters::default(),
             ui_thread,
             sync_counter: 0,
@@ -638,6 +644,14 @@ impl MainController {
             self.db.set_played_status(ep_id, played).ok()?;
             (episode.duration, episode.url.clone(), podcast.url.clone())
         };
+        {
+            let mut queue_map = self.queue.borrow_map();
+            let episode = queue_map.get_mut(&ep_id)?;
+            if episode.played != played {
+                changed = true;
+                episode.played = played;
+            }
+        }
         if changed {
             self.update_filters(self.filters, true, false);
         }

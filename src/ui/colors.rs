@@ -28,7 +28,7 @@ impl AppColors {
     pub fn default() -> Self {
         Self {
             normal: (Color::Grey, Color::Black),
-            bold: (Color::White, Color::Black),
+            bold: (Color::White, Color::DarkBlue),
             highlighted_active: (Color::Black, Color::DarkYellow),
             highlighted: (Color::Black, Color::Grey),
             error: (Color::Red, Color::Black),

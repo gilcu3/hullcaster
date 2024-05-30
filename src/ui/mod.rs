@@ -101,11 +101,11 @@ impl Ui {
     /// Spawns a UI object in a new thread, with message channels to send
     /// and receive messages
     pub fn spawn(
-        config: Arc<Config>, items: LockVec<Podcast>, rx_from_main: mpsc::Receiver<MainMessage>,
-        tx_to_main: mpsc::Sender<Message>,
+        config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
+        rx_from_main: mpsc::Receiver<MainMessage>, tx_to_main: mpsc::Sender<Message>,
     ) -> thread::JoinHandle<()> {
         return thread::spawn(move || {
-            let mut ui = Ui::new(config, items);
+            let mut ui = Ui::new(config, items, queue_items);
             ui.init();
             let mut message_iter = rx_from_main.try_iter();
             // this is the main event loop: on each loop, we update
@@ -149,7 +149,7 @@ impl Ui {
     /// Initializes the UI with a list of podcasts and podcast episodes,
     /// creates the menus and panels, and returns a UI object for future
     /// manipulation.
-    pub fn new(config: Arc<Config>, items: LockVec<Podcast>) -> Ui {
+    pub fn new(config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>) -> Ui {
         terminal::enable_raw_mode().expect("Terminal can't run in raw mode.");
         execute!(
             io::stdout(),
@@ -219,7 +219,7 @@ impl Ui {
             (0, 0, 0, 0),
         );
         // This should load from the database
-        let queue_items: LockVec<Episode> = LockVec::new(Vec::new());
+        //let queue_items: LockVec<Episode> = LockVec::new(Vec::new());
         let queue_menu = Menu::new(queue_panel, None, queue_items);
 
         let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_row, n_col);

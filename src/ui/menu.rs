@@ -88,7 +88,13 @@ impl<T: Clone + Menuable> Menu<T> {
                     let elem = map.get(elem_id).expect("Could not retrieve menu item.");
 
                     if i == self.selected || !elem.is_played() {
-                        let style = if !elem.is_played() {
+                        let style = if !elem.is_played() && i == self.selected {
+                            style::ContentStyle::new()
+                                .with(self.panel.colors.bold.0)
+                                .on(self.panel.colors.bold.1)
+                                .underline(self.panel.colors.bold.1)
+                                .attribute(style::Attribute::Underlined)
+                        } else if !elem.is_played() {
                             style::ContentStyle::new()
                                 .with(self.panel.colors.bold.0)
                                 .on(self.panel.colors.bold.1)
@@ -219,7 +225,7 @@ impl<T: Clone + Menuable> Menu<T> {
             style = if is_played {
                 style.attribute(style::Attribute::NormalIntensity)
             } else {
-                style.attribute(style::Attribute::Bold)
+                style.attribute(style::Attribute::Underlined)
             };
             self.panel.write_line(item_y, title, Some(style));
         }
