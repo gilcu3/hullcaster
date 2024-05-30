@@ -20,7 +20,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
-- [ ] Migrate to [ratatui](https://ratatui.rs/) or 
+- [ ] Migrate to [ratatui](https://ratatui.rs/) or
 [Cursive](https://github.com/gyscos/cursive)
 - [x] Add option to sync automatically on start, enabled by default
 - [ ] Add periodic synchronization

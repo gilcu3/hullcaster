@@ -89,7 +89,6 @@ impl MainController {
             None
         };
 
-
         let stored_queue = db_inst.get_queue()?;
         let queue_items = LockVec::new({
             let all_eps_map = podcast_list.get_episodes_map().unwrap();
@@ -646,7 +645,6 @@ impl MainController {
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
         let mut changed = false;
         let (mut duration, ep_url, pod_url) = {
-            //self.mark_played_db(pod_id, ep_id, played);
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?;
             let mut episode_map = podcast.episodes.borrow_map();

@@ -192,7 +192,6 @@ impl PopupWin {
             (Some(UserAction::Delete), "Delete file:"),
             (Some(UserAction::DeleteAll), "Delete all files:"),
             (Some(UserAction::Remove), "Remove from list:"),
-            (Some(UserAction::RemoveAll), "Remove all from list:"),
             (Some(UserAction::Enqueue), "Enqueue:"),
             (Some(UserAction::Help), "Help:"),
             (Some(UserAction::Quit), "Quit:"),

@@ -383,35 +383,38 @@ impl Ui {
                                     }
                                 }
                             }
-                            Some(UserAction::MarkPlayed) => {
-                                match self.active_panel {
-                                    ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
-                                        if let Some(ui_msg) =
-                                            self.mark_played(curr_pod_id, curr_sel_id)
-                                        {
-                                            return ui_msg;
-                                        }
+                            Some(UserAction::MarkPlayed) => match self.active_panel {
+                                ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
+                                    if let Some(ui_msg) = self.mark_played(curr_pod_id, curr_sel_id)
+                                    {
+                                        return ui_msg;
                                     }
-                                    _ => {}
                                 }
-                                if let ActivePanel::EpisodeMenu = self.active_panel {}
-                            }
+                                _ => {}
+                            },
                             Some(UserAction::MarkAllPlayed) => {
-                                if let Some(ui_msg) = self.mark_all_played(curr_pod_id) {
-                                    return ui_msg;
+                                if let ActivePanel::PodcastMenu = self.active_panel {
+                                    if let Some(ui_msg) = self.mark_all_played(curr_pod_id) {
+                                        return ui_msg;
+                                    }
                                 }
                             }
 
-                            Some(UserAction::Download) => {
-                                if let Some(pod_id) = curr_pod_id {
-                                    if let Some(ep_id) = curr_sel_id {
-                                        return UiMsg::Download(pod_id, ep_id);
+                            Some(UserAction::Download) => match self.active_panel {
+                                ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
+                                    if let Some(pod_id) = curr_pod_id {
+                                        if let Some(ep_id) = curr_sel_id {
+                                            return UiMsg::Download(pod_id, ep_id);
+                                        }
                                     }
                                 }
-                            }
+                                _ => {}
+                            },
                             Some(UserAction::DownloadAll) => {
-                                if let Some(pod_id) = curr_pod_id {
-                                    return UiMsg::DownloadAll(pod_id);
+                                if let ActivePanel::PodcastMenu = self.active_panel {
+                                    if let Some(pod_id) = curr_pod_id {
+                                        return UiMsg::DownloadAll(pod_id);
+                                    }
                                 }
                             }
 
@@ -425,8 +428,10 @@ impl Ui {
                                 }
                             }
                             Some(UserAction::DeleteAll) => {
-                                if let Some(pod_id) = curr_pod_id {
-                                    return UiMsg::DeleteAll(pod_id);
+                                if let ActivePanel::PodcastMenu = self.active_panel {
+                                    if let Some(pod_id) = curr_pod_id {
+                                        return UiMsg::DeleteAll(pod_id);
+                                    }
                                 }
                             }
 
@@ -447,15 +452,6 @@ impl Ui {
                                 ActivePanel::EpisodeMenu => {}
                                 ActivePanel::DetailsPanel => {}
                             },
-                            Some(UserAction::RemoveAll) => {
-                                let ui_msg = match self.active_panel {
-                                    ActivePanel::PodcastMenu => self.remove_podcast(curr_pod_id),
-                                    _ => None,
-                                };
-                                if let Some(ui_msg) = ui_msg {
-                                    return ui_msg;
-                                }
-                            }
 
                             Some(UserAction::FilterPlayed) => {
                                 return UiMsg::FilterChange(FilterType::Played);
@@ -678,12 +674,24 @@ impl Ui {
     ) -> Option<UiMsg> {
         if let Some(pod_id) = curr_pod_id {
             if let Some(ep_id) = curr_ep_id {
-                if let Some(played) = self
-                    .episode_menu
-                    .items
-                    .map_single(ep_id, |ep| ep.is_played())
-                {
-                    return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
+                match self.active_panel {
+                    ActivePanel::EpisodeMenu => {
+                        if let Some(played) = self
+                            .episode_menu
+                            .items
+                            .map_single(ep_id, |ep| ep.is_played())
+                        {
+                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
+                        }
+                    }
+                    ActivePanel::QueueMenu => {
+                        if let Some(played) =
+                            self.queue_menu.items.map_single(ep_id, |ep| ep.is_played())
+                        {
+                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

@@ -34,7 +34,6 @@ pub enum UserAction {
     Delete,
     DeleteAll,
     Remove,
-    RemoveAll,
 
     FilterPlayed,
     FilterDownloaded,
@@ -95,7 +94,6 @@ impl Keybindings {
             (config.delete, UserAction::Delete),
             (config.delete_all, UserAction::DeleteAll),
             (config.remove, UserAction::Remove),
-            (config.remove_all, UserAction::RemoveAll),
             (config.filter_played, UserAction::FilterPlayed),
             (config.filter_downloaded, UserAction::FilterDownloaded),
             (config.enqueue, UserAction::Enqueue),
@@ -180,7 +178,6 @@ impl Keybindings {
             (UserAction::Delete, vec!["x".to_string()]),
             (UserAction::DeleteAll, vec!["X".to_string()]),
             (UserAction::Remove, vec!["r".to_string()]),
-            (UserAction::RemoveAll, vec!["R".to_string()]),
             (UserAction::FilterPlayed, vec!["1".to_string()]),
             (UserAction::FilterDownloaded, vec!["2".to_string()]),
             (UserAction::Enqueue, vec!["e".to_string()]),
