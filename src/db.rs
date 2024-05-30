@@ -157,6 +157,16 @@ impl Database {
         .with_context(|| "Could not create files database table")?;
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS queue (
+                position INTEGER PRIMARY KEY NOT NULL,
+                episode_id INTEGER NOT NULL,
+                FOREIGN KEY(episode_id) REFERENCES episodes(id) ON DELETE CASCADE
+            );",
+            params![],
+        )
+        .with_context(|| "Could not create queue database table")?;
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS params (
                 key TEXT PRIMARY KEY NOT NULL,
                 value TEXT NOT NULL
@@ -526,6 +536,36 @@ impl Database {
         })?;
         let episodes = episode_iter.flatten().collect();
         Ok(episodes)
+    }
+
+    /// Generates list of episodes for a given podcast.
+    pub fn get_queue(&self) -> Result<Vec<i64>> {
+        let conn = self.conn.as_ref().expect("Error connecting to database.");
+        let mut stmt = conn.prepare_cached(
+            "SELECT * FROM queue
+            ORDER BY position ASC;",
+        )?;
+        let episode_iter = stmt.query_map(params![], |row| row.get("episode_id"))?;
+        let episodes = episode_iter.flatten().collect();
+        Ok(episodes)
+    }
+
+    /// Generates list of episodes for a given podcast.
+    pub fn set_queue(&mut self, queue: Vec<i64>) -> Result<()> {
+        let conn = self.conn.as_mut().expect("Error connecting to database.");
+        conn.execute("DELETE FROM queue;", params![])?;
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO queue (episode_id)
+            VALUES (?);",
+            )?;
+            for episode_id in queue {
+                stmt.execute(params![episode_id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Deletes all rows in all tables

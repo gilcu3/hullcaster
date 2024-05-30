@@ -40,7 +40,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Prevent screen flickering at the end of lists
 - [ ] Fix vertical screens
 - [x] Clear details panel when nothing is selected
-- [ ] Make queue persistent
+- [x] Make queue persistent
 - [x] Fix crash when playing from queue
 
 ## Installing hullcaster

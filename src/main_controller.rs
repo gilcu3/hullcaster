@@ -89,8 +89,16 @@ impl MainController {
             None
         };
 
-        // TODO: queue_items should be taken from the database
-        let queue_items = LockVec::new(Vec::new());
+
+        let stored_queue = db_inst.get_queue()?;
+        let queue_items = LockVec::new({
+            let all_eps_map = podcast_list.get_episodes_map().unwrap();
+            let res = stored_queue
+                .iter()
+                .map(|v| all_eps_map.get(v).unwrap().clone())
+                .collect();
+            res
+        });
 
         // set up UI in new thread
         let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
@@ -255,6 +263,12 @@ impl MainController {
                 Message::Ui(UiMsg::Noop) => (),
             }
         }
+    }
+
+    // sync queue back to database, if app crashes queue is not updated
+    pub fn write_queue(&mut self) -> Option<()> {
+        let queue = self.queue.borrow_order().clone();
+        self.db.set_queue(queue).ok()
     }
 
     /// Sends the specified notification to the UI, which will display at

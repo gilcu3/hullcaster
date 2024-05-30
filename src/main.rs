@@ -147,6 +147,8 @@ fn main() -> Result<()> {
 
             main_ctrl.loop_msgs(); // main loop
 
+            main_ctrl.write_queue();
+
             main_ctrl.tx_to_ui.send(MainMessage::UiTearDown).unwrap();
             main_ctrl.ui_thread.join().unwrap(); // wait for UI thread to finish teardown
             Ok(())

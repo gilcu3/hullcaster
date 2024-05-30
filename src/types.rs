@@ -445,6 +445,20 @@ impl<T: Clone + Menuable> Clone for LockVec<T> {
     }
 }
 
+impl LockVec<Podcast> {
+    pub fn get_episodes_map(&self) -> Option<HashMap<i64, Episode>> {
+        let mut all_ep_map = HashMap::new();
+        let pod_map = self.borrow_map();
+        for (_pod_id, pod) in pod_map.iter() {
+            let ep_map = pod.episodes.borrow_map();
+            for (ep_id, ep) in ep_map.iter() {
+                all_ep_map.insert(*ep_id, ep.clone());
+            }
+        }
+        Some(all_ep_map)
+    }
+}
+
 /// Overarching Message enum that allows multiple threads to communicate
 /// back to the main thread with a single enum type.
 #[derive(Debug)]
