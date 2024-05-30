@@ -384,12 +384,17 @@ impl Ui {
                                 }
                             }
                             Some(UserAction::MarkPlayed) => {
-                                if let ActivePanel::EpisodeMenu = self.active_panel {
-                                    if let Some(ui_msg) = self.mark_played(curr_pod_id, curr_sel_id)
-                                    {
-                                        return ui_msg;
+                                match self.active_panel {
+                                    ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
+                                        if let Some(ui_msg) =
+                                            self.mark_played(curr_pod_id, curr_sel_id)
+                                        {
+                                            return ui_msg;
+                                        }
                                     }
+                                    _ => {}
                                 }
+                                if let ActivePanel::EpisodeMenu = self.active_panel {}
                             }
                             Some(UserAction::MarkAllPlayed) => {
                                 if let Some(ui_msg) = self.mark_all_played(curr_pod_id) {
