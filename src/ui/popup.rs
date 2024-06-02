@@ -179,20 +179,21 @@ impl PopupWin {
             (Some(UserAction::GoBot), "Go to bottom:"),
             // (None, ""),
             (Some(UserAction::AddFeed), "Add feed:"),
-            (Some(UserAction::Sync), "Sync:"),
-            (Some(UserAction::SyncAll), "Sync all:"),
-            (Some(UserAction::SyncGpodder), "Sync Gpodder:"),
+            (Some(UserAction::Sync), "Refresh podcast:"),
+            (Some(UserAction::SyncAll), "Refresh all podcasts:"),
+            (Some(UserAction::SyncGpodder), "Sync with gpodder:"),
             // (None, ""),
+            (Some(UserAction::Enter), "Open podcast/Play episode:"),
             (Some(UserAction::Play), "Play:"),
             (Some(UserAction::MarkPlayed), "Mark as played:"),
             (Some(UserAction::MarkAllPlayed), "Mark all as played:"),
             // (None, ""),
+            (Some(UserAction::Enqueue), "Enqueue:"),
+            (Some(UserAction::Remove), "Remove from queue:"),
             (Some(UserAction::Download), "Download:"),
             (Some(UserAction::DownloadAll), "Download all:"),
             (Some(UserAction::Delete), "Delete file:"),
             (Some(UserAction::DeleteAll), "Delete all files:"),
-            (Some(UserAction::Remove), "Remove from list:"),
-            (Some(UserAction::Enqueue), "Enqueue:"),
             (Some(UserAction::Help), "Help:"),
             (Some(UserAction::Quit), "Quit:"),
         ];
@@ -203,9 +204,9 @@ impl PopupWin {
                     let keys = self.keymap.keys_for_action(action);
                     // longest prefix is 21 chars long
                     let key_str = match keys.len() {
-                        0 => format!("{:>21} <missing>", action_str),
-                        1 => format!("{:>21} \"{}\"", action_str, &keys[0]),
-                        _ => format!("{:>21} \"{}\" or \"{}\"", action_str, &keys[0], &keys[1]),
+                        0 => format!("{:>28} <missing>", action_str),
+                        1 => format!("{:>28} \"{}\"", action_str, &keys[0]),
+                        _ => format!("{:>28} \"{}\" or \"{}\"", action_str, &keys[0], &keys[1]),
                     };
                     key_strs.push(key_str);
                 }

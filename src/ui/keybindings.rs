@@ -33,14 +33,11 @@ impl KeybindingsWin {
         let actions = vec![
             (UserAction::Quit, "Quit"),
             (UserAction::Help, "Help"),
-            (UserAction::Play, "Play"),
-            (UserAction::SyncAll, "Sync all"),
-            (UserAction::SyncGpodder, "Sync Gpodder"),
+            (UserAction::Enter, "Open podcast/Play episode"),
+            (UserAction::SyncAll, "Refresh podcasts"),
+            (UserAction::SyncGpodder, "Sync"),
             (UserAction::MarkPlayed, "Mark as played"),
-            (UserAction::MarkAllPlayed, "Mark all as played"),
-            (UserAction::Download, "Download"),
-            (UserAction::Delete, "Delete"),
-            (UserAction::AddFeed, "Add feed"),
+            (UserAction::AddFeed, "Add podcast"),
             (UserAction::Enqueue, "Enqueue"),
             (UserAction::Remove, "Remove"),
         ];
