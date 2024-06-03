@@ -265,6 +265,7 @@ impl<T: Clone + Menuable> Menu<T> {
     /// available for user input to modify state).
     pub fn activate(&mut self) {
         self.active = true;
+        self.panel.active = true;
         self.highlight_selected();
     }
 
@@ -316,6 +317,7 @@ impl Menu<Podcast> {
     /// available for user input to modify state).
     pub fn deactivate(&mut self) {
         self.active = false;
+        self.panel.active = false;
         self.highlight_item(self.selected, false);
     }
 }
@@ -328,6 +330,7 @@ impl Menu<Episode> {
     /// "highlighted_active" style).
     pub fn deactivate(&mut self, keep_highlighted: bool) {
         self.active = false;
+        self.panel.active = false;
         if keep_highlighted {
             self.highlight_item(self.selected, false);
         } else {

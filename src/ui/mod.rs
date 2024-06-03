@@ -250,10 +250,11 @@ impl Ui {
         self.podcast_menu.visible = true;
         self.queue_menu.visible = true;
         self.episode_menu.visible = false;
+        self.podcast_menu.activate();
         self.podcast_menu.redraw();
         //self.episode_menu.redraw();
         self.queue_menu.redraw();
-        self.podcast_menu.activate();
+
         self.active_panel = ActivePanel::PodcastMenu;
 
         self.update_details_panel();
@@ -345,8 +346,9 @@ impl Ui {
                                     self.episode_menu.visible = true;
                                     self.podcast_menu.visible = false;
                                     self.podcast_menu.deactivate();
-                                    self.episode_menu.redraw();
                                     self.episode_menu.activate();
+                                    self.episode_menu.redraw();
+
                                     self.update_details_panel();
                                 }
                                 ActivePanel::QueueMenu => {
@@ -444,8 +446,8 @@ impl Ui {
                                 ActivePanel::QueueMenu => {
                                     if let Some(ep_id) = curr_sel_id {
                                         self.queue_menu.items.remove(ep_id);
-                                        self.queue_menu.redraw();
                                         self.queue_menu.activate();
+                                        self.queue_menu.redraw();
                                         self.update_details_panel();
                                     }
                                 }
@@ -544,20 +546,24 @@ impl Ui {
                     self.episode_menu.visible = false;
                     self.podcast_menu.visible = true;
                     self.episode_menu.deactivate(true);
-                    self.podcast_menu.redraw();
                     self.podcast_menu.activate();
+                    self.podcast_menu.redraw();
                     self.update_details_panel();
                 }
                 ActivePanel::QueueMenu => {
                     self.queue_menu.deactivate(false);
+                    self.queue_menu.redraw();
                     self.active_panel = ActivePanel::DetailsPanel;
+                    self.update_details_panel();
                 }
                 ActivePanel::DetailsPanel => {
                     if self.podcast_menu.visible {
                         self.podcast_menu.activate();
+                        self.podcast_menu.redraw();
                         self.active_panel = ActivePanel::PodcastMenu;
                     } else if self.episode_menu.visible {
                         self.episode_menu.activate();
+                        self.episode_menu.redraw();
                         self.active_panel = ActivePanel::EpisodeMenu;
                     } else {
                         log::error!("No menu is visible on the left");
@@ -570,15 +576,20 @@ impl Ui {
                 ActivePanel::PodcastMenu => {
                     self.active_panel = ActivePanel::DetailsPanel;
                     self.podcast_menu.deactivate();
+                    self.podcast_menu.redraw();
+                    self.update_details_panel();
                 }
                 ActivePanel::EpisodeMenu => {
                     self.active_panel = ActivePanel::DetailsPanel;
                     self.episode_menu.deactivate(true);
+                    self.episode_menu.redraw();
+                    self.update_details_panel();
                 }
                 ActivePanel::QueueMenu => {}
                 ActivePanel::DetailsPanel => {
                     self.active_panel = ActivePanel::QueueMenu;
                     self.queue_menu.activate();
+                    self.queue_menu.redraw();
                     self.update_details_panel();
                 }
             },
@@ -929,13 +940,22 @@ impl Ui {
     /// podcast and episode, and redraws to the screen.
     pub fn update_details_panel(&mut self) -> Option<()> {
         if self.details_panel.is_some() {
+            let details_panel = self.details_panel.as_mut().unwrap();
+            if let ActivePanel::DetailsPanel = self.active_panel {
+                details_panel.panel.active = true;
+            } else {
+                details_panel.panel.active = false;
+            }
             let (curr_pod_id, curr_ep_id) = self.get_current_ids();
             let det = self.details_panel.as_mut().unwrap();
-            if let Some(pod_id) = curr_pod_id {
-                match self.active_panel {
-                    ActivePanel::PodcastMenu => {
+
+            match self.active_panel {
+                ActivePanel::PodcastMenu => {
+                    det.panel.active = false;
+                    if let Some(pod_id) = curr_pod_id {
                         let (description, author, last_checked, title) = {
                             let podcast_map = self.podcast_menu.items.borrow_map();
+
                             let podcast = podcast_map.get(&pod_id)?;
                             (
                                 if podcast.description.is_none() {
@@ -959,53 +979,58 @@ impl Ui {
                             title: Some(title),
                         };
                         det.change_details(details);
+                    } else {
+                        det.clear_details();
                     }
-                    ActivePanel::EpisodeMenu => {
-                        if let Some(ep_id) = curr_ep_id {
-                            // the rest of the details come from the current episode
-                            if let Some(ep) = self.episode_menu.items.get(ep_id) {
-                                let desc = clean_html(&ep.description);
-
-                                let details = Details {
-                                    pubdate: ep.pubdate,
-                                    duration: Some(ep.format_duration()),
-                                    explicit: None,
-                                    description: Some(desc),
-                                    author: None,
-                                    last_checked: None,
-                                    title: Some(ep.title.clone()),
-                                };
-                                det.change_details(details);
-                            };
-                        } else {
-                            det.clear_details();
-                        }
-                    }
-                    ActivePanel::QueueMenu => {
-                        if let Some(ep_id) = curr_ep_id {
-                            // the rest of the details come from the current episode
-                            if let Some(ep) = self.queue_menu.items.get(ep_id) {
-                                let desc = clean_html(&ep.description);
-
-                                let details = Details {
-                                    pubdate: ep.pubdate,
-                                    duration: Some(ep.format_duration()),
-                                    explicit: None,
-                                    description: Some(desc),
-                                    author: None,
-                                    last_checked: None,
-                                    title: Some(ep.title.clone()),
-                                };
-                                det.change_details(details);
-                            };
-                        } else {
-                            det.clear_details();
-                        }
-                    }
-                    ActivePanel::DetailsPanel => {}
                 }
-            } else {
-                det.clear_details();
+                ActivePanel::EpisodeMenu => {
+                    det.panel.active = false;
+                    if let Some(ep_id) = curr_ep_id {
+                        // the rest of the details come from the current episode
+                        if let Some(ep) = self.episode_menu.items.get(ep_id) {
+                            let desc = clean_html(&ep.description);
+
+                            let details = Details {
+                                pubdate: ep.pubdate,
+                                duration: Some(ep.format_duration()),
+                                explicit: None,
+                                description: Some(desc),
+                                author: None,
+                                last_checked: None,
+                                title: Some(ep.title.clone()),
+                            };
+                            det.change_details(details);
+                        };
+                    } else {
+                        det.clear_details();
+                    }
+                }
+                ActivePanel::QueueMenu => {
+                    det.panel.active = false;
+                    if let Some(ep_id) = curr_ep_id {
+                        // the rest of the details come from the current episode
+                        if let Some(ep) = self.queue_menu.items.get(ep_id) {
+                            let desc = clean_html(&ep.description);
+
+                            let details = Details {
+                                pubdate: ep.pubdate,
+                                duration: Some(ep.format_duration()),
+                                explicit: None,
+                                description: Some(desc),
+                                author: None,
+                                last_checked: None,
+                                title: Some(ep.title.clone()),
+                            };
+                            det.change_details(details);
+                        };
+                    } else {
+                        det.clear_details();
+                    }
+                }
+                ActivePanel::DetailsPanel => {
+                    det.panel.active = true;
+                    det.redraw();
+                }
             }
         }
         Some(())

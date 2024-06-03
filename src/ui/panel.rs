@@ -33,6 +33,7 @@ pub struct Panel {
     n_row: u16,
     n_col: u16,
     margins: (u16, u16, u16, u16),
+    pub active: bool,
 }
 
 impl Panel {
@@ -49,6 +50,7 @@ impl Panel {
             n_row,
             n_col,
             margins,
+            active: false,
         }
     }
 
@@ -111,8 +113,20 @@ impl Panel {
         }
         let mut border_top = vec![top_left];
         let mut border_bottom = vec![bot_left];
-        for _ in 0..(self.n_col - 2) {
-            border_top.push(HORIZONTAL);
+        let ctitle = {
+            if self.active {
+                self.title.clone() + "*"
+            } else {
+                self.title.clone()
+            }
+        };
+        for i in 0..(self.n_col - 2) {
+            if i < 1 || i >= (ctitle.len() + 1) as u16 {
+                border_top.push(HORIZONTAL);
+            } else if i == 1 {
+                border_top.push(ctitle.as_str());
+            }
+
             border_bottom.push(HORIZONTAL);
         }
         match self.screen_pos {
@@ -149,14 +163,6 @@ impl Panel {
             )
             .unwrap();
         }
-
-        queue!(
-            io::stdout(),
-            cursor::MoveTo(self.start_x + 2, 0),
-            style::Print(&self.title),
-            style::ResetColor,
-        )
-        .unwrap();
     }
 
     /// Writes a line of text to the window. Note that this does not do

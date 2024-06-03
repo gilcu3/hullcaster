@@ -15,6 +15,7 @@ pub struct Panel {
     pub n_row: u16,
     pub n_col: u16,
     pub margins: (u16, u16, u16, u16),
+    pub active: bool,
 }
 
 impl Panel {
@@ -35,6 +36,7 @@ impl Panel {
             n_row,
             n_col,
             margins,
+            active: false,
         }
     }
 
