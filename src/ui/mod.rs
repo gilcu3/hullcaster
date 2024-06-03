@@ -69,6 +69,11 @@ pub enum Scroll {
     Down(u16),
 }
 
+pub enum Move {
+    Up,
+    Down,
+}
+
 /// Simple enum to identify which menu is currently active.
 #[derive(Debug)]
 enum ActivePanel {
@@ -254,10 +259,11 @@ impl Ui {
         self.podcast_menu.redraw();
         //self.episode_menu.redraw();
         self.queue_menu.redraw();
+        self.highlight_items();
 
         self.active_panel = ActivePanel::PodcastMenu;
 
-        self.update_details_panel();
+        self.update_details_panel(false);
 
         self.notif_win.redraw();
         self.keybindings_win.redraw();
@@ -318,6 +324,12 @@ impl Ui {
                             | Some(a @ UserAction::GoTop)
                             | Some(a @ UserAction::GoBot) => self.move_cursor(&a, curr_sel_id),
 
+                            Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
+                                if let ActivePanel::QueueMenu = self.active_panel {
+                                    self.move_eps(&a, curr_sel_id);
+                                }
+                            }
+
                             Some(UserAction::AddFeed) => {
                                 let url = &self.spawn_input_notif("Feed URL: ");
                                 if !url.is_empty() {
@@ -345,11 +357,11 @@ impl Ui {
                                     self.active_panel = ActivePanel::EpisodeMenu;
                                     self.episode_menu.visible = true;
                                     self.podcast_menu.visible = false;
-                                    self.podcast_menu.deactivate();
+                                    self.podcast_menu.deactivate(false);
                                     self.episode_menu.activate();
                                     self.episode_menu.redraw();
-
-                                    self.update_details_panel();
+                                    self.highlight_items();
+                                    self.update_details_panel(false);
                                 }
                                 ActivePanel::QueueMenu => {
                                     if let Some(pod_id) = curr_pod_id {
@@ -448,7 +460,7 @@ impl Ui {
                                         self.queue_menu.items.remove(ep_id);
                                         self.queue_menu.activate();
                                         self.queue_menu.redraw();
-                                        self.update_details_panel();
+                                        self.update_details_panel(false);
                                     }
                                 }
                                 ActivePanel::EpisodeMenu => {}
@@ -495,7 +507,7 @@ impl Ui {
                 let det = self.details_panel.as_mut().unwrap();
                 det.resize(n_row - 2, det_col, pod_col + queue_col - 2);
                 // resizing the menus may change which item is selected
-                self.update_details_panel();
+                self.update_details_panel(false);
             } else {
                 self.details_panel = None;
                 // if the details panel is currently active, but the
@@ -516,7 +528,7 @@ impl Ui {
                 pod_col + queue_col - 2,
                 (0, 1, 0, 1),
             ));
-            self.update_details_panel();
+            self.update_details_panel(false);
         }
 
         self.popup_win.resize(n_row - 1, n_col);
@@ -545,52 +557,58 @@ impl Ui {
                     self.active_panel = ActivePanel::PodcastMenu;
                     self.episode_menu.visible = false;
                     self.podcast_menu.visible = true;
-                    self.episode_menu.deactivate(true);
+                    self.episode_menu.deactivate(false);
                     self.podcast_menu.activate();
                     self.podcast_menu.redraw();
-                    self.update_details_panel();
+                    self.highlight_items();
+                    self.update_details_panel(false);
                 }
                 ActivePanel::QueueMenu => {
+                    self.update_details_panel(true);
+                    self.active_panel = ActivePanel::DetailsPanel;
                     self.queue_menu.deactivate(false);
                     self.queue_menu.redraw();
-                    self.active_panel = ActivePanel::DetailsPanel;
-                    self.update_details_panel();
+                    self.highlight_items();
                 }
                 ActivePanel::DetailsPanel => {
                     if self.podcast_menu.visible {
+                        self.active_panel = ActivePanel::PodcastMenu;
                         self.podcast_menu.activate();
                         self.podcast_menu.redraw();
-                        self.active_panel = ActivePanel::PodcastMenu;
                     } else if self.episode_menu.visible {
+                        self.active_panel = ActivePanel::EpisodeMenu;
                         self.episode_menu.activate();
                         self.episode_menu.redraw();
-                        self.active_panel = ActivePanel::EpisodeMenu;
                     } else {
                         log::error!("No menu is visible on the left");
                     }
-                    self.update_details_panel();
+                    self.highlight_items();
+                    self.update_details_panel(false);
                 }
             },
 
             UserAction::Right => match self.active_panel {
                 ActivePanel::PodcastMenu => {
+                    self.update_details_panel(true);
                     self.active_panel = ActivePanel::DetailsPanel;
-                    self.podcast_menu.deactivate();
+                    self.podcast_menu.deactivate(false);
                     self.podcast_menu.redraw();
-                    self.update_details_panel();
+                    self.highlight_items();
                 }
                 ActivePanel::EpisodeMenu => {
+                    self.update_details_panel(true);
                     self.active_panel = ActivePanel::DetailsPanel;
-                    self.episode_menu.deactivate(true);
+                    self.episode_menu.deactivate(false);
                     self.episode_menu.redraw();
-                    self.update_details_panel();
+                    self.highlight_items();
                 }
                 ActivePanel::QueueMenu => {}
                 ActivePanel::DetailsPanel => {
                     self.active_panel = ActivePanel::QueueMenu;
                     self.queue_menu.activate();
                     self.queue_menu.redraw();
-                    self.update_details_panel();
+                    self.highlight_items();
+                    self.update_details_panel(false);
                 }
             },
 
@@ -641,6 +659,23 @@ impl Ui {
         }
     }
 
+    pub fn move_eps(&mut self, action: &UserAction, curr_sel_id: Option<i64>) {
+        match action {
+            UserAction::MoveDown => {
+                if let Some(_curr_sel_id) = curr_sel_id {
+                    self.queue_menu.move_item(Move::Down);
+                }
+            }
+
+            UserAction::MoveUp => {
+                if let Some(_curr_sel_id) = curr_sel_id {
+                    self.queue_menu.move_item(Move::Up);
+                }
+            }
+            _ => (),
+        }
+    }
+
     /// Scrolls the current active menu by the specified amount and
     /// refreshes the window.
     pub fn scroll_current_window(&mut self, scroll: Scroll) {
@@ -655,19 +690,19 @@ impl Ui {
 
                 // update episodes menu with new list
                 self.episode_menu.items = self.podcast_menu.get_episodes();
-                self.update_details_panel();
+                self.update_details_panel(false);
             }
             ActivePanel::EpisodeMenu => {
                 if !self.episode_menu.scroll(scroll) {
                     return;
                 }
-                self.update_details_panel();
+                self.update_details_panel(false);
             }
             ActivePanel::QueueMenu => {
                 if !self.queue_menu.scroll(scroll) {
                     return;
                 }
-                self.update_details_panel();
+                self.update_details_panel(false);
             }
             ActivePanel::DetailsPanel => {
                 if let Some(ref mut det) = self.details_panel {
@@ -903,7 +938,8 @@ impl Ui {
             self.episode_menu.redraw();
         }
         self.queue_menu.redraw();
-        self.update_details_panel();
+        let active = self.details_panel.as_ref().unwrap().panel.active;
+        self.update_details_panel(active);
         self.highlight_items();
     }
 
@@ -938,14 +974,10 @@ impl Ui {
 
     /// Updates the details panel with information about the current
     /// podcast and episode, and redraws to the screen.
-    pub fn update_details_panel(&mut self) -> Option<()> {
+    pub fn update_details_panel(&mut self, active: bool) -> Option<()> {
         if self.details_panel.is_some() {
             let details_panel = self.details_panel.as_mut().unwrap();
-            if let ActivePanel::DetailsPanel = self.active_panel {
-                details_panel.panel.active = true;
-            } else {
-                details_panel.panel.active = false;
-            }
+            details_panel.panel.active = active;
             let (curr_pod_id, curr_ep_id) = self.get_current_ids();
             let det = self.details_panel.as_mut().unwrap();
 

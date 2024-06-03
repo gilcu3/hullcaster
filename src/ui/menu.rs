@@ -3,7 +3,7 @@ use std::collections::hash_map::Entry;
 
 use crossterm::style::{self, Stylize};
 
-use super::{Panel, Scroll};
+use super::{Move, Panel, Scroll};
 use crate::types::*;
 
 /// Generic struct holding details about a list menu. These menus are
@@ -199,6 +199,51 @@ impl<T: Clone + Menuable> Menu<T> {
         true
     }
 
+    pub fn move_item(&mut self, dir: Move) -> bool {
+        let list_len = self.items.len(false) as u16;
+        if list_len <= 1 {
+            return false;
+        }
+        let selected = self.get_menu_idx(self.selected);
+        match dir {
+            Move::Up => {
+                if selected == 0 {
+                    return false;
+                } else {
+                    {
+                        let mut order_vec = self.items.borrow_filtered_order();
+                        order_vec.swap(selected, selected - 1);
+                    }
+
+                    if self.selected == 0 {
+                        self.scroll(Scroll::Up(1));
+                    } else {
+                        self.selected -= 1;
+                    }
+                }
+            }
+            Move::Down => {
+                if selected == (list_len - 1) as usize {
+                    return false;
+                } else {
+                    {
+                        let mut order_vec = self.items.borrow_filtered_order();
+                        order_vec.swap(selected, selected + 1);
+                    }
+
+                    if self.selected == self.panel.get_rows() {
+                        self.scroll(Scroll::Down(1));
+                    } else {
+                        self.selected += 1;
+                    }
+                }
+            }
+        }
+        self.redraw();
+        self.highlight_selected();
+        true
+    }
+
     /// Highlights the item in the menu, given a y-value.
     pub fn highlight_item(&mut self, item_y: u16, active: bool) {
         // if list is empty, will return None
@@ -266,7 +311,6 @@ impl<T: Clone + Menuable> Menu<T> {
     pub fn activate(&mut self) {
         self.active = true;
         self.panel.active = true;
-        self.highlight_selected();
     }
 
     /// Updates window size.
@@ -291,6 +335,18 @@ impl<T: Clone + Menuable> Menu<T> {
     pub fn get_menu_idx(&self, screen_y: u16) -> usize {
         (self.top_row + screen_y - self.start_row) as usize
     }
+
+    /// Controls how the window changes when it is inactive (i.e., not
+    /// available for user input to modify state).
+    pub fn deactivate(&mut self, keep_highlighted: bool) {
+        self.active = false;
+        self.panel.active = false;
+        if keep_highlighted {
+            self.highlight_item(self.selected, false);
+        } else {
+            self.unhighlight_item(self.selected);
+        }
+    }
 }
 
 impl Menu<Podcast> {
@@ -310,31 +366,6 @@ impl Menu<Podcast> {
                 .expect("Could not retrieve podcast info.")
                 .episodes
                 .clone()
-        }
-    }
-
-    /// Controls how the window changes when it is inactive (i.e., not
-    /// available for user input to modify state).
-    pub fn deactivate(&mut self) {
-        self.active = false;
-        self.panel.active = false;
-        self.highlight_item(self.selected, false);
-    }
-}
-
-impl Menu<Episode> {
-    /// Controls how the window changes when it is inactive (i.e., not
-    /// available for user input to modify state). If true,
-    /// `keep_highlighted` will switch the currently selected item to
-    /// the "highlighted" cursor style (as opposed to the
-    /// "highlighted_active" style).
-    pub fn deactivate(&mut self, keep_highlighted: bool) {
-        self.active = false;
-        self.panel.active = false;
-        if keep_highlighted {
-            self.highlight_item(self.selected, false);
-        } else {
-            self.unhighlight_item(self.selected);
         }
     }
 }
