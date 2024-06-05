@@ -48,7 +48,6 @@ impl Notification {
 pub struct NotifWin {
     colors: Rc<AppColors>,
     start_y: u16,
-    total_rows: u16,
     total_cols: u16,
     msg_stack: Vec<Notification>,
     persistent_msg: Option<Notification>,
@@ -57,11 +56,10 @@ pub struct NotifWin {
 
 impl NotifWin {
     /// Creates a new NotifWin.
-    pub fn new(colors: Rc<AppColors>, start_y: u16, total_rows: u16, total_cols: u16) -> Self {
+    pub fn new(colors: Rc<AppColors>, start_y: u16, total_cols: u16) -> Self {
         Self {
             colors,
             start_y,
-            total_rows,
             total_cols,
             msg_stack: Vec::new(),
             persistent_msg: None,
@@ -290,8 +288,8 @@ impl NotifWin {
     }
 
     /// Updates window size/location
-    pub fn resize(&mut self, total_rows: u16, total_cols: u16) {
-        self.total_rows = total_rows;
+    pub fn resize(&mut self, start_y: u16, total_cols: u16) {
+        self.start_y = start_y;
         self.total_cols = total_cols;
 
         self.redraw();

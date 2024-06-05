@@ -38,7 +38,7 @@ features stated below, while learning `rust` at the same time.
 - [x] If gpodder is on, update actions right after syncing podcasts
 - [x] Prevent screen flickering while syncing podcasts
 - [x] Prevent screen flickering at the end of lists
-- [ ] Fix vertical screens
+- [x] Fix vertical screens
 - [x] Clear details panel when nothing is selected
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue

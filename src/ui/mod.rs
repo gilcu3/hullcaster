@@ -164,7 +164,7 @@ impl Ui {
         )
         .expect("Can't draw to screen.");
 
-        let colors = Rc::new(config.clone().colors.clone());
+        let colors = Rc::new(config.colors.clone());
 
         let (n_col, n_row) = terminal::size().expect("Can't get terminal size");
         let (pod_col, det_col, queue_col) = Self::calculate_sizes(n_col);
@@ -200,7 +200,7 @@ impl Ui {
 
         let episode_menu = Menu::new(episode_panel, None, first_pod);
 
-        let details_panel = if n_col > crate::config::DETAILS_PANEL_LENGTH {
+        let details_panel = if det_col > 1 {
             Some(DetailsPanel::new(
                 "Details".to_string(),
                 1,
@@ -227,11 +227,11 @@ impl Ui {
         //let queue_items: LockVec<Episode> = LockVec::new(Vec::new());
         let queue_menu = Menu::new(queue_panel, None, queue_items);
 
-        let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_row, n_col);
+        let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_col);
         let popup_win = PopupWin::new(&config.keybindings, colors.clone(), n_row - 1, n_col);
 
         let keybindings_win =
-            KeybindingsWin::new(&config.keybindings, colors.clone(), n_row - 1, n_row, n_col);
+            KeybindingsWin::new(&config.keybindings, colors.clone(), n_row - 1, n_col);
 
         Ui {
             n_row,
@@ -496,17 +496,18 @@ impl Ui {
         self.n_row = n_row;
         self.n_col = n_col;
 
-        let (pod_col, queue_col, det_col) = Self::calculate_sizes(n_col);
+        let (pod_col, det_col, queue_col) = Self::calculate_sizes(n_col);
 
         self.podcast_menu.resize(n_row - 2, pod_col, 0);
         self.episode_menu.resize(n_row - 2, pod_col, 0);
-        self.queue_menu.resize(n_row - 2, queue_col, pod_col - 1);
+        self.queue_menu
+            .resize(n_row - 2, queue_col, pod_col + det_col - 2);
         self.highlight_items();
 
         if self.details_panel.is_some() {
-            if det_col > 0 {
+            if det_col > 1 {
                 let det = self.details_panel.as_mut().unwrap();
-                det.resize(n_row - 2, det_col, pod_col + queue_col - 2);
+                det.resize(n_row - 2, det_col, pod_col - 1);
                 // resizing the menus may change which item is selected
                 self.update_details_panel(false);
             } else {
@@ -517,24 +518,25 @@ impl Ui {
                 if let ActivePanel::DetailsPanel = self.active_panel {
                     self.active_panel = ActivePanel::PodcastMenu;
                     self.podcast_menu.activate();
+                    self.highlight_items();
                 }
             }
-        } else if det_col > 0 {
+        } else if det_col > 1 {
             self.details_panel = Some(DetailsPanel::new(
                 "Details".to_string(),
-                2,
+                1,
                 self.colors.clone(),
                 n_row - 2,
                 det_col,
-                pod_col + queue_col - 2,
+                pod_col - 1,
                 (0, 1, 0, 1),
             ));
             self.update_details_panel(false);
         }
 
         self.popup_win.resize(n_row - 1, n_col);
-        self.notif_win.resize(n_row - 1, n_col);
-        self.keybindings_win.resize(n_row, n_col);
+        self.notif_win.resize(n_row - 2, n_col);
+        self.keybindings_win.resize(n_row - 1, n_col);
     }
 
     /// Move the menu cursor around and redraw menus when necessary.
@@ -565,8 +567,21 @@ impl Ui {
                     self.update_details_panel(false);
                 }
                 ActivePanel::QueueMenu => {
-                    self.update_details_panel(true);
-                    self.active_panel = ActivePanel::DetailsPanel;
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else if self.podcast_menu.visible {
+                        self.active_panel = ActivePanel::PodcastMenu;
+                        self.podcast_menu.activate();
+                        self.podcast_menu.redraw();
+                    } else if self.episode_menu.visible {
+                        self.active_panel = ActivePanel::EpisodeMenu;
+                        self.episode_menu.activate();
+                        self.episode_menu.redraw();
+                    } else {
+                        log::error!("No menu is visible on the left");
+                    }
+
                     self.queue_menu.deactivate(false);
                     self.queue_menu.redraw();
                     self.highlight_items();
@@ -590,8 +605,15 @@ impl Ui {
 
             UserAction::Right => match self.active_panel {
                 ActivePanel::PodcastMenu => {
-                    self.update_details_panel(true);
-                    self.active_panel = ActivePanel::DetailsPanel;
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else {
+                        self.active_panel = ActivePanel::QueueMenu;
+                        self.queue_menu.activate();
+                        self.queue_menu.redraw();
+                    }
+
                     self.podcast_menu.deactivate(false);
                     self.podcast_menu.redraw();
                     self.highlight_items();
@@ -833,24 +855,23 @@ impl Ui {
         }
     }
 
-    /// Calculates the number of columns to allocate for each of the
-    /// main panels: podcast menu, episodes menu, and details panel; if
-    /// the screen is too small to display the details panel, this size
-    /// will be 0
+    /// Calculates the number of columns to allocate for each of the main
+    /// panels: podcast menu, queue, and details panel; if the screen is too
+    /// small to display the details panel, this size will be 0
     pub fn calculate_sizes(n_col: u16) -> (u16, u16, u16) {
         let pod_col;
-        let ep_col;
+        let queue_col;
         let det_col;
         if n_col > crate::config::DETAILS_PANEL_LENGTH {
             pod_col = (n_col + 2) / 3;
-            ep_col = (n_col + 2) / 3;
-            det_col = n_col + 2 - pod_col - ep_col;
+            queue_col = (n_col + 2) / 3;
+            det_col = n_col + 2 - pod_col - queue_col;
         } else {
             pod_col = (n_col + 1) / 2;
-            ep_col = n_col + 1 - pod_col;
-            det_col = 0;
+            queue_col = n_col + 1 - pod_col;
+            det_col = 1;
         }
-        (pod_col, ep_col, det_col)
+        (pod_col, det_col, queue_col)
     }
 
     /// Checks whether the user has downloaded any episodes for the
@@ -939,8 +960,11 @@ impl Ui {
             self.episode_menu.redraw();
         }
         self.queue_menu.redraw();
-        let active = self.details_panel.as_ref().unwrap().panel.active;
-        self.update_details_panel(active);
+        if let Some(details_panel) = self.details_panel.as_ref() {
+            let active = details_panel.panel.active;
+            self.update_details_panel(active);
+        }
+
         self.highlight_items();
     }
 

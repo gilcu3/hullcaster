@@ -57,7 +57,9 @@ impl Panel {
     /// Redraws borders and refreshes the window to display on terminal.
     pub fn redraw(&self) {
         self.clear();
-        self.draw_border();
+        if self.n_col > 1 {
+            self.draw_border();
+        }
     }
 
     /// Clears the whole Panel.

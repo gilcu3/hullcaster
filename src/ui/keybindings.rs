@@ -11,20 +11,18 @@ use super::AppColors;
 pub struct KeybindingsWin {
     keymap: Keybindings,
     colors: Rc<AppColors>,
-    start_y: u16,
-    total_rows: u16,
+    start_row: u16,
     total_cols: u16,
 }
 
 impl KeybindingsWin {
     pub fn new(
-        keymap: &Keybindings, colors: Rc<AppColors>, start_y: u16, total_rows: u16, total_cols: u16,
+        keymap: &Keybindings, colors: Rc<AppColors>, start_row: u16, total_cols: u16,
     ) -> Self {
         Self {
             keymap: keymap.clone(),
             colors,
-            start_y,
-            total_rows,
+            start_row,
             total_cols,
         }
     }
@@ -41,6 +39,7 @@ impl KeybindingsWin {
             (UserAction::Enqueue, "Enqueue"),
             (UserAction::Remove, "Remove"),
         ];
+        let mut cur_length = -3;
         let mut key_strs = Vec::new();
         for (action, action_str) in actions {
             let keys = self.keymap.keys_for_action(action);
@@ -49,18 +48,22 @@ impl KeybindingsWin {
                 0 => format!(":{}", action_str),
                 _ => format!("{}:{}", &keys[0], action_str,),
             };
+            if cur_length + key_str.len() as i16 + 3 > self.total_cols as i16 {
+                break;
+            }
+            cur_length += key_str.len() as i16 + 3;
             key_strs.push(key_str);
         }
-        let message0 = key_strs.join(" | ");
-        let m0len = if self.total_cols as usize >= message0.len() {
-            self.total_cols as usize - message0.len()
+        let message = key_strs.join(" | ");
+        let m0len = if self.total_cols as usize >= message.len() {
+            self.total_cols as usize - message.len()
         } else {
             0
         };
-        let message = message0 + &" ".repeat(m0len);
+        let message = message + &" ".repeat(m0len);
         queue!(
             io::stdout(),
-            cursor::MoveTo(0, self.start_y),
+            cursor::MoveTo(0, self.start_row),
             style::PrintStyledContent(
                 style::style(&message)
                     .with(self.colors.normal.0)
@@ -70,8 +73,8 @@ impl KeybindingsWin {
         .unwrap();
     }
 
-    pub fn resize(&mut self, total_rows: u16, total_cols: u16) {
-        self.total_rows = total_rows;
+    pub fn resize(&mut self, start_row: u16, total_cols: u16) {
+        self.start_row = start_row;
         self.total_cols = total_cols;
 
         self.redraw();
