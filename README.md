@@ -17,7 +17,7 @@ features stated below, while learning `rust` at the same time.
 
 - [x] Option to avoid marking as read when playing
 - [ ] Syncing with the gpodder API
-- [ ] Add playing queue
+- [x] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
 - [ ] Migrate to [ratatui](https://ratatui.rs/) or
@@ -42,6 +42,9 @@ features stated below, while learning `rust` at the same time.
 - [x] Clear details panel when nothing is selected
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue
+- [ ] Create lock file to prevent several instances of hullcaster
+- [ ] Add option to play next from queue automatically
+- [ ] Add history of episode actions
 
 ## Installing hullcaster
 
