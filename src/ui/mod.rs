@@ -452,14 +452,15 @@ impl Ui {
                             Some(UserAction::Remove) => match self.active_panel {
                                 ActivePanel::PodcastMenu => {
                                     if let Some(ui_msg) = self.remove_podcast(curr_pod_id) {
+                                        self.highlight_items();
                                         return ui_msg;
                                     }
                                 }
                                 ActivePanel::QueueMenu => {
                                     if let Some(ep_id) = curr_sel_id {
                                         self.queue_menu.items.remove(ep_id);
-                                        self.queue_menu.activate();
                                         self.queue_menu.redraw();
+                                        self.highlight_items();
                                         self.update_details_panel(false);
                                     }
                                 }
@@ -976,14 +977,12 @@ impl Ui {
     /// podcast and episode, and redraws to the screen.
     pub fn update_details_panel(&mut self, active: bool) -> Option<()> {
         if self.details_panel.is_some() {
-            let details_panel = self.details_panel.as_mut().unwrap();
-            details_panel.panel.active = active;
             let (curr_pod_id, curr_ep_id) = self.get_current_ids();
             let det = self.details_panel.as_mut().unwrap();
+            det.panel.active = active;
 
             match self.active_panel {
                 ActivePanel::PodcastMenu => {
-                    det.panel.active = false;
                     if let Some(pod_id) = curr_pod_id {
                         let (description, author, last_checked, title) = {
                             let podcast_map = self.podcast_menu.items.borrow_map();
@@ -1016,7 +1015,6 @@ impl Ui {
                     }
                 }
                 ActivePanel::EpisodeMenu => {
-                    det.panel.active = false;
                     if let Some(ep_id) = curr_ep_id {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.episode_menu.items.get(ep_id) {
@@ -1038,7 +1036,6 @@ impl Ui {
                     }
                 }
                 ActivePanel::QueueMenu => {
-                    det.panel.active = false;
                     if let Some(ep_id) = curr_ep_id {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.queue_menu.items.get(ep_id) {
