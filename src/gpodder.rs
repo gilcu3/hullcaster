@@ -290,7 +290,7 @@ impl GpodderController {
                 let daction = serde_json::from_value::<EpisodeAction>(action.clone());
                 actions.push(daction.unwrap());
             }
-            self.actions_timestamp.set(timestamp);
+            self.actions_timestamp.set(timestamp + 1);
             Some(actions)
         } else {
             None
@@ -365,7 +365,7 @@ impl GpodderController {
             for sub in &changes.remove {
                 log::info!("podcast removed {}", sub);
             }
-            self.subscriptions_timestamp.set(changes.timestamp);
+            self.subscriptions_timestamp.set(changes.timestamp + 1);
             Some((changes.add, changes.remove))
         } else {
             log::info!("Error parsing subscription changes");
@@ -395,7 +395,7 @@ impl GpodderController {
             for sub in &changes.update_urls {
                 log::info!("url changed {} {}", sub[0], sub[1]);
             }
-            self.subscriptions_timestamp.set(changes.timestamp);
+            self.subscriptions_timestamp.set(changes.timestamp + 1);
             Some(())
         } else {
             log::info!("Error parsing url subscription changes");
