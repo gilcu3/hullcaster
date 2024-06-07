@@ -34,7 +34,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Show the podcast description only when a podcast is selected
 - [x] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
 - [x] Support downloading subscriptions from gpodder
-- [ ] Support uploading subscriptions to gpodder
+- [x] Support uploading subscriptions to gpodder
 - [x] If gpodder is on, update actions right after syncing podcasts
 - [x] Prevent screen flickering while syncing podcasts
 - [x] Prevent screen flickering at the end of lists

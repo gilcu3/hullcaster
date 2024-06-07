@@ -539,7 +539,11 @@ impl MainController {
             failure = format!("Error synchronizing {title}.");
         } else {
             let title = pod.title.clone();
+            let url = pod.url.clone();
             db_result = self.db.insert_podcast(pod);
+            if self.config.enable_sync && self.sync_agent.is_some() {
+                self.sync_agent.as_ref().unwrap().add_podcast(url);
+            }
             failure = format!("Error adding podcast {title} to database.");
         }
         match db_result {
@@ -960,8 +964,12 @@ impl MainController {
             self.delete_files(pod_id);
         }
 
-        let pod_id = self.podcasts.map_single(pod_id, |pod| pod.id).unwrap();
+        let pod = self.podcasts.get(pod_id);
+        let (pod_id, url) = pod.map(|pod| (pod.id, pod.url)).unwrap();
         let res = self.db.remove_podcast(pod_id);
+        if self.config.enable_sync && self.sync_agent.is_some() {
+            self.sync_agent.as_ref().unwrap().remove_podcast(url);
+        }
         if res.is_err() {
             self.notif_to_ui("Could not remove podcast from database".to_string(), true);
             return;

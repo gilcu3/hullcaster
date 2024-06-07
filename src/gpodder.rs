@@ -43,6 +43,14 @@ struct PodcastChanges {
 }
 
 #[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
+struct UploadPodcastChanges {
+    update_urls: Vec<Vec<String>>,
+    timestamp: i64,
+}
+
+#[allow(non_camel_case_types)]
 #[derive(Deserialize, Debug)]
 pub enum Action {
     new,
@@ -363,6 +371,44 @@ impl GpodderController {
             log::info!("Error parsing subscription changes");
             None
         }
+    }
+
+    pub fn upload_subscription_changes(&self, changes: (Vec<String>, Vec<String>)) -> Option<()> {
+        let url_upload_subscriptions = format!(
+            "{}/api/2/subscriptions/{}/{}.json",
+            self.config.sync_server, self.config.sync_username, self.device_id
+        );
+        let json_changes = serde_json::json!({
+            "add": changes.0,
+            "remove": changes.1
+        })
+        .to_string();
+        let json_string = execute_request_post(
+            &self.agent,
+            url_upload_subscriptions,
+            json_changes,
+            &self.encoded_credentials,
+        )?;
+        let parsed: serde_json::Result<UploadPodcastChanges> =
+            serde_json::from_str(json_string.as_str());
+        if let Ok(changes) = parsed {
+            for sub in &changes.update_urls {
+                log::info!("url changed {} {}", sub[0], sub[1]);
+            }
+            self.subscriptions_timestamp.set(changes.timestamp);
+            Some(())
+        } else {
+            log::info!("Error parsing url subscription changes");
+            None
+        }
+    }
+
+    pub fn add_podcast(&self, url: String) -> Option<()> {
+        self.upload_subscription_changes((vec![url], vec![]))
+    }
+
+    pub fn remove_podcast(&self, url: String) -> Option<()> {
+        self.upload_subscription_changes((vec![], vec![url]))
     }
 
     fn get_all_subscriptions(&self) -> Option<Vec<String>> {
