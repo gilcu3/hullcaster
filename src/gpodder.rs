@@ -357,6 +357,7 @@ impl GpodderController {
             for sub in &changes.remove {
                 log::info!("podcast removed {}", sub);
             }
+            self.subscriptions_timestamp.set(changes.timestamp);
             Some((changes.add, changes.remove))
         } else {
             log::info!("Error parsing subscription changes");

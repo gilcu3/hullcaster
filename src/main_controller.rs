@@ -479,7 +479,6 @@ impl MainController {
     fn pos_sync_counter(&mut self) {
         // count up total new episodes and updated
         // episodes when sync process is finished
-        log::info!("here");
         let mut added = 0;
         let mut updated = 0;
         let mut new_eps = Vec::new();
