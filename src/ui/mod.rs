@@ -407,7 +407,7 @@ impl Ui {
                                 _ => {}
                             },
                             Some(UserAction::MarkAllPlayed) => {
-                                if let ActivePanel::PodcastMenu = self.active_panel {
+                                if let ActivePanel::EpisodeMenu = self.active_panel {
                                     if let Some(ui_msg) = self.mark_all_played(curr_pod_id) {
                                         return ui_msg;
                                     }

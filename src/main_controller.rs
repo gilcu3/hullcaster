@@ -145,7 +145,12 @@ impl MainController {
                 Message::Feed(FeedMsg::Error(feed)) => match feed.title {
                     Some(t) => {
                         self.sync_counter -= 1;
-                        self.notif_to_ui(format!("Error retrieving RSS feed for {t}"), true)
+                        self.update_tracker_notif();
+                        if self.sync_counter == 0 {
+                            self.pos_sync_counter();
+                        }
+
+                        self.notif_to_ui(format!("Error retrieving RSS feed for {t}"), true);
                     }
                     None => self
                         .notif_to_ui("Error retrieving RSS feed for (no_title)".to_string(), true),
@@ -471,6 +476,56 @@ impl MainController {
         );
     }
 
+    fn pos_sync_counter(&mut self) {
+        // count up total new episodes and updated
+        // episodes when sync process is finished
+        log::info!("here");
+        let mut added = 0;
+        let mut updated = 0;
+        let mut new_eps = Vec::new();
+        for res in self.sync_tracker.iter() {
+            added += res.added.len();
+            updated += res.updated.len();
+            new_eps.extend(res.added.clone());
+        }
+        if added + updated + new_eps.len() > 0 {
+            self.update_filters(self.filters, true, false);
+        }
+
+        self.sync_tracker = Vec::new();
+        self.notif_to_ui(
+            format!("Sync complete: Added {added}, updated {updated} episodes."),
+            false,
+        );
+
+        // deal with new episodes once syncing is
+        // complete, based on user preferences
+        if !new_eps.is_empty() {
+            match self.config.download_new_episodes {
+                DownloadNewEpisodes::Always => {
+                    for ep in new_eps.into_iter() {
+                        self.download(ep.pod_id, Some(ep.id));
+                    }
+                }
+                DownloadNewEpisodes::AskSelected => {
+                    self.tx_to_ui
+                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, true))
+                        .expect("Thread messaging error");
+                }
+                DownloadNewEpisodes::AskUnselected => {
+                    self.tx_to_ui
+                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, false))
+                        .expect("Thread messaging error");
+                }
+                _ => (),
+            }
+        }
+
+        if self.config.enable_sync {
+            self.gpodder_sync();
+        }
+    }
+
     /// Handles the application logic for adding a new podcast, or
     /// synchronizing data from the RSS feed of an existing podcast.
     /// `pod_id` will be None if a new podcast is being added (i.e.,
@@ -484,8 +539,9 @@ impl MainController {
             db_result = self.db.update_podcast(id, pod);
             failure = format!("Error synchronizing {title}.");
         } else {
+            let title = pod.title.clone();
             db_result = self.db.insert_podcast(pod);
-            failure = "Error adding podcast to database.".to_string();
+            failure = format!("Error adding podcast {title} to database.");
         }
         match db_result {
             Ok(result) => {
@@ -506,52 +562,7 @@ impl MainController {
                     self.update_tracker_notif();
 
                     if self.sync_counter == 0 {
-                        // count up total new episodes and updated
-                        // episodes when sync process is finished
-                        let mut added = 0;
-                        let mut updated = 0;
-                        let mut new_eps = Vec::new();
-                        for res in self.sync_tracker.iter() {
-                            added += res.added.len();
-                            updated += res.updated.len();
-                            new_eps.extend(res.added.clone());
-                        }
-                        if added + updated + new_eps.len() > 0 {
-                            self.update_filters(self.filters, true, false);
-                        }
-
-                        self.sync_tracker = Vec::new();
-                        self.notif_to_ui(
-                            format!("Sync complete: Added {added}, updated {updated} episodes."),
-                            false,
-                        );
-
-                        // deal with new episodes once syncing is
-                        // complete, based on user preferences
-                        if !new_eps.is_empty() {
-                            match self.config.download_new_episodes {
-                                DownloadNewEpisodes::Always => {
-                                    for ep in new_eps.into_iter() {
-                                        self.download(ep.pod_id, Some(ep.id));
-                                    }
-                                }
-                                DownloadNewEpisodes::AskSelected => {
-                                    self.tx_to_ui
-                                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, true))
-                                        .expect("Thread messaging error");
-                                }
-                                DownloadNewEpisodes::AskUnselected => {
-                                    self.tx_to_ui
-                                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, false))
-                                        .expect("Thread messaging error");
-                                }
-                                _ => (),
-                            }
-                        }
-
-                        if self.config.enable_sync {
-                            self.gpodder_sync();
-                        }
+                        self.pos_sync_counter();
                     }
                 } else {
                     self.notif_to_ui(
