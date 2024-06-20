@@ -672,12 +672,14 @@ impl MainController {
         };
         {
             let mut queue_map = self.queue.borrow_map();
-            let episode = queue_map.get_mut(&ep_id)?;
-            if episode.played != played {
-                changed = true;
-                episode.played = played;
+            if let Some(episode) = queue_map.get_mut(&ep_id){
+                if episode.played != played {
+                    changed = true;
+                    episode.played = played;
+                }
             }
         }
+        
         if changed {
             self.update_filters(self.filters, true, false);
         }
