@@ -253,6 +253,12 @@ impl NotifWin {
             style::PrintStyledContent(styled)
         )
         .unwrap();
+        if notif.error{
+            log::error!("{}", notif.message);
+        }
+        else{
+            log::info!("{}", notif.message);
+        }
     }
 
     /// Adds a notification to the user. `duration` indicates how long
