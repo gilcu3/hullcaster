@@ -253,10 +253,9 @@ impl NotifWin {
             style::PrintStyledContent(styled)
         )
         .unwrap();
-        if notif.error{
+        if notif.error {
             log::error!("{}", notif.message);
-        }
-        else{
+        } else {
             log::info!("{}", notif.message);
         }
     }
