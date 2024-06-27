@@ -45,6 +45,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Create lock file to prevent several instances of hullcaster
 - [ ] Add option to play next from queue automatically
 - [ ] Add history of episode actions
+- [ ] Avoid repeated elements in queue
 
 ## Installing hullcaster
 
