@@ -7,6 +7,8 @@ downloaded locally, played with an external media player, and marked as
 played/unplayed. Key bindings and other options are configurable via a config
 file.
 
+![screen-gif](./assets/hullcaster.gif)
+
 ## Note
 
 This is a fork of [shellcaster](https://github.com/jeff-hughes/shellcaster),
