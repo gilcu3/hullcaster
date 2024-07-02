@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.1.0 (2024/05/20)
+## v0.1.0 (2024/07/02)
 
-- Initial fork
+- Initial release
