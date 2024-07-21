@@ -6,8 +6,20 @@
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    crate2nix.url = "github:nix-community/crate2nix";
+    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+      inputs.crate2nix_stable.follows = "crate2nix";
+      inputs.devshell.follows = "devshell";
+      inputs.flake-utils.follows = "flake-utils";
+    };
 
     # Development
 
