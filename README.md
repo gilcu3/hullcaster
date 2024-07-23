@@ -48,8 +48,22 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add option to play next from queue automatically
 - [ ] Add history of episode actions
 - [ ] Avoid repeated elements in queue
+- [ ] Fix bug where queue actions are not persistent, hard to reproduce
+- [ ] Fix gpodder test, it should use local files
 
 ## Installing hullcaster
+
+### Archlinux
+
+The package is available in the `AUR` [hullcaster-git](https://aur.archlinux.org/packages/hullcaster-git).
+
+### NixOS / Nix
+
+With [flakes](https://wiki.nixos.org/wiki/Flakes) enabled, run:
+
+```bash
+nix run github:gilcu3/hullcaster
+```
 
 ### On Linux distributions
 
@@ -67,14 +81,6 @@ cargo build --release  # add or remove any features with --features
 
 # no root permissions
 cp target/release/hullcaster ~/.local/bin
-```
-
-### NixOS / Nix
-
-With [flakes](https://wiki.nixos.org/wiki/Flakes) enabled, run:
-
-```bash
-nix run github:gilcu3/hullcaster
 ```
 
 ## Running hullcaster
