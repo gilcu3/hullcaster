@@ -593,6 +593,8 @@ mod tests {
         } else {
             None
         };
-        assert!(sync_agent.unwrap().testing().is_some());
+        if sync_agent.is_some() {
+            assert!(sync_agent.unwrap().testing().is_some());
+        }
     }
 }

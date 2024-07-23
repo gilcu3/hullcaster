@@ -28,6 +28,7 @@ pub struct Podcast {
     pub url: String,
     pub description: Option<String>,
     pub author: Option<String>,
+    #[allow(dead_code)]
     pub explicit: Option<bool>,
     pub last_checked: DateTime<Utc>,
     pub episodes: LockVec<Episode>,

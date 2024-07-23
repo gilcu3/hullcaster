@@ -194,14 +194,15 @@ impl MainController {
                 Message::Dl(DownloadMsg::Complete(ep_data)) => {
                     self.download_complete(ep_data);
                 }
-                Message::Dl(DownloadMsg::ResponseError(_)) => {
-                    self.notif_to_ui("Error sending download request.".to_string(), true)
+                Message::Dl(DownloadMsg::ResponseError(ep)) => self.notif_to_ui(
+                    "Error sending download request. ".to_string() + &ep.url,
+                    true,
+                ),
+                Message::Dl(DownloadMsg::FileCreateError(ep)) => {
+                    self.notif_to_ui("Error creating file. ".to_string() + &ep.title, true)
                 }
-                Message::Dl(DownloadMsg::FileCreateError(_)) => {
-                    self.notif_to_ui("Error creating file.".to_string(), true)
-                }
-                Message::Dl(DownloadMsg::FileWriteError(_)) => {
-                    self.notif_to_ui("Error downloading episode.".to_string(), true)
+                Message::Dl(DownloadMsg::FileWriteError(ep)) => {
+                    self.notif_to_ui("Error downloading episode. ".to_string() + &ep.title, true)
                 }
 
                 Message::Ui(UiMsg::Delete(pod_id, ep_id)) => {

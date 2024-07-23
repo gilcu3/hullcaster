@@ -8,8 +8,10 @@ use super::AppColors;
 #[derive(Debug)]
 pub struct Panel {
     pub buffer: Vec<String>,
+    #[allow(dead_code)]
     pub screen_pos: usize,
     pub colors: Rc<AppColors>,
+    #[allow(dead_code)]
     pub title: String,
     pub start_x: u16,
     pub n_row: u16,
