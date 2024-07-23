@@ -69,6 +69,14 @@ cargo build --release  # add or remove any features with --features
 cp target/release/hullcaster ~/.local/bin
 ```
 
+### NixOS / Nix
+
+With [flakes](https://wiki.nixos.org/wiki/Flakes) enabled, run:
+
+```bash
+nix run github:gilcu3/hullcaster
+```
+
 ## Running hullcaster
 
 In your terminal, run:
