@@ -35,8 +35,7 @@ pub struct DetailsPanel {
     pub panel: Panel,
     pub details: Option<Details>,
     pub content: Vec<DetailsLine>,
-    pub top_row: u16,    // top row of text shown in window
-    pub total_rows: u16, // the total number of rows the details take up
+    pub top_row: u16, // top row of text shown in window
 }
 
 impl DetailsPanel {
@@ -51,7 +50,6 @@ impl DetailsPanel {
             details: None,
             content: Vec::new(),
             top_row: 0,
-            total_rows: 0,
         }
     }
 
