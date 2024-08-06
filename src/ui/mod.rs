@@ -557,6 +557,7 @@ impl Ui {
 
         self.podcast_menu.resize(n_row - 2, pod_col, 0);
         self.episode_menu.resize(n_row - 2, pod_col, 0);
+        self.unplayed_menu.resize(n_row - 2, pod_col, 0);
         self.queue_menu
             .resize(n_row - 2, queue_col, pod_col + det_col - 2);
         self.highlight_items();
