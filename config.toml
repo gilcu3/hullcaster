@@ -143,6 +143,8 @@ enqueue = [ "e" ]
 help = [ "?" ]
 quit = [ "q" ]
 
+unplayed_list = [ "u" ]
+
 
 [colors]
 

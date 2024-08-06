@@ -50,6 +50,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Avoid repeated elements in queue
 - [ ] Fix bug where queue actions are not persistent, hard to reproduce
 - [ ] Fix gpodder test, it should use local files
+- [x] Add panel for unplayed episodes across podcasts
 
 ## Installing hullcaster
 
@@ -173,10 +174,10 @@ filled in with the default value specified in those comments.
 | x                                 | Delete downloaded file                   |
 | Shift+X                           | Delete all downloaded files              |
 | r                                 | Remove selected feed from list           |
-| Shift+R                           | Remove all feeds from list               |
 | 1                                 | Toggle played/unplayed filter            |
 | 2                                 | Toggle downloaded/not downloaded filter  |
 | e                                 | Push episode in queue                    |
+| u                                 | Show/hide Unread list of episodes        |
 
 **Note:** Actions can be mapped to more than one key (e.g., "Enter" and "p" both
 play an episode), but a single key may not do more than one action (e.g., you

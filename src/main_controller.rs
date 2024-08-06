@@ -16,7 +16,9 @@ use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{Ui, UiMsg};
-use crate::utils::{audio_duration, current_time_ms, evaluate_in_shell, resolve_redirection};
+use crate::utils::{
+    audio_duration, current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection,
+};
 
 /// Enum used for communicating with other threads.
 #[allow(clippy::enum_variant_names)]
@@ -31,7 +33,7 @@ pub enum MainMessage {
 }
 
 /// Main application controller, holding all of the main application
-/// state and mechanisms for communicatingg with the rest of the app.
+/// state and mechanisms for communicating with the rest of the app.
 pub struct MainController {
     config: Arc<Config>,
     db: Database,
@@ -39,6 +41,7 @@ pub struct MainController {
     sync_agent: Option<GpodderController>,
     podcasts: LockVec<Podcast>,
     queue: LockVec<Episode>,
+    unplayed: LockVec<Episode>,
     filters: Filters,
     sync_counter: usize,
     sync_tracker: Vec<SyncResult>,
@@ -99,12 +102,17 @@ impl MainController {
             res
         });
 
+        let unplayed_items = get_unplayed_episodes(&podcast_list);
+        unplayed_items.sort();
+        unplayed_items.reverse();
+
         // set up UI in new thread
         let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
         let ui_thread = Ui::spawn(
             config.clone(),
             podcast_list.clone(),
             queue_items.clone(),
+            unplayed_items.clone(),
             rx_from_main,
             tx_ui_to_main,
         );
@@ -116,6 +124,7 @@ impl MainController {
             sync_agent,
             podcasts: podcast_list,
             queue: queue_items,
+            unplayed: unplayed_items,
             filters: Filters::default(),
             ui_thread,
             sync_counter: 0,
@@ -667,6 +676,15 @@ impl MainController {
             if episode.played != played {
                 changed = true;
                 episode.played = played;
+            }
+            if episode.played && self.unplayed.contains_key(ep_id) {
+                self.unplayed.remove(ep_id);
+                changed = true;
+            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
+                self.unplayed.push(episode.clone());
+                self.unplayed.sort();
+                self.unplayed.reverse();
+                changed = true;
             }
             self.db.set_played_status(ep_id, played).ok()?;
             (episode.duration, episode.url.clone(), podcast.url.clone())
