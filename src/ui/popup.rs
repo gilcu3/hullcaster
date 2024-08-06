@@ -194,6 +194,7 @@ impl PopupWin {
             (Some(UserAction::DownloadAll), "Download all:"),
             (Some(UserAction::Delete), "Delete file:"),
             (Some(UserAction::DeleteAll), "Delete all files:"),
+            (Some(UserAction::UnplayedList), "Show/Hide Unplayed Panel"),
             (Some(UserAction::Help), "Help:"),
             (Some(UserAction::Quit), "Quit:"),
         ];
@@ -255,7 +256,7 @@ impl PopupWin {
         } else {
             1
         };
-        let keys_per_row = key_strs.len() as u16 / n_cols;
+        let keys_per_row = (key_strs.len() as u16 + 1) / n_cols;
 
         // write each line of keys -- the list will be presented "down"
         // rather than "across", but we print to the screen a line at a
