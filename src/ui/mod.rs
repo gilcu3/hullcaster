@@ -1137,7 +1137,8 @@ impl Ui {
                             description,
                             author,
                             last_checked: Some(last_checked),
-                            title: Some(title),
+                            episode_title: None,
+                            podcast_title: Some(title),
                         };
                         det.change_details(details);
                     } else {
@@ -1149,6 +1150,13 @@ impl Ui {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.episode_menu.items.get(ep_id) {
                             let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
 
                             let details = Details {
                                 pubdate: ep.pubdate,
@@ -1157,7 +1165,8 @@ impl Ui {
                                 description: Some(desc),
                                 author: None,
                                 last_checked: None,
-                                title: Some(ep.title.clone()),
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
                             };
                             det.change_details(details);
                         };
@@ -1170,6 +1179,13 @@ impl Ui {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.unplayed_menu.items.get(ep_id) {
                             let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
 
                             let details = Details {
                                 pubdate: ep.pubdate,
@@ -1178,7 +1194,8 @@ impl Ui {
                                 description: Some(desc),
                                 author: None,
                                 last_checked: None,
-                                title: Some(ep.title.clone()),
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
                             };
                             det.change_details(details);
                         };
@@ -1191,6 +1208,13 @@ impl Ui {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.queue_menu.items.get(ep_id) {
                             let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
 
                             let details = Details {
                                 pubdate: ep.pubdate,
@@ -1199,7 +1223,8 @@ impl Ui {
                                 description: Some(desc),
                                 author: None,
                                 last_checked: None,
-                                title: Some(ep.title.clone()),
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
                             };
                             det.change_details(details);
                         };
