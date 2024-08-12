@@ -402,14 +402,18 @@ impl Ui {
                                 if let ActivePanel::EpisodeMenu = self.active_panel {
                                     if let Some(ep_id) = curr_sel_id {
                                         let ep = self.episode_menu.items.get(ep_id).unwrap();
-                                        self.queue_menu.items.push(ep);
-                                        self.queue_menu.redraw();
+                                        if !self.queue_menu.items.contains_key(ep_id) {
+                                            self.queue_menu.items.push(ep);
+                                            self.queue_menu.redraw();
+                                        }
                                     }
                                 } else if let ActivePanel::UnplayedMenu = self.active_panel {
                                     if let Some(ep_id) = curr_sel_id {
                                         let ep = self.unplayed_menu.items.get(ep_id).unwrap();
-                                        self.queue_menu.items.push(ep);
-                                        self.queue_menu.redraw();
+                                        if !self.queue_menu.items.contains_key(ep_id) {
+                                            self.queue_menu.items.push(ep);
+                                            self.queue_menu.redraw();
+                                        }
                                     }
                                 }
                             }

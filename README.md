@@ -47,7 +47,7 @@ features stated below, while learning `rust` at the same time.
 - [ ] Create lock file to prevent several instances of hullcaster
 - [ ] Add option to play next from queue automatically
 - [ ] Add history of episode actions
-- [ ] Avoid repeated elements in queue
+- [x] Avoid repeated elements in queue
 - [ ] Fix bug where queue actions are not persistent, hard to reproduce
 - [ ] Fix gpodder test, it should use local files
 - [x] Add panel for unplayed episodes across podcasts
