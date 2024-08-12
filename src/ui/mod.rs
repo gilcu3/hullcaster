@@ -636,6 +636,10 @@ impl Ui {
                         self.active_panel = ActivePanel::EpisodeMenu;
                         self.episode_menu.activate();
                         self.episode_menu.redraw();
+                    } else if self.unplayed_menu.visible {
+                        self.active_panel = ActivePanel::UnplayedMenu;
+                        self.unplayed_menu.activate();
+                        self.unplayed_menu.redraw();
                     } else {
                         log::error!("No menu is visible on the left");
                     }
@@ -681,15 +685,27 @@ impl Ui {
                     self.highlight_items();
                 }
                 ActivePanel::EpisodeMenu => {
-                    self.update_details_panel(true);
-                    self.active_panel = ActivePanel::DetailsPanel;
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else {
+                        self.active_panel = ActivePanel::QueueMenu;
+                        self.queue_menu.activate();
+                        self.queue_menu.redraw();
+                    }
                     self.episode_menu.deactivate(false);
                     self.episode_menu.redraw();
                     self.highlight_items();
                 }
                 ActivePanel::UnplayedMenu => {
-                    self.update_details_panel(true);
-                    self.active_panel = ActivePanel::DetailsPanel;
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else {
+                        self.active_panel = ActivePanel::QueueMenu;
+                        self.queue_menu.activate();
+                        self.queue_menu.redraw();
+                    }
                     self.unplayed_menu.deactivate(false);
                     self.unplayed_menu.redraw();
                     self.highlight_items();
