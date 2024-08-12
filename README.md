@@ -18,7 +18,7 @@ features stated below, while learning `rust` at the same time.
 ### Planned changes
 
 - [x] Option to avoid marking as read when playing
-- [ ] Syncing with the gpodder API
+- [x] Syncing with the gpodder API
 - [x] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
