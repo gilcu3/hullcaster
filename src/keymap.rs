@@ -44,6 +44,8 @@ pub enum UserAction {
 
     Help,
     Quit,
+
+    UnplayedList,
 }
 
 /// Wrapper around a hash map that keeps track of all keybindings. Multiple
@@ -103,6 +105,7 @@ impl Keybindings {
             (config.enqueue, UserAction::Enqueue),
             (config.help, UserAction::Help),
             (config.quit, UserAction::Quit),
+            (config.unplayed_list, UserAction::UnplayedList),
         ];
 
         let mut keymap = Self::default();
@@ -189,6 +192,7 @@ impl Keybindings {
             (UserAction::Enqueue, vec!["e".to_string()]),
             (UserAction::Help, vec!["?".to_string()]),
             (UserAction::Quit, vec!["q".to_string()]),
+            (UserAction::UnplayedList, vec!["u".to_string()]),
         ]
     }
 }

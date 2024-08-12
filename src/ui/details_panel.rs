@@ -27,7 +27,8 @@ pub struct Details {
     pub description: Option<String>,
     pub author: Option<String>,
     pub last_checked: Option<DateTime<Utc>>,
-    pub title: Option<String>,
+    pub episode_title: Option<String>,
+    pub podcast_title: Option<String>,
 }
 
 #[derive(Debug)]
@@ -139,11 +140,23 @@ impl DetailsPanel {
 
             let mut anything = false;
 
-            // title
-            if let Some(title) = &details.title {
+            // podcast title
+            if let Some(title) = &details.podcast_title {
                 anything = true;
                 self.content
-                    .push(DetailsLine::Line("Title:".to_owned(), Some(italic)));
+                    .push(DetailsLine::Line("Podcast:".to_owned(), Some(italic)));
+                let wrapper = textwrap::wrap(title, num_cols);
+                for line in wrapper {
+                    self.content.push(DetailsLine::Line(line.to_string(), None));
+                }
+                self.content.push(DetailsLine::Blank); // blank line
+            }
+
+            // episode title
+            if let Some(title) = &details.episode_title {
+                anything = true;
+                self.content
+                    .push(DetailsLine::Line("Episode:".to_owned(), Some(italic)));
                 let wrapper = textwrap::wrap(title, num_cols);
                 for line in wrapper {
                     self.content.push(DetailsLine::Line(line.to_string(), None));
@@ -160,7 +173,7 @@ impl DetailsPanel {
                 ));
             }
 
-            // author
+            // last checked time
             if let Some(last_checked) = details.last_checked {
                 anything = true;
                 self.content.push(DetailsLine::KeyValueLine(

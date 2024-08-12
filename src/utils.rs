@@ -12,6 +12,8 @@ use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
 use ureq::{Agent, Error, Response};
 
+use crate::types::*;
+
 static RE_BR_TAGS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
 
@@ -207,4 +209,18 @@ pub fn resolve_redirection(url: &str) -> Option<String> {
 
     let final_url = response.get_url().to_string();
     Some(final_url)
+}
+
+pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> LockVec<Episode> {
+    let podcast_map = podcasts.borrow_map();
+    let mut ueps = Vec::new();
+    for podcast in podcast_map.values() {
+        let episode_map = podcast.episodes.borrow_map();
+        for episode in episode_map.values() {
+            if !episode.played {
+                ueps.push(episode.clone());
+            }
+        }
+    }
+    LockVec::new(ueps)
 }

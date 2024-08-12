@@ -38,6 +38,7 @@ impl KeybindingsWin {
             (UserAction::AddFeed, "Add podcast"),
             (UserAction::Enqueue, "Enqueue"),
             (UserAction::Remove, "Remove"),
+            (UserAction::UnplayedList, "Show/Hide Unplayed"),
         ];
         let mut cur_length = -3;
         let mut key_strs = Vec::new();

@@ -79,6 +79,7 @@ pub enum Move {
 enum ActivePanel {
     PodcastMenu,
     EpisodeMenu,
+    UnplayedMenu,
     QueueMenu,
     DetailsPanel,
 }
@@ -94,6 +95,7 @@ pub struct Ui {
     colors: Rc<AppColors>,
     podcast_menu: Menu<Podcast>,
     episode_menu: Menu<Episode>,
+    unplayed_menu: Menu<Episode>,
     queue_menu: Menu<Episode>,
     details_panel: Option<DetailsPanel>,
     active_panel: ActivePanel,
@@ -107,10 +109,11 @@ impl Ui {
     /// and receive messages
     pub fn spawn(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
-        rx_from_main: mpsc::Receiver<MainMessage>, tx_to_main: mpsc::Sender<Message>,
+        unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
+        tx_to_main: mpsc::Sender<Message>,
     ) -> thread::JoinHandle<()> {
         return thread::spawn(move || {
-            let mut ui = Ui::new(config, items, queue_items);
+            let mut ui = Ui::new(config, items, queue_items, unplayed_items);
             ui.init();
             let mut message_iter = rx_from_main.try_iter();
             // this is the main event loop: on each loop, we update
@@ -154,7 +157,10 @@ impl Ui {
     /// Initializes the UI with a list of podcasts and podcast episodes,
     /// creates the menus and panels, and returns a UI object for future
     /// manipulation.
-    pub fn new(config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>) -> Ui {
+    pub fn new(
+        config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
+        unplayed_items: LockVec<Episode>,
+    ) -> Ui {
         terminal::enable_raw_mode().expect("Terminal can't run in raw mode.");
         execute!(
             io::stdout(),
@@ -176,6 +182,18 @@ impl Ui {
             },
             None => LockVec::new(Vec::new()),
         };
+
+        let unplayed_panel = Panel::new(
+            "Unplayed Episodes".to_string(),
+            0,
+            colors.clone(),
+            n_row - 2,
+            pod_col,
+            0,
+            (0, 0, 0, 0),
+        );
+
+        let unplayed_menu = Menu::new(unplayed_panel, None, unplayed_items);
 
         let podcast_panel = Panel::new(
             "Podcasts".to_string(),
@@ -223,8 +241,7 @@ impl Ui {
             pod_col + det_col - 2,
             (0, 0, 0, 0),
         );
-        // This should load from the database
-        //let queue_items: LockVec<Episode> = LockVec::new(Vec::new());
+
         let queue_menu = Menu::new(queue_panel, None, queue_items);
 
         let notif_win = NotifWin::new(colors.clone(), n_row - 2, n_col);
@@ -240,6 +257,7 @@ impl Ui {
             colors,
             podcast_menu,
             episode_menu,
+            unplayed_menu,
             queue_menu,
             details_panel,
             active_panel: ActivePanel::PodcastMenu,
@@ -370,7 +388,7 @@ impl Ui {
                                         }
                                     }
                                 }
-                                ActivePanel::EpisodeMenu => {
+                                ActivePanel::EpisodeMenu | ActivePanel::UnplayedMenu => {
                                     if let Some(pod_id) = curr_pod_id {
                                         if let Some(ep_id) = curr_sel_id {
                                             return UiMsg::Play(pod_id, ep_id);
@@ -384,8 +402,18 @@ impl Ui {
                                 if let ActivePanel::EpisodeMenu = self.active_panel {
                                     if let Some(ep_id) = curr_sel_id {
                                         let ep = self.episode_menu.items.get(ep_id).unwrap();
-                                        self.queue_menu.items.push(ep);
-                                        self.queue_menu.redraw();
+                                        if !self.queue_menu.items.contains_key(ep_id) {
+                                            self.queue_menu.items.push(ep);
+                                            self.queue_menu.redraw();
+                                        }
+                                    }
+                                } else if let ActivePanel::UnplayedMenu = self.active_panel {
+                                    if let Some(ep_id) = curr_sel_id {
+                                        let ep = self.unplayed_menu.items.get(ep_id).unwrap();
+                                        if !self.queue_menu.items.contains_key(ep_id) {
+                                            self.queue_menu.items.push(ep);
+                                            self.queue_menu.redraw();
+                                        }
                                     }
                                 }
                             }
@@ -398,7 +426,9 @@ impl Ui {
                                 }
                             }
                             Some(UserAction::MarkPlayed) => match self.active_panel {
-                                ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
+                                ActivePanel::EpisodeMenu
+                                | ActivePanel::UnplayedMenu
+                                | ActivePanel::QueueMenu => {
                                     if let Some(ui_msg) = self.mark_played(curr_pod_id, curr_sel_id)
                                     {
                                         return ui_msg;
@@ -415,7 +445,9 @@ impl Ui {
                             }
 
                             Some(UserAction::Download) => match self.active_panel {
-                                ActivePanel::EpisodeMenu | ActivePanel::QueueMenu => {
+                                ActivePanel::EpisodeMenu
+                                | ActivePanel::UnplayedMenu
+                                | ActivePanel::QueueMenu => {
                                     if let Some(pod_id) = curr_pod_id {
                                         if let Some(ep_id) = curr_sel_id {
                                             return UiMsg::Download(pod_id, ep_id);
@@ -464,7 +496,7 @@ impl Ui {
                                         self.update_details_panel(false);
                                     }
                                 }
-                                ActivePanel::EpisodeMenu => {}
+                                ActivePanel::EpisodeMenu | ActivePanel::UnplayedMenu => {}
                                 ActivePanel::DetailsPanel => {}
                             },
 
@@ -480,6 +512,35 @@ impl Ui {
                             Some(UserAction::Quit) => {
                                 return UiMsg::Quit;
                             }
+
+                            Some(UserAction::UnplayedList) => match self.active_panel {
+                                ActivePanel::PodcastMenu => {
+                                    self.active_panel = ActivePanel::UnplayedMenu;
+                                    self.episode_menu.visible = false;
+                                    self.podcast_menu.visible = false;
+                                    self.unplayed_menu.visible = true;
+                                    self.podcast_menu.deactivate(false);
+                                    self.unplayed_menu.activate();
+                                    self.unplayed_menu.redraw();
+                                    self.highlight_items();
+                                    self.update_details_panel(false);
+                                }
+                                ActivePanel::EpisodeMenu
+                                | ActivePanel::QueueMenu
+                                | ActivePanel::DetailsPanel => {}
+                                ActivePanel::UnplayedMenu => {
+                                    self.active_panel = ActivePanel::PodcastMenu;
+                                    self.episode_menu.visible = false;
+                                    self.podcast_menu.visible = true;
+                                    self.unplayed_menu.visible = false;
+                                    self.unplayed_menu.deactivate(false);
+                                    self.podcast_menu.activate();
+                                    self.podcast_menu.redraw();
+                                    self.highlight_items();
+                                    self.update_details_panel(false);
+                                }
+                            },
+
                             None => (),
                         } // end of input match
                     }
@@ -500,6 +561,7 @@ impl Ui {
 
         self.podcast_menu.resize(n_row - 2, pod_col, 0);
         self.episode_menu.resize(n_row - 2, pod_col, 0);
+        self.unplayed_menu.resize(n_row - 2, pod_col, 0);
         self.queue_menu
             .resize(n_row - 2, queue_col, pod_col + det_col - 2);
         self.highlight_items();
@@ -555,7 +617,7 @@ impl Ui {
             }
 
             UserAction::Left => match self.active_panel {
-                ActivePanel::PodcastMenu => {}
+                ActivePanel::PodcastMenu | ActivePanel::UnplayedMenu => {}
                 ActivePanel::EpisodeMenu => {
                     self.active_panel = ActivePanel::PodcastMenu;
                     self.episode_menu.visible = false;
@@ -578,6 +640,10 @@ impl Ui {
                         self.active_panel = ActivePanel::EpisodeMenu;
                         self.episode_menu.activate();
                         self.episode_menu.redraw();
+                    } else if self.unplayed_menu.visible {
+                        self.active_panel = ActivePanel::UnplayedMenu;
+                        self.unplayed_menu.activate();
+                        self.unplayed_menu.redraw();
                     } else {
                         log::error!("No menu is visible on the left");
                     }
@@ -595,6 +661,10 @@ impl Ui {
                         self.active_panel = ActivePanel::EpisodeMenu;
                         self.episode_menu.activate();
                         self.episode_menu.redraw();
+                    } else if self.unplayed_menu.visible {
+                        self.active_panel = ActivePanel::UnplayedMenu;
+                        self.unplayed_menu.activate();
+                        self.unplayed_menu.redraw();
                     } else {
                         log::error!("No menu is visible on the left");
                     }
@@ -619,10 +689,29 @@ impl Ui {
                     self.highlight_items();
                 }
                 ActivePanel::EpisodeMenu => {
-                    self.update_details_panel(true);
-                    self.active_panel = ActivePanel::DetailsPanel;
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else {
+                        self.active_panel = ActivePanel::QueueMenu;
+                        self.queue_menu.activate();
+                        self.queue_menu.redraw();
+                    }
                     self.episode_menu.deactivate(false);
                     self.episode_menu.redraw();
+                    self.highlight_items();
+                }
+                ActivePanel::UnplayedMenu => {
+                    if self.details_panel.is_some() {
+                        self.update_details_panel(true);
+                        self.active_panel = ActivePanel::DetailsPanel;
+                    } else {
+                        self.active_panel = ActivePanel::QueueMenu;
+                        self.queue_menu.activate();
+                        self.queue_menu.redraw();
+                    }
+                    self.unplayed_menu.deactivate(false);
+                    self.unplayed_menu.redraw();
                     self.highlight_items();
                 }
                 ActivePanel::QueueMenu => {}
@@ -721,6 +810,12 @@ impl Ui {
                 }
                 self.update_details_panel(false);
             }
+            ActivePanel::UnplayedMenu => {
+                if !self.unplayed_menu.scroll(scroll) {
+                    return;
+                }
+                self.update_details_panel(false);
+            }
             ActivePanel::QueueMenu => {
                 if !self.queue_menu.scroll(scroll) {
                     return;
@@ -747,6 +842,15 @@ impl Ui {
                     ActivePanel::EpisodeMenu => {
                         if let Some(played) = self
                             .episode_menu
+                            .items
+                            .map_single(ep_id, |ep| ep.is_played())
+                        {
+                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
+                        }
+                    }
+                    ActivePanel::UnplayedMenu => {
+                        if let Some(played) = self
+                            .unplayed_menu
                             .items
                             .map_single(ep_id, |ep| ep.is_played())
                         {
@@ -832,6 +936,22 @@ impl Ui {
                     (None, None)
                 } else {
                     let ep = self.episode_menu.items.get(ep_id.unwrap());
+                    (ep.as_ref().map(|e| e.pod_id), ep.as_ref().map(|e| e.id))
+                }
+            }
+            ActivePanel::UnplayedMenu => {
+                let current_ep_index =
+                    (self.unplayed_menu.selected + self.unplayed_menu.top_row) as usize;
+                let ep_id = self
+                    .unplayed_menu
+                    .items
+                    .borrow_filtered_order()
+                    .get(current_ep_index)
+                    .copied();
+                if ep_id.is_none() {
+                    (None, None)
+                } else {
+                    let ep = self.unplayed_menu.items.get(ep_id.unwrap());
                     (ep.as_ref().map(|e| e.pod_id), ep.as_ref().map(|e| e.id))
                 }
             }
@@ -959,6 +1079,9 @@ impl Ui {
         if self.episode_menu.visible {
             self.episode_menu.redraw();
         }
+        if self.unplayed_menu.visible {
+            self.unplayed_menu.redraw();
+        }
         self.queue_menu.redraw();
         if let Some(details_panel) = self.details_panel.as_ref() {
             let active = details_panel.panel.active;
@@ -977,10 +1100,13 @@ impl Ui {
             ActivePanel::EpisodeMenu => {
                 self.episode_menu.highlight_selected();
             }
+            ActivePanel::UnplayedMenu => {
+                self.unplayed_menu.highlight_selected();
+            }
             ActivePanel::QueueMenu => {
                 self.queue_menu.highlight_selected();
             }
-            _ => (),
+            ActivePanel::DetailsPanel => (),
         }
     }
 
@@ -1031,7 +1157,8 @@ impl Ui {
                             description,
                             author,
                             last_checked: Some(last_checked),
-                            title: Some(title),
+                            episode_title: None,
+                            podcast_title: Some(title),
                         };
                         det.change_details(details);
                     } else {
@@ -1043,6 +1170,13 @@ impl Ui {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.episode_menu.items.get(ep_id) {
                             let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
 
                             let details = Details {
                                 pubdate: ep.pubdate,
@@ -1051,7 +1185,37 @@ impl Ui {
                                 description: Some(desc),
                                 author: None,
                                 last_checked: None,
-                                title: Some(ep.title.clone()),
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
+                            };
+                            det.change_details(details);
+                        };
+                    } else {
+                        det.clear_details();
+                    }
+                }
+                ActivePanel::UnplayedMenu => {
+                    if let Some(ep_id) = curr_ep_id {
+                        // the rest of the details come from the current episode
+                        if let Some(ep) = self.unplayed_menu.items.get(ep_id) {
+                            let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
+
+                            let details = Details {
+                                pubdate: ep.pubdate,
+                                duration: Some(ep.format_duration()),
+                                explicit: None,
+                                description: Some(desc),
+                                author: None,
+                                last_checked: None,
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
                             };
                             det.change_details(details);
                         };
@@ -1064,6 +1228,13 @@ impl Ui {
                         // the rest of the details come from the current episode
                         if let Some(ep) = self.queue_menu.items.get(ep_id) {
                             let desc = clean_html(&ep.description);
+                            let podcast_title = self
+                                .podcast_menu
+                                .items
+                                .borrow_map()
+                                .get(&ep.pod_id)?
+                                .title
+                                .clone();
 
                             let details = Details {
                                 pubdate: ep.pubdate,
@@ -1072,7 +1243,8 @@ impl Ui {
                                 description: Some(desc),
                                 author: None,
                                 last_checked: None,
-                                title: Some(ep.title.clone()),
+                                episode_title: Some(ep.title.clone()),
+                                podcast_title: Some(podcast_title),
                             };
                             det.change_details(details);
                         };

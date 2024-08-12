@@ -18,7 +18,7 @@ features stated below, while learning `rust` at the same time.
 ### Planned changes
 
 - [x] Option to avoid marking as read when playing
-- [ ] Syncing with the gpodder API
+- [x] Syncing with the gpodder API
 - [x] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
@@ -45,11 +45,13 @@ features stated below, while learning `rust` at the same time.
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue
 - [ ] Create lock file to prevent several instances of hullcaster
-- [ ] Add option to play next from queue automatically
-- [ ] Add history of episode actions
-- [ ] Avoid repeated elements in queue
+- [ ] Add option to play next from queue automatically, makes sense only after internal player is implemented
+- [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
+- [x] Avoid repeated elements in queue
 - [ ] Fix bug where queue actions are not persistent, hard to reproduce
-- [ ] Fix gpodder test, it should use local files
+- [ ] Fix gpodder test, it should use local files or local server
+- [x] Add panel for unplayed episodes across podcasts
+- [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work.
 
 ## Installing hullcaster
 
@@ -173,10 +175,10 @@ filled in with the default value specified in those comments.
 | x                                 | Delete downloaded file                   |
 | Shift+X                           | Delete all downloaded files              |
 | r                                 | Remove selected feed from list           |
-| Shift+R                           | Remove all feeds from list               |
 | 1                                 | Toggle played/unplayed filter            |
 | 2                                 | Toggle downloaded/not downloaded filter  |
 | e                                 | Push episode in queue                    |
+| u                                 | Show/hide Unread list of episodes        |
 
 **Note:** Actions can be mapped to more than one key (e.g., "Enter" and "p" both
 play an episode), but a single key may not do more than one action (e.g., you

@@ -100,7 +100,7 @@ impl Ord for Podcast {
 /// is metadata, but if the episode has been downloaded to the local
 /// machine, the filepath will be included here as well. `played`
 /// indicates whether the podcast has been marked as played or unplayed.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Episode {
     pub id: i64,
     pub pod_id: i64,
@@ -128,6 +128,18 @@ impl Episode {
             }
             None => "--:--:--".to_string(),
         }
+    }
+}
+
+impl Ord for Episode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.pubdate.cmp(&other.pubdate)
+    }
+}
+
+impl PartialOrd for Episode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -301,7 +313,12 @@ impl<T: Clone + Menuable> LockVec<T> {
 
     pub fn get(&self, id: i64) -> Option<T> {
         let borrowed = self.borrow_map();
-        return borrowed.get(&id).cloned();
+        borrowed.get(&id).cloned()
+    }
+
+    pub fn contains_key(&self, id: i64) -> bool {
+        let borrowed = self.borrow_map();
+        borrowed.contains_key(&id)
     }
 
     /// Lock the LockVec hashmap for reading/writing.
@@ -457,6 +474,19 @@ impl LockVec<Podcast> {
             }
         }
         Some(all_ep_map)
+    }
+}
+
+impl LockVec<Episode> {
+    pub fn sort(&self) {
+        self.borrow_order().sort();
+
+        self.borrow_filtered_order().sort();
+    }
+
+    pub fn reverse(&self) {
+        self.borrow_order().reverse();
+        self.borrow_filtered_order().reverse();
     }
 }
 
