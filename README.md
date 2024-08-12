@@ -45,11 +45,11 @@ features stated below, while learning `rust` at the same time.
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue
 - [ ] Create lock file to prevent several instances of hullcaster
-- [ ] Add option to play next from queue automatically
-- [ ] Add history of episode actions
+- [ ] Add option to play next from queue automatically, makes sense only after internal player is implemented
+- [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
 - [x] Avoid repeated elements in queue
 - [ ] Fix bug where queue actions are not persistent, hard to reproduce
-- [ ] Fix gpodder test, it should use local files
+- [ ] Fix gpodder test, it should use local files or local server
 - [x] Add panel for unplayed episodes across podcasts
 - [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work.
 
