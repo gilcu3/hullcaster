@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0 (2024/08/12)
+## v0.1.1 (2024/08/12)
 
 - Minor bug fixes
 - Added unplayed episodes view

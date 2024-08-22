@@ -51,7 +51,9 @@ features stated below, while learning `rust` at the same time.
 - [ ] Fix bug where queue actions are not persistent, hard to reproduce
 - [ ] Fix gpodder test, it should use local files or local server
 - [x] Add panel for unplayed episodes across podcasts
-- [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work.
+- [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work
+- [ ] Unplayed items not sorted correctly
+- [ ] Errors appear sporadically synchronizing podcasts with gpodder
 
 ## Installing hullcaster
 
