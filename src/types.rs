@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -479,9 +479,37 @@ impl LockVec<Podcast> {
 
 impl LockVec<Episode> {
     pub fn sort(&self) {
-        self.borrow_order().sort();
+        let dt = DateTime::from_timestamp(0, 0).unwrap();
+        let mut epvec = self
+            .borrow_map()
+            .iter()
+            .map(|(id, ep)| {
+                if ep.pubdate.is_some() {
+                    (ep.pubdate.unwrap(), *id)
+                } else {
+                    (dt, *id)
+                }
+            })
+            .collect::<Vec<(DateTime<Utc>, i64)>>();
+        epvec.sort();
 
-        self.borrow_filtered_order().sort();
+        let sforder = self
+            .borrow_filtered_order()
+            .clone()
+            .into_iter()
+            .collect::<HashSet<i64>>();
+        let mut norder = Vec::new();
+        let mut nforder = Vec::new();
+        for (_, i) in epvec {
+            if sforder.contains(&i) {
+                norder.push(i);
+                nforder.push(i);
+            }
+        }
+        let mut order = self.borrow_order();
+        *order = norder;
+        let mut forder = self.borrow_filtered_order();
+        *forder = nforder;
     }
 
     pub fn reverse(&self) {
