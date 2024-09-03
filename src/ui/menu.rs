@@ -79,7 +79,12 @@ impl<T: Clone + Menuable> Menu<T> {
             let current_selected = self.get_menu_idx(self.selected);
             let list_len = order.len();
             if current_selected >= list_len {
-                self.selected = (self.selected as usize - (current_selected - list_len) - 1) as u16;
+                if list_len > 0 {
+                    self.selected =
+                        (self.selected as usize - (current_selected - list_len) - 1) as u16;
+                } else {
+                    self.selected = 0;
+                }
             }
 
             // for visible rows, print strings from list
