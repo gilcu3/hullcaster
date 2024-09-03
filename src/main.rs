@@ -9,6 +9,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
 use log::info;
+use utils::parse_create_dir;
 
 mod config;
 mod db;
@@ -183,12 +184,13 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
 
 // this should be improved to use default dirs-next crate
 fn setup_logs() -> Result<()> {
-    let log_path = match env::var("XDG_STATE_HOME") {
-        Ok(val) => val + "/hullcaster",
-        Err(_) => "~/.local/state/hullcaster".to_string(),
+    let default_log_path = Path::new("~/.local/state/hullcaster").to_path_buf();
+    let env_log_path = match env::var("XDG_STATE_HOME") {
+        Ok(val) => Some(val + "/hullcaster"),
+        Err(_) => None,
     };
-    let log_path = Path::new(log_path.as_str());
-    std::fs::create_dir_all(log_path)?;
+
+    let log_path = parse_create_dir(env_log_path.as_deref(), Some(default_log_path))?;
     let file_path = log_path.join("log");
     let log_file = OpenOptions::new()
         .append(true)

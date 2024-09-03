@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::keymap::Keybindings;
 use crate::ui::colors::AppColors;
-use crate::utils::evaluate_in_shell;
+use crate::utils::{evaluate_in_shell, parse_create_dir};
 
 // Specifies how long, in milliseconds, to display messages at the
 // bottom of the screen in the UI.
@@ -309,43 +309,4 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         keybindings: keymap,
         colors,
     })
-}
-
-/// Helper function that takes an (optionally specified) user directory
-/// and an (OS-dependent) default directory, expands any environment
-/// variables, ~ alias, etc. Returns a PathBuf. Panics if environment
-/// variables cannot be found, if OS could not produce the appropriate
-/// default directory, or if the specified directories in the path could
-/// not be created.
-fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Result<PathBuf> {
-    let final_path = match user_dir {
-        Some(path) => match shellexpand::full(path) {
-            Ok(realpath) => PathBuf::from(realpath.as_ref()),
-            Err(err) => {
-                return Err(anyhow!(
-                    "Could not parse environment variable {} in config.toml. Reason: {}",
-                    err.var_name,
-                    err.cause
-                ))
-            }
-        },
-        None => {
-            if let Some(mut path) = default {
-                path.push("hullcaster");
-                path
-            } else {
-                return Err(anyhow!("Could not identify a default directory for your OS. Please specify paths manually in config.toml."));
-            }
-        }
-    };
-
-    // create directories if they do not exist
-    std::fs::create_dir_all(&final_path).with_context(|| {
-        format!(
-            "Could not create filepath: {}",
-            final_path.to_string_lossy()
-        )
-    })?;
-
-    Ok(final_path)
 }

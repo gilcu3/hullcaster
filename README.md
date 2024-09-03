@@ -55,7 +55,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Unplayed items not sorted correctly
 - [ ] Errors appear sporadically synchronizing podcasts with gpodder
 - [ ] Unplayed items not updated after sync
-- [ ] `~` folder created when creating logs
+- [x] `~` folder created when creating logs
 
 ## Installing hullcaster
 

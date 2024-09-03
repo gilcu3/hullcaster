@@ -1,7 +1,9 @@
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::io::{Cursor, Read};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use symphonia::core::codecs::CODEC_TYPE_NULL;
@@ -223,4 +225,43 @@ pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> LockVec<Episode> {
         }
     }
     LockVec::new(ueps)
+}
+
+/// Helper function that takes an (optionally specified) user directory
+/// and an (OS-dependent) default directory, expands any environment
+/// variables, ~ alias, etc. Returns a PathBuf. Panics if environment
+/// variables cannot be found, if OS could not produce the appropriate
+/// default directory, or if the specified directories in the path could
+/// not be created.
+pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Result<PathBuf> {
+    let final_path = match user_dir {
+        Some(path) => match shellexpand::full(path) {
+            Ok(realpath) => PathBuf::from(realpath.as_ref()),
+            Err(err) => {
+                return Err(anyhow!(
+                    "Could not parse environment variable {} in config.toml. Reason: {}",
+                    err.var_name,
+                    err.cause
+                ))
+            }
+        },
+        None => {
+            if let Some(mut path) = default {
+                path.push("hullcaster");
+                path
+            } else {
+                return Err(anyhow!("Could not identify a default directory for your OS. Please specify paths manually in config.toml."));
+            }
+        }
+    };
+
+    // create directories if they do not exist
+    std::fs::create_dir_all(&final_path).with_context(|| {
+        format!(
+            "Could not create filepath: {}",
+            final_path.to_string_lossy()
+        )
+    })?;
+
+    Ok(final_path)
 }
