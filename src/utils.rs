@@ -213,7 +213,7 @@ pub fn resolve_redirection(url: &str) -> Option<String> {
     Some(final_url)
 }
 
-pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> LockVec<Episode> {
+pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Episode> {
     let podcast_map = podcasts.borrow_map();
     let mut ueps = Vec::new();
     for podcast in podcast_map.values() {
@@ -224,7 +224,7 @@ pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> LockVec<Episode> {
             }
         }
     }
-    LockVec::new(ueps)
+    ueps
 }
 
 /// Helper function that takes an (optionally specified) user directory

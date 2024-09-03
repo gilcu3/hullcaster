@@ -102,7 +102,7 @@ impl MainController {
             res
         });
 
-        let unplayed_items = get_unplayed_episodes(&podcast_list);
+        let unplayed_items = LockVec::new(get_unplayed_episodes(&podcast_list));
         unplayed_items.sort();
         unplayed_items.reverse();
 
@@ -335,6 +335,17 @@ impl MainController {
         }
     }
 
+    /// Updates the persistent notification about syncing podcasts and
+    /// downloading files.
+    fn update_unplayed(&self, full: bool) {
+        if full {
+            let cur_unplayed = get_unplayed_episodes(&self.podcasts);
+            self.unplayed.replace_all(cur_unplayed);
+        }
+        self.unplayed.sort();
+        self.unplayed.reverse();
+    }
+
     /// Add a new podcast by fetching the RSS feed data.
     pub fn add_podcast(&self, url: String) {
         let feed = PodcastFeed::new(None, url, None);
@@ -558,14 +569,15 @@ impl MainController {
         }
         match db_result {
             Ok(result) => {
-                {
-                    self.podcasts.replace_all(
-                        self.db
-                            .get_podcasts()
-                            .expect("Error retrieving info from database."),
-                    );
-                }
                 if !result.added.is_empty() || !result.updated.is_empty() {
+                    {
+                        self.podcasts.replace_all(
+                            self.db
+                                .get_podcasts()
+                                .expect("Error retrieving info from database."),
+                        );
+                    }
+                    self.update_unplayed(true);
                     self.update_filters(self.filters, true, true);
                 }
 
@@ -682,8 +694,6 @@ impl MainController {
                 changed = true;
             } else if !episode.played && !self.unplayed.contains_key(ep_id) {
                 self.unplayed.push(episode.clone());
-                self.unplayed.sort();
-                self.unplayed.reverse();
                 changed = true;
             }
             self.db.set_played_status(ep_id, played).ok()?;
@@ -700,6 +710,7 @@ impl MainController {
         }
 
         if changed {
+            self.update_unplayed(false);
             self.update_filters(self.filters, true, false);
         }
 
@@ -1002,6 +1013,7 @@ impl MainController {
                     .expect("Error retrieving info from database."),
             );
         }
+        self.update_unplayed(true);
         self.tx_to_ui
             .send(MainMessage::UiUpdateMenus)
             .expect("Thread messaging error");

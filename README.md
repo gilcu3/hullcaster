@@ -54,7 +54,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work
 - [x] Unplayed items not sorted correctly
 - [ ] Errors appear sporadically synchronizing podcasts with gpodder
-- [ ] Unplayed items not updated after sync
+- [x] Unplayed items not updated after sync
 - [x] `~` folder created when creating logs
 
 ## Installing hullcaster
