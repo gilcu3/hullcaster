@@ -588,8 +588,10 @@ mod tests {
         let config = Arc::new(Config::new(&config_path).unwrap());
         let mut db_path = config_path;
         db_path.pop();
+        // pull changes from last week
+        let timestamp = current_time() - 7 * 24 * 60 * 60;
         let sync_agent = if config.enable_sync {
-            GpodderController::new(config.clone(), Some(0), "msigil".to_string())
+            GpodderController::new(config.clone(), Some(timestamp), "msigil".to_string())
         } else {
             None
         };
