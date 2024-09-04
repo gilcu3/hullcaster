@@ -184,13 +184,13 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
 
 // this should be improved to use default dirs-next crate
 fn setup_logs() -> Result<()> {
-    let default_log_path = Path::new("~/.local/state/hullcaster").to_path_buf();
+    let default_log_path = dirs::home_dir().map(|h| h.join(".local/state/hullcaster"));
     let env_log_path = match env::var("XDG_STATE_HOME") {
         Ok(val) => Some(val + "/hullcaster"),
         Err(_) => None,
     };
 
-    let log_path = parse_create_dir(env_log_path.as_deref(), Some(default_log_path))?;
+    let log_path = parse_create_dir(env_log_path.as_deref(), default_log_path)?;
     let file_path = log_path.join("log");
     let log_file = OpenOptions::new()
         .append(true)

@@ -246,8 +246,7 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
             }
         },
         None => {
-            if let Some(mut path) = default {
-                path.push("hullcaster");
+            if let Some(path) = default {
                 path
             } else {
                 return Err(anyhow!("Could not identify a default directory for your OS. Please specify paths manually in config.toml."));
