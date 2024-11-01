@@ -145,13 +145,8 @@ fn main() -> Result<()> {
         // MAIN COMMAND -------------------------------------------------
         _ => {
             let mut main_ctrl = MainController::new(config, &db_path)?;
-
             main_ctrl.loop_msgs(); // main loop
-
-            main_ctrl.write_queue();
-
-            main_ctrl.tx_to_ui.send(MainMessage::UiTearDown).unwrap();
-            main_ctrl.ui_thread.join().unwrap(); // wait for UI thread to finish teardown
+            main_ctrl.finalize();
             Ok(())
         }
     };

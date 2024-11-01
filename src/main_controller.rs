@@ -47,7 +47,7 @@ pub struct MainController {
     sync_tracker: Vec<SyncResult>,
     download_tracker: HashSet<i64>,
     last_filter_time_ms: Cell<u128>,
-    pub ui_thread: std::thread::JoinHandle<()>,
+    pub ui_thread: Option<std::thread::JoinHandle<()>>,
     pub tx_to_ui: mpsc::Sender<MainMessage>,
     pub tx_to_main: mpsc::Sender<Message>,
     pub rx_to_main: mpsc::Receiver<Message>,
@@ -126,7 +126,7 @@ impl MainController {
             queue: queue_items,
             unplayed: unplayed_items,
             filters: Filters::default(),
-            ui_thread,
+            ui_thread: Some(ui_thread),
             sync_counter: 0,
             sync_tracker: Vec::new(),
             download_tracker: HashSet::new(),
@@ -273,13 +273,16 @@ impl MainController {
                     self.notif_to_ui(format!("Filter: {message}"), false);
                     self.update_filters(self.filters, true, false);
                 }
+                Message::Ui(UiMsg::QueueModified) => {
+                    self.write_queue();
+                }
 
                 Message::Ui(UiMsg::Noop) => (),
             }
         }
     }
 
-    // sync queue back to database, if app crashes queue is not updated
+    // sync queue back to database
     pub fn write_queue(&mut self) -> Option<()> {
         let queue = self.queue.borrow_order().clone();
         self.db.set_queue(queue).ok()
@@ -1067,6 +1070,13 @@ impl MainController {
             self.tx_to_ui
                 .send(MainMessage::UiUpdateMenus)
                 .expect("Thread messaging error");
+        }
+    }
+
+    pub fn finalize(&mut self) {
+        self.tx_to_ui.send(MainMessage::UiTearDown).unwrap();
+        if let Some(thread) = self.ui_thread.take() {
+            thread.join().unwrap(); // wait for UI thread to finish teardown
         }
     }
 }

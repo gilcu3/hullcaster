@@ -58,6 +58,7 @@ pub enum UiMsg {
     DeleteAll(i64),
     RemovePodcast(i64, bool),
     FilterChange(FilterType),
+    QueueModified,
     Quit,
     Noop,
 }
@@ -344,7 +345,9 @@ impl Ui {
 
                             Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
                                 if let ActivePanel::QueueMenu = self.active_panel {
-                                    self.move_eps(&a, curr_sel_id);
+                                    if let Some(ui_msg) = self.move_eps(&a, curr_sel_id) {
+                                        return ui_msg;
+                                    }
                                 }
                             }
 
@@ -405,6 +408,7 @@ impl Ui {
                                         if !self.queue_menu.items.contains_key(ep_id) {
                                             self.queue_menu.items.push(ep);
                                             self.queue_menu.redraw();
+                                            return UiMsg::QueueModified;
                                         }
                                     }
                                 } else if let ActivePanel::UnplayedMenu = self.active_panel {
@@ -413,6 +417,7 @@ impl Ui {
                                         if !self.queue_menu.items.contains_key(ep_id) {
                                             self.queue_menu.items.push(ep);
                                             self.queue_menu.redraw();
+                                            return UiMsg::QueueModified;
                                         }
                                     }
                                 }
@@ -494,6 +499,7 @@ impl Ui {
                                         self.queue_menu.redraw();
                                         self.highlight_items();
                                         self.update_details_panel(false);
+                                        return UiMsg::QueueModified;
                                     }
                                 }
                                 ActivePanel::EpisodeMenu | ActivePanel::UnplayedMenu => {}
@@ -771,21 +777,24 @@ impl Ui {
         }
     }
 
-    pub fn move_eps(&mut self, action: &UserAction, curr_sel_id: Option<i64>) {
+    pub fn move_eps(&mut self, action: &UserAction, curr_sel_id: Option<i64>) -> Option<UiMsg> {
         match action {
             UserAction::MoveDown => {
                 if let Some(_curr_sel_id) = curr_sel_id {
                     self.queue_menu.move_item(Move::Down);
+                    return Some(UiMsg::QueueModified);
                 }
             }
 
             UserAction::MoveUp => {
                 if let Some(_curr_sel_id) = curr_sel_id {
                     self.queue_menu.move_item(Move::Up);
+                    return Some(UiMsg::QueueModified);
                 }
             }
             _ => (),
         }
+        None
     }
 
     /// Scrolls the current active menu by the specified amount and
