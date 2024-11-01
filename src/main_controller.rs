@@ -335,8 +335,6 @@ impl MainController {
         }
     }
 
-    /// Updates the persistent notification about syncing podcasts and
-    /// downloading files.
     fn update_unplayed(&self, full: bool) {
         if full {
             let cur_unplayed = get_unplayed_episodes(&self.podcasts);
@@ -491,6 +489,8 @@ impl MainController {
             self.remove_podcast(pod_id, true);
         }
         let _ = self.db.set_param("timestamp", timestamp);
+        self.update_unplayed(true);
+        self.update_filters(self.filters, true, false);
         self.notif_to_ui(
             format!("Gpodder sync finished with {} updates", number_updates).to_string(),
             false,
@@ -753,6 +753,13 @@ impl MainController {
                     changed = true;
                     episode.played = played;
                 }
+                if episode.played && self.unplayed.contains_key(*ep_id) {
+                    self.unplayed.remove(*ep_id);
+                    changed = true;
+                } else if !episode.played && !self.unplayed.contains_key(*ep_id) {
+                    self.unplayed.push(episode.clone());
+                    changed = true;
+                }
                 if self.config.enable_sync {
                     sync_list.push((
                         podcast_url.to_owned(),
@@ -765,6 +772,7 @@ impl MainController {
             (sync_list, db_list)
         };
         if changed {
+            self.update_unplayed(false);
             self.update_filters(self.filters, true, false);
         }
 
@@ -1014,6 +1022,7 @@ impl MainController {
             );
         }
         self.update_unplayed(true);
+        self.update_filters(self.filters, true, false);
         self.tx_to_ui
             .send(MainMessage::UiUpdateMenus)
             .expect("Thread messaging error");
