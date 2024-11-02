@@ -14,31 +14,31 @@ documentation = "https://github.com/gilcu3/hullcaster"
 readme = "README.md"
 
 [dependencies]
-crossterm = "0.27.0"
-rss = "2.0.8"
+crossterm = "0.28.1"
+rss = "2.0.9"
 rusqlite = { version = "0.32.0", features = ["bundled"] }
-ureq = { version = "2.9.7", features = ["cookies", "native-certs"] }
+ureq = { version = "2.10.1", features = ["cookies", "native-certs"] }
 native-tls = { version = "0.2.12", optional = true }
-clap = { version = "4.5.4", features = ["cargo", "env"] }
-toml = "0.8.13"
-anyhow = "1.0.86"
-serde = { version = "1.0.203", features = ["derive"] }
+clap = { version = "4.5.20", features = ["cargo", "env"] }
+toml = "0.8.19"
+anyhow = "1.0.92"
+serde = { version = "1.0.214", features = ["derive"] }
 chrono = "0.4.38"
-regex = "1.10.4"
+regex = "1.11.1"
 sanitize-filename = "0.5.0"
 shellexpand = "3.1.0"
 dirs = { package = "dirs-next", version = "2.0.0" }
 opml = "1.1.6"
 ahash = "0.8.11"
 nohash-hasher = "0.2.0"
-unicode-segmentation = "1.11.0"
+unicode-segmentation = "1.12.0"
 textwrap = "0.16.1"
 escaper = "0.1.1"
 rfc822_sanitizer = "0.3.6"
 semver = "1.0.23"
 base64 = "0.22.1"
-serde_json = {version = "1.0.117"}
-log = "0.4.21"
+serde_json = {version = "1.0.132"}
+log = "0.4.22"
 simplelog = {version = "0.12.2", features = ["local-offset"]}
 symphonia = { version = "0.5.4", features = ["mp3"] }
-once_cell = "1.19.0"
+once_cell = "1.20.2"
