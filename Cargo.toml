@@ -16,7 +16,7 @@ readme = "README.md"
 [dependencies]
 crossterm = "0.27.0"
 rss = "2.0.8"
-rusqlite = "0.31.0"
+rusqlite = { version = "0.32.0", features = ["bundled"] }
 ureq = { version = "2.9.7", features = ["cookies", "native-certs"] }
 native-tls = { version = "0.2.12", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "env"] }
