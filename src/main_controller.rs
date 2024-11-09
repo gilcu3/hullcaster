@@ -400,9 +400,17 @@ impl MainController {
         let subcription_changes = sync_agent.get_subscription_changes();
 
         let removed_pods = if let Some((added, deleted)) = subcription_changes {
+            let pod_map = self
+                .podcasts
+                .borrow_map()
+                .iter()
+                .map(|(id, pod)| (pod.url.clone(), *id))
+                .collect::<HashMap<String, i64>>();
             for url in added {
                 let url_resolved = resolve_redirection(&url).unwrap_or(url);
-                self.add_podcast(url_resolved);
+                if !pod_map.contains_key(&url_resolved) {
+                    self.add_podcast(url_resolved);
+                }
             }
             let mut resolve_deleted = Vec::new();
             for url in deleted {
@@ -410,12 +418,6 @@ impl MainController {
                 resolve_deleted.push(url_resolved);
             }
             let mut removed_pods = Vec::new();
-            let pod_map = self
-                .podcasts
-                .borrow_map()
-                .iter()
-                .map(|(id, pod)| (pod.url.clone(), *id))
-                .collect::<HashMap<String, i64>>();
             for url in resolve_deleted {
                 if let Some(id) = pod_map.get(&url) {
                     removed_pods.push(*id);
