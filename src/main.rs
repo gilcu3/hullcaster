@@ -132,7 +132,7 @@ fn main() -> Result<()> {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
     }
 
-    return match args.subcommand() {
+    match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
         Some(("sync", sub_args)) => sync_podcasts(&db_path, config, sub_args),
 
@@ -149,7 +149,7 @@ fn main() -> Result<()> {
             main_ctrl.finalize();
             Ok(())
         }
-    };
+    }
 }
 
 /// Gets the path to the config file if one is specified in the command-

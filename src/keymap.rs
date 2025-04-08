@@ -144,7 +144,7 @@ impl Keybindings {
     /// Returns a Vec with all of the keys mapped to a particular user
     /// action.
     pub fn keys_for_action(&self, action: UserAction) -> Vec<String> {
-        return self
+        self
             .0
             .iter()
             .filter_map(|(key, &val)| {
@@ -154,7 +154,7 @@ impl Keybindings {
                     None
                 }
             })
-            .collect();
+            .collect()
     }
 
     fn _defaults() -> Vec<(UserAction, Vec<String>)> {

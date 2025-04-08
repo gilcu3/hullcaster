@@ -113,7 +113,7 @@ impl Ui {
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
         tx_to_main: mpsc::Sender<Message>,
     ) -> thread::JoinHandle<()> {
-        return thread::spawn(move || {
+        thread::spawn(move || {
             let mut ui = Ui::new(config, items, queue_items, unplayed_items);
             ui.init();
             let mut message_iter = rx_from_main.try_iter();
@@ -152,7 +152,7 @@ impl Ui {
 
                 io::stdout().flush().unwrap();
             }
-        });
+        })
     }
 
     /// Initializes the UI with a list of podcasts and podcast episodes,

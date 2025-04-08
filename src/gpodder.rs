@@ -8,7 +8,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use ureq::{builder, Agent};
+use ureq::Agent;
 
 use chrono::{DateTime, TimeZone, Utc};
 use std::fmt;
@@ -73,7 +73,7 @@ where
 {
     struct GpodderDate;
 
-    impl<'de> Visitor<'de> for GpodderDate {
+    impl Visitor<'_> for GpodderDate {
         type Value = i64;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -146,10 +146,10 @@ impl GpodderController {
     pub fn new(
         config: Arc<Config>, timestamp: Option<i64>, device_id: String,
     ) -> Option<GpodderController> {
-        let agent_builder = builder()
-            .timeout_connect(Duration::from_secs(10))
-            .timeout_read(Duration::from_secs(30));
-        let agent = agent_builder.build();
+        let agent_builder = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_global(Some(Duration::from_secs(30)));
+        let agent = agent_builder.build().into();
         let timestamp = timestamp.unwrap_or(0);
         let credentials = format!("{}:{}", config.sync_username, config.sync_password);
         let encoded_credentials = base64::engine::general_purpose::STANDARD.encode(credentials);

@@ -12,7 +12,7 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
-use ureq::{Agent, Error, Response};
+use ureq::{Agent, Error,ResponseExt};
 
 use crate::types::*;
 
@@ -48,18 +48,18 @@ pub fn execute_request_post(
 ) -> Option<String> {
     let mut max_retries = 3;
 
-    let request: Result<Response, ()> = loop {
+    let request = loop {
         let response = agent
             .post(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
-            .send_string(&body);
+            .header("Authorization", &format!("Basic {}", encoded_credentials))
+            .send(&body);
 
         match response {
             Ok(resp) => {
                 //println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
-            Err(Error::Status(code, _error_response)) => {
+            Err(Error::StatusCode(code)) => {
                 // Handle HTTP error statuses (e.g., 404, 500)
                 println!("Error code: {}", code);
                 max_retries -= 1;
@@ -76,7 +76,7 @@ pub fn execute_request_post(
         }
     };
     if let Ok(req) = request {
-        req.into_string().ok()
+        req.into_body().read_to_string().ok()
     } else {
         None
     }
@@ -87,10 +87,10 @@ pub fn execute_request_get(
 ) -> Option<String> {
     let mut max_retries = 3;
 
-    let request: Result<Response, ()> = loop {
+    let request = loop {
         let response = agent
             .get(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
+            .header("Authorization", &format!("Basic {}", encoded_credentials))
             .query_pairs(params.clone())
             .call();
 
@@ -99,7 +99,7 @@ pub fn execute_request_get(
                 // println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
-            Err(Error::Status(code, _error_response)) => {
+            Err(Error::StatusCode(code)) => {
                 println!("Error code: {}", code);
                 max_retries -= 1;
                 if max_retries == 0 {
@@ -115,7 +115,7 @@ pub fn execute_request_get(
         }
     };
     if let Ok(req) = request {
-        req.into_string().ok()
+        req.into_body().read_to_string().ok()
     } else {
         None
     }
@@ -123,9 +123,8 @@ pub fn execute_request_get(
 
 pub fn audio_duration(url: &str) -> Option<i64> {
     log::info!("Getting audio duration for {}", url);
-    let response = ureq::get(url).call().ok()?;
-    let bytes = response
-        .into_reader()
+    let mut response = ureq::get(url).call().ok()?;
+    let bytes = response.body_mut().as_reader()
         .bytes()
         .collect::<Result<Vec<_>, _>>()
         .ok()?;
@@ -163,16 +162,16 @@ impl StringUtils for String {
     /// Takes a slice of the String, properly separated at Unicode
     /// grapheme boundaries. Returns a new String.
     fn substr(&self, start: usize, length: usize) -> String {
-        return self
+        self
             .graphemes(true)
             .skip(start)
             .take(length)
-            .collect::<String>();
+            .collect::<String>()
     }
 
     /// Counts the total number of Unicode graphemes in the String.
     fn grapheme_len(&self) -> usize {
-        return self.graphemes(true).count();
+        self.graphemes(true).count()
     }
 }
 
@@ -205,11 +204,11 @@ pub fn clean_html(text: &str) -> String {
 
 // Probably should be done better, without downloading the page
 pub fn resolve_redirection(url: &str) -> Option<String> {
-    let agent = Agent::new();
+    let agent = ureq::agent();
 
     let response = agent.get(url).call().ok()?;
 
-    let final_url = response.get_url().to_string();
+    let final_url = response.get_uri().to_string();
     Some(final_url)
 }
 

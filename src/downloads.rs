@@ -54,12 +54,12 @@ pub fn download_list(
 /// Downloads a file to a local filepath, returning DownloadMsg variant
 /// indicating success or failure.
 fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
-    let agent_builder = ureq::builder()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(120));
-    let agent = agent_builder.build();
+    let agent_builder = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .timeout_global(Some(Duration::from_secs(120)));
+    let agent:ureq::Agent = agent_builder.build().into();
 
-    let request: Result<ureq::Response, ()> = loop {
+    let request = loop {
         let response = agent.get(&ep_data.url).call();
         match response {
             Ok(resp) => break Ok(resp),
@@ -80,7 +80,7 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
 
     // figure out the file type
     // assume .mp3 unless we figure out otherwise
-    let ext = get_file_ext(response.header("content-type"), &ep_data.url).unwrap_or("mp3");
+    let ext = get_file_ext(response.headers().get("content-type").unwrap().to_str().ok(), &ep_data.url).unwrap_or("mp3");
 
     let mut file_name = sanitize_with_options(
         &ep_data.title,
@@ -104,8 +104,8 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     };
 
     ep_data.file_path = Some(file_path);
-
-    let mut reader = response.into_reader();
+    let mut body = response.into_body();
+    let mut reader = body.as_reader();
     match std::io::copy(&mut reader, &mut dst.unwrap()) {
         Ok(_) => DownloadMsg::Complete(ep_data),
         Err(_) => DownloadMsg::FileWriteError(ep_data),

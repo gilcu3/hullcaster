@@ -37,11 +37,11 @@ pub struct Podcast {
 impl Podcast {
     /// Counts and returns the number of unplayed episodes in the podcast.
     fn num_unplayed(&self) -> usize {
-        return self
+        self
             .episodes
             .map(|ep| !ep.is_played() as usize, false)
             .iter()
-            .sum();
+            .sum()
     }
 }
 
@@ -323,17 +323,17 @@ impl<T: Clone + Menuable> LockVec<T> {
 
     /// Lock the LockVec hashmap for reading/writing.
     pub fn borrow_map(&self) -> MutexGuard<HashMap<i64, T, BuildNoHashHasher<i64>>> {
-        return self.data.lock().expect("Mutex error");
+        self.data.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec order vector for reading/writing.
     pub fn borrow_order(&self) -> MutexGuard<Vec<i64>> {
-        return self.order.lock().expect("Mutex error");
+        self.order.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec filtered order vector for reading/writing.
     pub fn borrow_filtered_order(&self) -> MutexGuard<Vec<i64>> {
-        return self.filtered_order.lock().expect("Mutex error");
+        self.filtered_order.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec hashmap for reading/writing.
@@ -345,11 +345,11 @@ impl<T: Clone + Menuable> LockVec<T> {
         MutexGuard<Vec<i64>>,
         MutexGuard<Vec<i64>>,
     ) {
-        return (
+        (
             self.data.lock().expect("Mutex error"),
             self.order.lock().expect("Mutex error"),
             self.filtered_order.lock().expect("Mutex error"),
-        );
+        )
     }
 
     /// Empty out and replace all the data in the LockVec.
@@ -376,15 +376,15 @@ impl<T: Clone + Menuable> LockVec<T> {
     {
         let (map, order, filtered_order) = self.borrow();
         if filtered {
-            return filtered_order
+            filtered_order
                 .iter()
                 .map(|id| f(map.get(id).expect("Index error in LockVec")))
-                .collect();
+                .collect()
         } else {
-            return order
+            order
                 .iter()
                 .map(|id| f(map.get(id).expect("Index error in LockVec")))
-                .collect();
+                .collect()
         }
     }
 
@@ -395,10 +395,7 @@ impl<T: Clone + Menuable> LockVec<T> {
         F: FnOnce(&T) -> B,
     {
         let borrowed = self.borrow_map();
-        return match borrowed.get(&id) {
-            Some(item) => Some(f(item)),
-            None => return None,
-        };
+        borrowed.get(&id).map(f)
     }
 
     /// Maps a closure to a single element in the LockVec, specified by
@@ -409,10 +406,10 @@ impl<T: Clone + Menuable> LockVec<T> {
         F: FnOnce(&T) -> B,
     {
         let order = self.borrow_filtered_order();
-        return match order.get(index) {
+        match order.get(index) {
             Some(id) => self.map_single(*id, f),
             None => None,
-        };
+        }
     }
 
     /// Maps a closure to every element in the LockVec, in the same way
@@ -432,10 +429,10 @@ impl<T: Clone + Menuable> LockVec<T> {
         F: FnMut(&T) -> Option<B>,
     {
         let (map, order, _u) = self.borrow();
-        return order
+        order
             .iter()
             .filter_map(|id| f(map.get(id).expect("Index error in LockVec")))
-            .collect();
+            .collect()
     }
 
     /// Returns the number of items in the LockVec.
