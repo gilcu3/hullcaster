@@ -22,8 +22,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Add playing queue
 - [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
-- [ ] Migrate to [ratatui](https://ratatui.rs/) or
-[Cursive](https://github.com/gyscos/cursive)
+- [x] Migrate to [ratatui](https://ratatui.rs/)
 - [x] Add option to sync automatically on start, enabled by default
 - [ ] Add periodic synchronization
 
@@ -53,9 +52,12 @@ features stated below, while learning `rust` at the same time.
 - [x] Add panel for unplayed episodes across podcasts
 - [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work
 - [x] Unplayed items not sorted correctly
-- [ ] Errors appear sporadically synchronizing podcasts with gpodder
+- [x] Errors appear sporadically synchronizing podcasts with gpodder
 - [x] Unplayed items not updated after sync
 - [x] `~` folder created when creating logs
+- [x] Show in the UI when an episode is currently downloaded
+- [ ] Add tests for the new UI
+- [ ] Add config parameter `confirm_on_exit`.
 
 ## Installing hullcaster
 

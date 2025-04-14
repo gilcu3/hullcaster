@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::KeybindingsFromToml;
 
@@ -15,8 +15,6 @@ pub enum UserAction {
     MoveDown,
     Enter,
 
-    BigUp,
-    BigDown,
     PageUp,
     PageDown,
     GoTop,
@@ -46,18 +44,22 @@ pub enum UserAction {
     Quit,
 
     UnplayedList,
+    Information,
 }
 
 /// Wrapper around a hash map that keeps track of all keybindings. Multiple
 /// keys may perform the same action, but each key may only perform one
 /// action.
 #[derive(Debug, Clone)]
-pub struct Keybindings(AHashMap<String, UserAction>);
+pub struct Keybindings(
+    AHashMap<String, UserAction>,
+    AHashMap<UserAction, Vec<String>>,
+);
 
 impl Keybindings {
     /// Returns a new Keybindings struct.
     pub fn new() -> Self {
-        Self(AHashMap::new())
+        Self(AHashMap::new(), AHashMap::new())
     }
 
     /// Returns a Keybindings struct with all default values set.
@@ -65,7 +67,8 @@ impl Keybindings {
         let defaults = Self::_defaults();
         let mut keymap = Self::new();
         for (action, defaults) in defaults.into_iter() {
-            keymap.insert_from_vec(defaults, action);
+            keymap.insert_from_vec(defaults.clone(), action);
+            keymap.1.insert(action, defaults);
         }
         keymap
     }
@@ -79,8 +82,6 @@ impl Keybindings {
             (config.right, UserAction::Right),
             (config.up, UserAction::Up),
             (config.down, UserAction::Down),
-            (config.big_up, UserAction::BigUp),
-            (config.big_down, UserAction::BigDown),
             (config.page_up, UserAction::PageUp),
             (config.page_down, UserAction::PageDown),
             (config.go_top, UserAction::GoTop),
@@ -111,7 +112,8 @@ impl Keybindings {
         let mut keymap = Self::default();
         for (config, action) in config_actions.into_iter() {
             if let Some(config) = config {
-                keymap.insert_from_vec(config, action);
+                keymap.insert_from_vec(config.clone(), action);
+                keymap.1.insert(action, config);
             }
         }
         keymap
@@ -126,35 +128,19 @@ impl Keybindings {
         }
     }
 
-    /// Inserts a new keybinding into the hash map. Will overwrite the
-    /// value of a key if it already exists.
-    pub fn insert(&mut self, code: String, action: UserAction) {
-        self.0.insert(code, action);
-    }
-
     /// Inserts a set of new keybindings into the hash map, each one
     /// corresponding to the same UserAction. Will overwrite the value
     /// of keys that already exist.
     pub fn insert_from_vec(&mut self, vec: Vec<String>, action: UserAction) {
         for key in vec.into_iter() {
-            self.insert(key, action);
+            self.0.insert(key, action);
         }
     }
 
     /// Returns a Vec with all of the keys mapped to a particular user
     /// action.
-    pub fn keys_for_action(&self, action: UserAction) -> Vec<String> {
-        self
-            .0
-            .iter()
-            .filter_map(|(key, &val)| {
-                if val == action {
-                    Some(key.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn keys_for_action(&self, action: UserAction) -> Option<&Vec<String>> {
+        self.1.get(&action)
     }
 
     fn _defaults() -> Vec<(UserAction, Vec<String>)> {
@@ -166,8 +152,6 @@ impl Keybindings {
             ),
             (UserAction::Up, vec!["Up".to_string(), "k".to_string()]),
             (UserAction::Down, vec!["Down".to_string(), "j".to_string()]),
-            (UserAction::BigUp, vec!["K".to_string()]),
-            (UserAction::BigDown, vec!["J".to_string()]),
             (UserAction::PageUp, vec!["PgUp".to_string()]),
             (UserAction::PageDown, vec!["PgDn".to_string()]),
             (UserAction::GoTop, vec!["g".to_string()]),
@@ -193,6 +177,7 @@ impl Keybindings {
             (UserAction::Help, vec!["?".to_string()]),
             (UserAction::Quit, vec!["q".to_string()]),
             (UserAction::UnplayedList, vec!["u".to_string()]),
+            (UserAction::Information, vec!["i".to_string()]),
         ]
     }
 }

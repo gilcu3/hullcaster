@@ -5,6 +5,7 @@ use regex::Regex;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
@@ -12,7 +13,7 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
-use ureq::{Agent, Error,ResponseExt};
+use ureq::{Agent, Error, ResponseExt};
 
 use crate::types::*;
 
@@ -124,7 +125,9 @@ pub fn execute_request_get(
 pub fn audio_duration(url: &str) -> Option<i64> {
     log::info!("Getting audio duration for {}", url);
     let mut response = ureq::get(url).call().ok()?;
-    let bytes = response.body_mut().as_reader()
+    let bytes = response
+        .body_mut()
+        .as_reader()
         .bytes()
         .collect::<Result<Vec<_>, _>>()
         .ok()?;
@@ -162,8 +165,7 @@ impl StringUtils for String {
     /// Takes a slice of the String, properly separated at Unicode
     /// grapheme boundaries. Returns a new String.
     fn substr(&self, start: usize, length: usize) -> String {
-        self
-            .graphemes(true)
+        self.graphemes(true)
             .skip(start)
             .take(length)
             .collect::<String>()
@@ -212,13 +214,15 @@ pub fn resolve_redirection(url: &str) -> Option<String> {
     Some(final_url)
 }
 
-pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Episode> {
+pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
     let podcast_map = podcasts.borrow_map();
     let mut ueps = Vec::new();
     for podcast in podcast_map.values() {
-        let episode_map = podcast.episodes.borrow_map();
+        let rpod = podcast.read().unwrap();
+        let episode_map = rpod.episodes.borrow_map();
         for episode in episode_map.values() {
-            if !episode.played {
+            let rep = episode.read().unwrap();
+            if !rep.played {
                 ueps.push(episode.clone());
             }
         }
@@ -262,4 +266,11 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
     })?;
 
     Ok(final_path)
+}
+
+pub fn format_seconds_to_mm_ss(seconds: i64) -> String {
+    let total_seconds = if seconds < 0 { 0 } else { seconds } as u64;
+    let total_minutes = total_seconds / 60;
+    let remaining_seconds = total_seconds % 60;
+    format!("{:}:{:02}", total_minutes, remaining_seconds)
 }

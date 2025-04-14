@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
-use crate::config::{Config, DownloadNewEpisodes};
+use crate::config::Config;
 use crate::db::{Database, SyncResult};
 use crate::downloads::{self, DownloadMsg, EpData};
 use crate::feeds::{self, FeedMsg, PodcastFeed};
@@ -15,7 +15,7 @@ use crate::gpodder::{Action, GpodderController};
 use crate::play_file;
 use crate::threadpool::Threadpool;
 use crate::types::*;
-use crate::ui::{Ui, UiMsg};
+use crate::ui::{UiMsg, UiState};
 use crate::utils::{
     audio_duration, current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection,
 };
@@ -24,17 +24,15 @@ use crate::utils::{
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum MainMessage {
-    UiUpdateMenus,
-    UiSpawnNotif(String, bool, u64),
+    UiSpawnNotif(String, u64, bool),
     UiSpawnPersistentNotif(String, bool),
     UiClearPersistentNotif,
-    UiSpawnDownloadPopup(Vec<NewEpisode>, bool),
     UiTearDown,
 }
 
-/// Main application controller, holding all of the main application
-/// state and mechanisms for communicating with the rest of the app.
-pub struct MainController {
+/// Main application controller, holding all of the main application state and
+/// mechanisms for communicating with the rest of the app.
+pub struct App {
     config: Arc<Config>,
     db: Database,
     threadpool: Threadpool,
@@ -53,14 +51,15 @@ pub struct MainController {
     pub rx_to_main: mpsc::Receiver<Message>,
 }
 
-impl MainController {
-    /// Instantiates the main controller (used during app startup), which
-    /// sets up the connection to the database, download manager, and UI
-    /// thread, and reads the list of podcasts from the database.
-    pub fn new(config: Arc<Config>, db_path: &Path) -> Result<MainController> {
-        // create transmitters and receivers for passing messages between threads
+impl App {
+    /// Instantiates the main controller (used during app startup), which sets
+    /// up the connection to the database, download manager, and UI thread, and
+    /// reads the list of podcasts from the database.
+    pub fn new(config: Arc<Config>, db_path: &Path) -> Result<App> {
+        // create transmitters and receivers for passing messages between
+        // threads
         let (tx_to_ui, rx_from_main) = mpsc::channel();
-        let (tx_to_main, rx_to_main) = mpsc::channel();
+        let (tx_to_main, rx_to_main) = mpsc::channel::<Message>();
 
         // get connection to the database
         let db_inst = Database::connect(db_path)?;
@@ -68,11 +67,10 @@ impl MainController {
         // set up threadpool
         let threadpool = Threadpool::new(config.simultaneous_downloads);
 
-        // create vector of podcasts, where references are checked at
-        // runtime; this is necessary because we want main.rs to hold the
-        // "ground truth" list of podcasts, and it must be mutable, but
-        // UI needs to check this list and update the screen when
-        // necessary
+        // create vector of podcasts, where references are checked at runtime;
+        // this is necessary because we want main.rs to hold the "ground truth"
+        // list of podcasts, and it must be mutable, but UI needs to check this
+        // list and update the screen when necessary
         let podcast_list = LockVec::new(db_inst.get_podcasts()?);
 
         let sync_agent = if config.enable_sync {
@@ -93,7 +91,7 @@ impl MainController {
         };
 
         let stored_queue = db_inst.get_queue()?;
-        let queue_items = LockVec::new({
+        let queue_items = LockVec::new_arc({
             let all_eps_map = podcast_list.get_episodes_map().unwrap();
             let res = stored_queue
                 .iter()
@@ -102,13 +100,14 @@ impl MainController {
             res
         });
 
-        let unplayed_items = LockVec::new(get_unplayed_episodes(&podcast_list));
+        let unplayed_items = LockVec::new_arc(get_unplayed_episodes(&podcast_list));
         unplayed_items.sort();
         unplayed_items.reverse();
 
         // set up UI in new thread
         let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
-        let ui_thread = Ui::spawn(
+
+        let ui_thread = UiState::spawn(
             config.clone(),
             podcast_list.clone(),
             queue_items.clone(),
@@ -117,7 +116,7 @@ impl MainController {
             tx_ui_to_main,
         );
 
-        Ok(MainController {
+        Ok(App {
             config,
             db: db_inst,
             threadpool,
@@ -137,8 +136,9 @@ impl MainController {
         })
     }
 
-    /// Initiates the main loop where the controller waits for messages coming in from the UI and other threads, and processes them.
-    pub fn loop_msgs(&mut self) {
+    /// Initiates the main loop where the controller waits for messages coming
+    /// in from the UI and other threads, and processes them.
+    pub fn run(&mut self) -> Result<()> {
         if self.config.sync_on_start {
             self.sync(None);
         }
@@ -191,12 +191,6 @@ impl MainController {
 
                 Message::Ui(UiMsg::Download(pod_id, ep_id)) => self.download(pod_id, Some(ep_id)),
 
-                Message::Ui(UiMsg::DownloadMulti(vec)) => {
-                    for (pod_id, ep_id) in vec.into_iter() {
-                        self.download(pod_id, Some(ep_id));
-                    }
-                }
-
                 Message::Ui(UiMsg::DownloadAll(pod_id)) => self.download(pod_id, None),
 
                 // downloading can produce any one of these responses
@@ -227,13 +221,11 @@ impl MainController {
                     let new_filter;
                     let message;
                     match filter_type {
-                        // we need to handle these separately because the
-                        // order that makes the most sense to me is
-                        // different:
-                        // played goes from all -> neg -> pos;
-                        // downloaded goes from all -> pos -> neg;
-                        // this is purely based on the idea that people
-                        // are most likely to want to specifically find
+                        // we need to handle these separately because the order
+                        // that makes the most sense to me is different: played
+                        // goes from all -> neg -> pos; downloaded goes from all
+                        // -> pos -> neg; this is purely based on the idea that
+                        // people are most likely to want to specifically find
                         // unplayed episodes, or downloaded episodes
                         FilterType::Played => {
                             match self.filters.played {
@@ -271,15 +263,15 @@ impl MainController {
                         }
                     }
                     self.notif_to_ui(format!("Filter: {message}"), false);
-                    self.update_filters(self.filters, true, false);
+                    self.update_filters(self.filters, false);
                 }
                 Message::Ui(UiMsg::QueueModified) => {
                     self.write_queue();
                 }
-
                 Message::Ui(UiMsg::Noop) => (),
             }
         }
+        Ok(())
     }
 
     // sync queue back to database
@@ -288,20 +280,20 @@ impl MainController {
         self.db.set_queue(queue).ok()
     }
 
-    /// Sends the specified notification to the UI, which will display at
-    /// the bottom of the screen.
+    /// Sends the specified notification to the UI, which will display at the
+    /// bottom of the screen.
     pub fn notif_to_ui(&self, message: String, error: bool) {
         self.tx_to_ui
             .send(MainMessage::UiSpawnNotif(
                 message,
-                error,
                 crate::config::MESSAGE_TIME,
+                error,
             ))
             .expect("Thread messaging error");
     }
 
-    /// Sends a persistent notification to the UI, which will display at
-    /// the bottom of the screen until cleared.
+    /// Sends a persistent notification to the UI, which will display at the
+    /// bottom of the screen until cleared.
     pub fn persistent_notif_to_ui(&self, message: String, error: bool) {
         self.tx_to_ui
             .send(MainMessage::UiSpawnPersistentNotif(message, error))
@@ -341,7 +333,7 @@ impl MainController {
     fn update_unplayed(&self, full: bool) {
         if full {
             let cur_unplayed = get_unplayed_episodes(&self.podcasts);
-            self.unplayed.replace_all(cur_unplayed);
+            self.unplayed.replace_all_arc(cur_unplayed);
         }
         self.unplayed.sort();
         self.unplayed.reverse();
@@ -360,11 +352,10 @@ impl MainController {
 
     /// Synchronize RSS feed data for one or more podcasts.
     pub fn sync(&mut self, pod_id: Option<i64>) {
-        // We pull out the data we need here first, so we can
-        // stop borrowing the podcast list as quickly as possible.
-        // Slightly less efficient (two loops instead of
-        // one), but then it won't block other tasks that
-        // need to access the list.
+        // We pull out the data we need here first, so we can stop borrowing the
+        // podcast list as quickly as possible. Slightly less efficient (two
+        // loops instead of one), but then it won't block other tasks that need
+        // to access the list.
         let mut pod_data = Vec::new();
         match pod_id {
             // just grab one podcast
@@ -404,7 +395,10 @@ impl MainController {
                 .podcasts
                 .borrow_map()
                 .iter()
-                .map(|(id, pod)| (pod.url.clone(), *id))
+                .map(|(id, pod)| {
+                    let rpod = pod.read().unwrap();
+                    (rpod.url.clone(), *id)
+                })
                 .collect::<HashMap<String, i64>>();
             for url in added {
                 let url_resolved = resolve_redirection(&url).unwrap_or(url);
@@ -495,7 +489,7 @@ impl MainController {
         }
         let _ = self.db.set_param("timestamp", timestamp);
         self.update_unplayed(true);
-        self.update_filters(self.filters, true, false);
+        self.update_filters(self.filters, false);
         self.notif_to_ui(
             format!("Gpodder sync finished with {} updates", number_updates).to_string(),
             false,
@@ -503,8 +497,8 @@ impl MainController {
     }
 
     fn pos_sync_counter(&mut self) {
-        // count up total new episodes and updated
-        // episodes when sync process is finished
+        // count up total new episodes and updated episodes when sync process is
+        // finished
         let mut added = 0;
         let mut updated = 0;
         let mut new_eps = Vec::new();
@@ -514,7 +508,7 @@ impl MainController {
             new_eps.extend(res.added.clone());
         }
         if added + updated + new_eps.len() > 0 {
-            self.update_filters(self.filters, true, false);
+            self.update_filters(self.filters, false);
         }
 
         self.sync_tracker = Vec::new();
@@ -523,38 +517,15 @@ impl MainController {
             false,
         );
 
-        // deal with new episodes once syncing is
-        // complete, based on user preferences
-        if !new_eps.is_empty() {
-            match self.config.download_new_episodes {
-                DownloadNewEpisodes::Always => {
-                    for ep in new_eps.into_iter() {
-                        self.download(ep.pod_id, Some(ep.id));
-                    }
-                }
-                DownloadNewEpisodes::AskSelected => {
-                    self.tx_to_ui
-                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, true))
-                        .expect("Thread messaging error");
-                }
-                DownloadNewEpisodes::AskUnselected => {
-                    self.tx_to_ui
-                        .send(MainMessage::UiSpawnDownloadPopup(new_eps, false))
-                        .expect("Thread messaging error");
-                }
-                _ => (),
-            }
-        }
-
         if self.config.enable_sync {
             self.gpodder_sync();
         }
     }
 
-    /// Handles the application logic for adding a new podcast, or
-    /// synchronizing data from the RSS feed of an existing podcast.
-    /// `pod_id` will be None if a new podcast is being added (i.e.,
-    /// the database has not given it an id yet).
+    /// Handles the application logic for adding a new podcast, or synchronizing
+    /// data from the RSS feed of an existing podcast. `pod_id` will be None if
+    /// a new podcast is being added (i.e., the database has not given it an id
+    /// yet).
     pub fn add_or_sync_data(&mut self, pod: PodcastNoId, pod_id: Option<i64>) {
         let title = pod.title.clone();
         let db_result;
@@ -583,7 +554,7 @@ impl MainController {
                         );
                     }
                     self.update_unplayed(true);
-                    self.update_filters(self.filters, true, true);
+                    self.update_filters(self.filters, true);
                 }
 
                 if pod_id.is_some() {
@@ -605,17 +576,16 @@ impl MainController {
         }
     }
 
-    /// Attempts to execute the play command on the given podcast
-    /// episode.
+    /// Attempts to execute the play command on the given podcast episode.
     pub fn play_file(&self, pod_id: i64, ep_id: i64) {
         if self.config.mark_as_played_on_play {
             self.mark_played(pod_id, ep_id, true);
         }
         let (ep_path, ep_url) = {
-            let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id).unwrap();
-            let episode_map = podcast.episodes.borrow_map();
-            let episode = episode_map.get(&ep_id).unwrap();
+            let pod = self.podcasts.get(pod_id).unwrap();
+            let pod = pod.read().unwrap();
+            let episode_map = pod.episodes.borrow_map();
+            let episode = episode_map.get(&ep_id).unwrap().read().unwrap();
             (episode.path.clone(), episode.url.clone())
         };
 
@@ -654,11 +624,11 @@ impl MainController {
         for pod_id in pod_map.keys() {
             let batch = {
                 let podcast_map = self.podcasts.borrow_map();
-                let podcast = podcast_map.get(pod_id)?;
+                let podcast = podcast_map.get(pod_id)?.read().unwrap();
                 let mut episode_map = podcast.episodes.borrow_map();
                 let mut batch = Vec::new();
                 for (ep_id, played) in pod_map.get(pod_id).unwrap() {
-                    let episode = episode_map.get_mut(ep_id).unwrap();
+                    let mut episode = episode_map.get_mut(ep_id).unwrap().write().unwrap();
                     if episode.played != *played {
                         changed = true;
                         episode.played = *played;
@@ -675,21 +645,21 @@ impl MainController {
             }
         }
         if changed {
-            self.update_filters(self.filters, true, false);
+            self.update_filters(self.filters, false);
         }
         Some(())
     }
 
     /// Given a podcast and episode, it marks the given episode as
-    /// played/unplayed, sending this info to the database and updating
-    /// in self.podcasts
+    /// played/unplayed, sending this info to the database and updating in
+    /// self.podcasts
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
         let mut changed = false;
         let (mut duration, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id)?;
+            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let episode = episode_map.get_mut(&ep_id)?;
+            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
             if episode.played != played {
                 changed = true;
                 episode.played = played;
@@ -704,19 +674,10 @@ impl MainController {
             self.db.set_played_status(ep_id, played).ok()?;
             (episode.duration, episode.url.clone(), podcast.url.clone())
         };
-        {
-            let mut queue_map = self.queue.borrow_map();
-            if let Some(episode) = queue_map.get_mut(&ep_id) {
-                if episode.played != played {
-                    changed = true;
-                    episode.played = played;
-                }
-            }
-        }
 
         if changed {
             self.update_unplayed(false);
-            self.update_filters(self.filters, true, false);
+            self.update_filters(self.filters, false);
         }
 
         if self.config.enable_sync {
@@ -740,13 +701,13 @@ impl MainController {
     }
 
     /// Given a podcast, it marks all episodes for that podcast as
-    /// played/unplayed, sending this info to the database and updating
-    /// in self.podcasts
+    /// played/unplayed, sending this info to the database and updating in
+    /// self.podcasts
     pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Option<()> {
         let mut changed = false;
         let (sync_list, db_list) = {
             let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id)?;
+            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
             let podcast_url = podcast.url.clone();
 
             let mut sync_list = Vec::new();
@@ -754,6 +715,7 @@ impl MainController {
             let mut episode_map = podcast.episodes.borrow_map();
             for (ep_id, episode) in episode_map.iter_mut() {
                 db_list.push((*ep_id, played));
+                let mut episode = episode.write().unwrap();
                 if episode.played != played {
                     changed = true;
                     episode.played = played;
@@ -778,7 +740,7 @@ impl MainController {
         };
         if changed {
             self.update_unplayed(false);
-            self.update_filters(self.filters, true, false);
+            self.update_filters(self.filters, false);
         }
 
         self.db.set_played_status_batch(db_list).ok()?;
@@ -794,20 +756,21 @@ impl MainController {
         Some(())
     }
 
-    /// Given a podcast index (and not an episode index), this will send
-    /// a vector of jobs to the threadpool to download all episodes in
-    /// the podcast. If given an episode index as well, it will download
-    /// just that episode.
+    /// Given a podcast index (and not an episode index), this will send a
+    /// vector of jobs to the threadpool to download all episodes in the
+    /// podcast. If given an episode index as well, it will download just that
+    /// episode.
     pub fn download(&mut self, pod_id: i64, ep_id: Option<i64>) {
         let pod_title;
         let mut ep_data = Vec::new();
         {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map.get(&pod_id).unwrap();
+            let podcast = podcast.read().unwrap();
             pod_title = podcast.title.clone();
 
-            // if we are selecting one specific episode, just grab that
-            // one; otherwise, loop through them all
+            // if we are selecting one specific episode, just grab that one;
+            // otherwise, loop through them all
             match ep_id {
                 Some(ep_id) => {
                     // grab just the relevant data we need
@@ -834,6 +797,7 @@ impl MainController {
                 None => {
                     // grab just the relevant data we need
                     ep_data = podcast.episodes.filter_map(|ep| {
+                        let ep = ep.read().unwrap();
                         if ep.path.is_none() {
                             Some(EpData {
                                 id: ep.id,
@@ -851,8 +815,8 @@ impl MainController {
             }
         }
 
-        // check against episodes currently being downloaded -- so we
-        // don't needlessly download them again
+        // check against episodes currently being downloaded -- so we don't
+        // needlessly download them again
         ep_data.retain(|ep| !self.download_tracker.contains(&ep.id));
 
         if !ep_data.is_empty() {
@@ -901,9 +865,10 @@ impl MainController {
         {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map.get(&ep_data.pod_id).unwrap();
+            let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let episode = episode_map.get_mut(&ep_data.id)?;
-            episode.path = Some(file_path);
+            let mut episode = episode_map.get_mut(&ep_data.id)?.write().unwrap();
+            episode.path = Some(file_path.clone());
         }
 
         self.download_tracker.remove(&ep_data.id);
@@ -912,12 +877,12 @@ impl MainController {
             self.notif_to_ui("Downloads complete.".to_string(), false);
         }
 
-        self.update_filters(self.filters, true, false);
+        self.update_filters(self.filters, false);
         Some(())
     }
 
-    /// Given a podcast title, creates a download directory for that
-    /// podcast if it does not already exist.
+    /// Given a podcast title, creates a download directory for that podcast if
+    /// it does not already exist.
     pub fn create_podcast_dir(&self, pod_title: String) -> Result<PathBuf, std::io::Error> {
         let mut download_path = self.config.download_path.clone();
         download_path.push(pod_title);
@@ -927,14 +892,14 @@ impl MainController {
         }
     }
 
-    /// Deletes a downloaded file for an episode from the user's local
-    /// system.
+    /// Deletes a downloaded file for an episode from the user's local system.
     pub fn delete_file(&self, pod_id: i64, ep_id: i64) -> Option<()> {
         let (file_path, title) = {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map.get(&pod_id).unwrap();
+            let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let episode = episode_map.get_mut(&ep_id)?;
+            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
             let _path = episode.path.clone()?;
             episode.path = None;
             (_path, episode.title.clone())
@@ -950,7 +915,7 @@ impl MainController {
                     );
                     return None;
                 }
-                self.update_filters(self.filters, true, false);
+                self.update_filters(self.filters, false);
                 self.notif_to_ui(format!("Deleted \"{title}\""), false);
             }
             Err(_) => self.notif_to_ui(format!("Error deleting \"{title}\""), true),
@@ -958,8 +923,8 @@ impl MainController {
         Some(())
     }
 
-    /// Deletes all downloaded files for a given podcast from the user's
-    /// local system.
+    /// Deletes all downloaded files for a given podcast from the user's local
+    /// system.
     pub fn delete_files(&self, pod_id: i64) {
         let mut eps_id_to_remove = Vec::new();
         let mut eps_path_to_remove = Vec::new();
@@ -967,9 +932,11 @@ impl MainController {
         {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map.get(&pod_id).unwrap();
+            let podcast = podcast.read().unwrap();
             let mut borrowed_ep_map = podcast.episodes.borrow_map();
 
             for (_, ep) in borrowed_ep_map.iter_mut() {
+                let mut ep = ep.write().unwrap();
                 if ep.path.is_some() {
                     eps_path_to_remove.push(ep.path.clone().unwrap());
                     eps_id_to_remove.push(ep.id);
@@ -992,7 +959,7 @@ impl MainController {
 
         if success {
             if !eps_id_to_remove.is_empty() {
-                self.update_filters(self.filters, true, false);
+                self.update_filters(self.filters, false);
                 self.notif_to_ui("Files successfully deleted.".to_string(), false);
             } else {
                 self.notif_to_ui("There are no downloads to delete".to_string(), false);
@@ -1002,15 +969,19 @@ impl MainController {
         }
     }
 
-    /// Removes a podcast from the list, optionally deleting local files
-    /// first
+    /// Removes a podcast from the list, optionally deleting local files first
     pub fn remove_podcast(&mut self, pod_id: i64, delete_files: bool) {
         if delete_files {
             self.delete_files(pod_id);
         }
 
         let pod = self.podcasts.get(pod_id);
-        let (pod_id, url) = pod.map(|pod| (pod.id, pod.url)).unwrap();
+        let (pod_id, url) = pod
+            .map(|pod| {
+                let pod = pod.read().unwrap();
+                (pod.id, pod.url.clone())
+            })
+            .unwrap();
         let res = self.db.remove_podcast(pod_id);
         if self.config.enable_sync && self.sync_agent.is_some() {
             self.sync_agent.as_ref().unwrap().remove_podcast(url);
@@ -1027,16 +998,13 @@ impl MainController {
             );
         }
         self.update_unplayed(true);
-        self.update_filters(self.filters, true, false);
-        self.tx_to_ui
-            .send(MainMessage::UiUpdateMenus)
-            .expect("Thread messaging error");
+        self.update_filters(self.filters, false);
     }
 
-    // Updates the user-selected filters to show only played/unplayed
-    // or downloaded/not downloaded episodes.
+    // Updates the user-selected filters to show only played/unplayed or
+    // downloaded/not downloaded episodes.
     // TODO: this needs to be optimized, I think it is provoking screen issues
-    pub fn update_filters(&self, filters: Filters, update_menus: bool, in_loop: bool) {
+    pub fn update_filters(&self, filters: Filters, in_loop: bool) {
         {
             let current_time = current_time_ms();
             if in_loop && current_time - self.last_filter_time_ms.get() < 200 {
@@ -1046,8 +1014,9 @@ impl MainController {
 
             let (pod_map, pod_order, _unused) = self.podcasts.borrow();
             for pod_id in pod_order.iter() {
-                let pod = pod_map.get(pod_id).unwrap();
+                let pod = pod_map.get(pod_id).unwrap().read().unwrap();
                 let new_filter = pod.episodes.filter_map(|ep| {
+                    let ep = ep.read().unwrap();
                     let play_filter = match filters.played {
                         FilterStatus::All => false,
                         FilterStatus::PositiveCases => !ep.is_played(),
@@ -1067,11 +1036,6 @@ impl MainController {
                 let mut filtered_order = pod.episodes.borrow_filtered_order();
                 *filtered_order = new_filter;
             }
-        }
-        if update_menus {
-            self.tx_to_ui
-                .send(MainMessage::UiUpdateMenus)
-                .expect("Thread messaging error");
         }
     }
 

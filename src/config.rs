@@ -20,34 +20,17 @@ pub const PODCAST_UNPLAYED_TOTALS_LENGTH: usize = 25;
 // the episode
 pub const EPISODE_DURATION_LENGTH: usize = 45;
 
-// How many columns we need, minimum, before we display the pubdate
-// of the episode
-pub const EPISODE_PUBDATE_LENGTH: usize = 60;
+// How many lines will be scrolled by the PageUp/PageDown
+pub const SCROLL_AMOUNT: u16 = 6;
 
-// How many columns we need (total terminal window width) before we
-// display the details panel
-pub const DETAILS_PANEL_LENGTH: u16 = 135;
-
-// How many lines will be scrolled by the big scroll,
-// in relation to the rows eg: 4 = 1/4 of the screen
-pub const BIG_SCROLL_AMOUNT: u16 = 4;
-
-/// Identifies the user's selection for what to do with new episodes
-/// when syncing.
-#[derive(Debug, Clone)]
-pub enum DownloadNewEpisodes {
-    Always,
-    AskSelected,
-    AskUnselected,
-    Never,
-}
+/// Amount of time between ticks in the event loop
+pub const TICK_RATE: u64 = 10;
 
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub download_path: PathBuf,
     pub play_command: String,
-    pub download_new_episodes: DownloadNewEpisodes,
     pub simultaneous_downloads: usize,
     pub max_retries: usize,
     pub mark_as_played_on_play: bool,
@@ -66,7 +49,6 @@ pub struct Config {
 struct ConfigFromToml {
     download_path: Option<String>,
     play_command: Option<String>,
-    download_new_episodes: Option<String>,
     simultaneous_downloads: Option<usize>,
     max_retries: Option<usize>,
     mark_as_played_on_play: Option<bool>,
@@ -88,8 +70,6 @@ pub struct KeybindingsFromToml {
     pub right: Option<Vec<String>>,
     pub up: Option<Vec<String>>,
     pub down: Option<Vec<String>>,
-    pub big_up: Option<Vec<String>>,
-    pub big_down: Option<Vec<String>>,
     pub go_top: Option<Vec<String>>,
     pub go_bot: Option<Vec<String>>,
     pub page_up: Option<Vec<String>>,
@@ -157,8 +137,6 @@ impl Config {
                     right: None,
                     up: None,
                     down: None,
-                    big_up: None,
-                    big_down: None,
                     go_top: None,
                     go_bot: None,
                     page_up: None,
@@ -201,7 +179,6 @@ impl Config {
                 ConfigFromToml {
                     download_path: None,
                     play_command: None,
-                    download_new_episodes: None,
                     simultaneous_downloads: None,
                     max_retries: None,
                     enable_sync: Some(false),
@@ -251,14 +228,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         None => "vlc %s".to_string(),
     };
 
-    let download_new_episodes = match config_toml.download_new_episodes.as_deref() {
-        Some("always") => DownloadNewEpisodes::Always,
-        Some("ask-selected") => DownloadNewEpisodes::AskSelected,
-        Some("ask-unselected") => DownloadNewEpisodes::AskUnselected,
-        Some("never") => DownloadNewEpisodes::Never,
-        Some(_) | None => DownloadNewEpisodes::AskUnselected,
-    };
-
     let simultaneous_downloads = match config_toml.simultaneous_downloads {
         Some(num) if num > 0 => num,
         Some(_) => 3,
@@ -297,7 +266,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
     Ok(Config {
         download_path,
         play_command,
-        download_new_episodes,
         simultaneous_downloads,
         max_retries,
         mark_as_played_on_play,

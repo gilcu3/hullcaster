@@ -11,13 +11,13 @@ use clap::{Arg, ArgAction, Command};
 use log::info;
 use utils::parse_create_dir;
 
+mod app;
 mod config;
 mod db;
 mod downloads;
 mod feeds;
 mod gpodder;
 mod keymap;
-mod main_controller;
 mod opml;
 mod play_file;
 mod threadpool;
@@ -25,10 +25,10 @@ mod types;
 mod ui;
 mod utils;
 
+use crate::app::App;
 use crate::config::Config;
 use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
-use crate::main_controller::{MainController, MainMessage};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 
@@ -144,10 +144,10 @@ fn main() -> Result<()> {
 
         // MAIN COMMAND -------------------------------------------------
         _ => {
-            let mut main_ctrl = MainController::new(config, &db_path)?;
-            main_ctrl.loop_msgs(); // main loop
-            main_ctrl.finalize();
-            Ok(())
+            let mut app = App::new(config, &db_path)?;
+            let app_result = app.run(); // main loop
+            app.finalize();
+            app_result
         }
     }
 }

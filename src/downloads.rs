@@ -57,7 +57,7 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     let agent_builder = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(10)))
         .timeout_global(Some(Duration::from_secs(120)));
-    let agent:ureq::Agent = agent_builder.build().into();
+    let agent: ureq::Agent = agent_builder.build().into();
 
     let request = loop {
         let response = agent.get(&ep_data.url).call();
@@ -80,7 +80,16 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
 
     // figure out the file type
     // assume .mp3 unless we figure out otherwise
-    let ext = get_file_ext(response.headers().get("content-type").unwrap().to_str().ok(), &ep_data.url).unwrap_or("mp3");
+    let ext = get_file_ext(
+        response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .ok(),
+        &ep_data.url,
+    )
+    .unwrap_or("mp3");
 
     let mut file_name = sanitize_with_options(
         &ep_data.title,
