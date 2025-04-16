@@ -24,7 +24,7 @@ pub const EPISODE_DURATION_LENGTH: usize = 45;
 pub const SCROLL_AMOUNT: u16 = 6;
 
 /// Amount of time between ticks in the event loop
-pub const TICK_RATE: u64 = 10;
+pub const TICK_RATE: u64 = 50;
 
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]
@@ -80,7 +80,7 @@ pub struct KeybindingsFromToml {
     pub sync: Option<Vec<String>>,
     pub sync_all: Option<Vec<String>>,
     pub sync_gpodder: Option<Vec<String>>,
-    pub play: Option<Vec<String>>,
+    pub play_pause: Option<Vec<String>>,
     pub enter: Option<Vec<String>>,
     pub mark_played: Option<Vec<String>>,
     pub mark_all_played: Option<Vec<String>>,
@@ -147,7 +147,7 @@ impl Config {
                     sync: None,
                     sync_all: None,
                     sync_gpodder: None,
-                    play: None,
+                    play_pause: None,
                     enter: None,
                     mark_played: None,
                     mark_all_played: None,

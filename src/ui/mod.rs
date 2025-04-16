@@ -1,5 +1,6 @@
 use std::{
-    sync::{mpsc, Arc},
+    path::PathBuf,
+    sync::{mpsc, Arc, RwLock},
     thread,
     time::Duration,
 };
@@ -26,8 +27,9 @@ mod types;
 
 use crate::{
     app::MainMessage,
+    player::{Player, PlayerMessage},
     types::{FilterType, LockVec, Menuable, Message},
-    utils::{clean_html, format_seconds_to_mm_ss},
+    utils::{clean_html, format_duration},
 };
 use crate::{
     config::Config,
@@ -74,8 +76,9 @@ struct EpisodeList {
 struct CurrentEpisode {
     title: String,
     podcast_title: String,
-    duration: Option<i64>,
-    played: i64,
+    path: Option<PathBuf>,
+    duration: Option<u64>,
+    elapsed: Arc<RwLock<u64>>,
 }
 
 #[derive(Debug)]
@@ -90,7 +93,6 @@ pub struct Details {
     pub podcast_title: Option<String>,
 }
 
-#[derive(Debug)]
 pub struct UiState {
     keymap: Keybindings,
     colors: AppColors,
@@ -107,6 +109,8 @@ pub struct UiState {
     current_episode: Option<CurrentEpisode>,
     current_details: Option<Details>,
     input: Input,
+    pub tx_to_player: mpsc::Sender<PlayerMessage>,
+    elapsed: Arc<RwLock<u64>>,
 }
 
 impl UiState {
@@ -130,16 +134,19 @@ impl UiState {
 
                 if let Some(message) = message_iter.next() {
                     match message {
-                        MainMessage::UiSpawnNotif(msg, duration, error) => {
+                        MainMessage::SpawnNotif(msg, duration, error) => {
                             ui.notification.timed_notif(msg, duration, error)
                         }
-                        MainMessage::UiSpawnPersistentNotif(msg, error) => {
+                        MainMessage::SpawnPersistentNotif(msg, error) => {
                             ui.notification.persistent_notif(msg, error)
                         }
-                        MainMessage::UiClearPersistentNotif => {
+                        MainMessage::ClearPersistentNotif => {
                             ui.notification.clear_persistent_notif()
                         }
-                        MainMessage::UiTearDown => {
+                        MainMessage::PlayCurrent => {
+                            ui.play_current();
+                        }
+                        MainMessage::TearDown => {
                             break;
                         }
                     }
@@ -158,6 +165,12 @@ impl UiState {
         } else {
             None
         };
+
+        let (tx_to_player, rx_from_ui) = mpsc::channel();
+        let elapsed = Arc::new(RwLock::new(0));
+        // should store this somehow
+        let _player_thread = Player::spawn(rx_from_ui, elapsed.clone());
+
         Self {
             keymap: config.keybindings.clone(),
             colors: config.colors.clone(),
@@ -190,6 +203,8 @@ impl UiState {
             current_episode: None,
             current_details: None,
             input: Input::default(),
+            tx_to_player,
+            elapsed,
         }
     }
 
@@ -516,6 +531,7 @@ impl UiState {
                             Popup::ConfirmQuit => match input.code {
                                 KeyCode::Char('y') => {
                                     self.active_popup = None;
+                                    let _ = self.tx_to_player.send(PlayerMessage::Quit);
                                     return UiMsg::Quit;
                                 }
                                 KeyCode::Char('n') => {
@@ -610,16 +626,9 @@ impl UiState {
                                 }
                                 Panel::Queue | Panel::Podcasts => {}
                             },
-                            Some(UserAction::Play) => match self.active_panel {
-                                Panel::Episodes | Panel::Queue | Panel::Unplayed => {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        if let Some(ep_id) = self.get_episode_id() {
-                                            return UiMsg::Play(pod_id, ep_id);
-                                        }
-                                    }
-                                }
-                                Panel::Podcasts => {}
-                            },
+                            Some(UserAction::PlayPause) => {
+                                let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
+                            }
                             Some(UserAction::MarkPlayed) => match self.active_panel {
                                 Panel::Episodes | Panel::Unplayed | Panel::Queue => {
                                     if let Some(ui_msg) = self.mark_played() {
@@ -839,7 +848,7 @@ impl UiState {
                 };
                 self.current_details = Some(Details {
                     pubdate: ep.pubdate,
-                    duration: Some(ep.format_duration()),
+                    duration: Some(format_duration(ep.duration.map(|x| x as u64))),
                     explicit: None,
                     description: Some(desc),
                     author: None,
@@ -887,11 +896,23 @@ impl UiState {
                 self.current_episode = Some(CurrentEpisode {
                     title: ep.title.clone(),
                     podcast_title,
-                    duration: ep.duration,
-                    played: 0,
+                    path: ep.path.clone(),
+                    duration: ep.duration.map(|x| x as u64),
+                    elapsed: self.elapsed.clone(),
                 })
             }
         }
+    }
+
+    fn play_current(&mut self) -> Option<()> {
+        if let Some(ep) = &self.current_episode {
+            if let Some(path) = &ep.path {
+                self.tx_to_player
+                    .send(PlayerMessage::PlayFile(path.clone()))
+                    .ok()?;
+            }
+        }
+        None
     }
 }
 
@@ -947,7 +968,7 @@ fn render_shortcut_help_popup(
         (Some(UserAction::SyncGpodder), "Sync with gpodder:"),
         //(None, ""),
         (Some(UserAction::Enter), "Open podcast/Play episode:"),
-        (Some(UserAction::Play), "Play:"),
+        (Some(UserAction::PlayPause), "Play/Pause:"),
         (Some(UserAction::MarkPlayed), "Mark as played:"),
         (Some(UserAction::MarkAllPlayed), "Mark all as played:"),
         //(None, ""),
@@ -1223,19 +1244,21 @@ fn render_play_area(
     let mut ratio = 0.0;
     let mut title = "".to_string();
     let mut podcast_title = "".to_string();
-    let mut played = 0;
+    let mut label = "".to_string();
+
     if let Some(ep) = ep {
+        let elapsed = *ep.elapsed.read().unwrap();
         if let Some(total) = ep.duration {
-            ratio = ep.played as f64 / total as f64;
+            ratio = elapsed as f64 / total as f64;
         }
+        let total_label = format_duration(ep.duration);
         title = ep.title.clone();
         podcast_title = ep.podcast_title.clone();
-        played = ep.played;
+        label = format!("{}/{}", format_duration(Some(elapsed)), total_label);
     }
-
     let progress = Gauge::default()
         .gauge_style(Style::new().green().on_black())
-        .label(format_seconds_to_mm_ss(played))
+        .label(label)
         .ratio(ratio);
     let inner_area = block.inner(area);
     let [episode_area, podcast_area, _, bottom] = Layout::vertical([

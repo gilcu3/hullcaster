@@ -25,7 +25,7 @@ pub enum UserAction {
     SyncAll,
     SyncGpodder,
 
-    Play,
+    PlayPause,
     MarkPlayed,
     MarkAllPlayed,
 
@@ -92,7 +92,7 @@ impl Keybindings {
             (config.sync, UserAction::Sync),
             (config.sync_all, UserAction::SyncAll),
             (config.sync_gpodder, UserAction::SyncGpodder),
-            (config.play, UserAction::Play),
+            (config.play_pause, UserAction::PlayPause),
             (config.enter, UserAction::Enter),
             (config.mark_played, UserAction::MarkPlayed),
             (config.mark_all_played, UserAction::MarkAllPlayed),
@@ -162,7 +162,7 @@ impl Keybindings {
             (UserAction::Sync, vec!["s".to_string()]),
             (UserAction::SyncAll, vec!["S".to_string()]),
             (UserAction::SyncGpodder, vec!["A".to_string()]),
-            (UserAction::Play, vec!["p".to_string()]),
+            (UserAction::PlayPause, vec!["p".to_string()]),
             (UserAction::Enter, vec!["Enter".to_string()]),
             (UserAction::MarkPlayed, vec!["m".to_string()]),
             (UserAction::MarkAllPlayed, vec!["M".to_string()]),

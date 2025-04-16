@@ -268,9 +268,16 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
     Ok(final_path)
 }
 
-pub fn format_seconds_to_mm_ss(seconds: i64) -> String {
-    let total_seconds = if seconds < 0 { 0 } else { seconds } as u64;
-    let total_minutes = total_seconds / 60;
-    let remaining_seconds = total_seconds % 60;
-    format!("{:}:{:02}", total_minutes, remaining_seconds)
+pub fn format_duration(duration: Option<u64>) -> String {
+    match duration {
+        Some(dur) => {
+            let mut seconds = dur;
+            let hours = seconds / 3600;
+            seconds -= hours * 3600;
+            let minutes = seconds / 60;
+            seconds -= minutes * 60;
+            format!("{hours:02}:{minutes:02}:{seconds:02}")
+        }
+        None => "--:--:--".to_string(),
+    }
 }

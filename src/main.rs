@@ -20,6 +20,7 @@ mod gpodder;
 mod keymap;
 mod opml;
 mod play_file;
+mod player;
 mod threadpool;
 mod types;
 mod ui;

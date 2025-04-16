@@ -21,13 +21,13 @@ use crate::utils::{
 };
 
 /// Enum used for communicating with other threads.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum MainMessage {
-    UiSpawnNotif(String, u64, bool),
-    UiSpawnPersistentNotif(String, bool),
-    UiClearPersistentNotif,
-    UiTearDown,
+    SpawnNotif(String, u64, bool),
+    SpawnPersistentNotif(String, bool),
+    ClearPersistentNotif,
+    PlayCurrent,
+    TearDown,
 }
 
 /// Main application controller, holding all of the main application state and
@@ -284,7 +284,7 @@ impl App {
     /// bottom of the screen.
     pub fn notif_to_ui(&self, message: String, error: bool) {
         self.tx_to_ui
-            .send(MainMessage::UiSpawnNotif(
+            .send(MainMessage::SpawnNotif(
                 message,
                 crate::config::MESSAGE_TIME,
                 error,
@@ -296,14 +296,14 @@ impl App {
     /// bottom of the screen until cleared.
     pub fn persistent_notif_to_ui(&self, message: String, error: bool) {
         self.tx_to_ui
-            .send(MainMessage::UiSpawnPersistentNotif(message, error))
+            .send(MainMessage::SpawnPersistentNotif(message, error))
             .expect("Thread messaging error");
     }
 
     /// Clears persistent notifications in the UI.
     pub fn clear_persistent_notif(&self) {
         self.tx_to_ui
-            .send(MainMessage::UiClearPersistentNotif)
+            .send(MainMessage::ClearPersistentNotif)
             .expect("Thread messaging error");
     }
 
@@ -592,13 +592,14 @@ impl App {
         match ep_path {
             // if there is a local file, try to play that
             Some(path) => match path.to_str() {
-                Some(p) => {
-                    if play_file::execute(&self.config.play_command, p).is_err() {
-                        self.notif_to_ui(
-                            "Error: Could not play file. Check configuration.".to_string(),
-                            true,
-                        );
-                    }
+                Some(_p) => {
+                    // if play_file::execute(&self.config.play_command, p).is_err() {
+                    //     self.notif_to_ui(
+                    //         "Error: Could not play file. Check configuration.".to_string(),
+                    //         true,
+                    //     );
+                    // }
+                    self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
                 }
                 None => self.notif_to_ui("Error: Filepath is not valid Unicode.".to_string(), true),
             },
@@ -1040,7 +1041,7 @@ impl App {
     }
 
     pub fn finalize(&mut self) {
-        self.tx_to_ui.send(MainMessage::UiTearDown).unwrap();
+        self.tx_to_ui.send(MainMessage::TearDown).unwrap();
         if let Some(thread) = self.ui_thread.take() {
             thread.join().unwrap(); // wait for UI thread to finish teardown
         }

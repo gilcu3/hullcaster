@@ -9,7 +9,7 @@ use nohash_hasher::BuildNoHashHasher;
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
 use crate::ui::UiMsg;
-use crate::utils::StringUtils;
+use crate::utils::{format_duration, StringUtils};
 
 /// Struct holding data about an individual podcast feed. This includes a
 /// (possibly empty) vector of episodes.
@@ -71,23 +71,6 @@ pub struct Episode {
     pub duration: Option<i64>,
     pub path: Option<PathBuf>,
     pub played: bool,
-}
-
-impl Episode {
-    /// Formats the duration in seconds into an HH:MM:SS format.
-    pub fn format_duration(&self) -> String {
-        match self.duration {
-            Some(dur) => {
-                let mut seconds = dur;
-                let hours = seconds / 3600;
-                seconds -= hours * 3600;
-                let minutes = seconds / 60;
-                seconds -= minutes * 60;
-                format!("{hours:02}:{minutes:02}:{seconds:02}")
-            }
-            None => "--:--:--".to_string(),
-        }
-    }
 }
 
 impl Ord for Episode {
@@ -200,7 +183,7 @@ impl Menuable for Episode {
         );
 
         if length > crate::config::EPISODE_DURATION_LENGTH {
-            let dur = self.format_duration();
+            let dur = format_duration(self.duration.map(|x| x as u64));
             let meta_dur = format!("[{dur}]");
             let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
             format!(
