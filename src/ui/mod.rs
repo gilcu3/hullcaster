@@ -1166,8 +1166,11 @@ fn render_podcast_area(
         .block(block)
         .style(colors.normal)
         .highlight_style({
-            if active {colors.highlighted}
-            else {colors.normal}
+            if active {
+                colors.highlighted
+            } else {
+                colors.normal
+            }
         })
         .highlight_spacing(HighlightSpacing::Always);
     if !list.is_empty() && podcasts.state.selected().is_none() {
@@ -1198,8 +1201,11 @@ fn render_episode_area(
         .block(block)
         .style(colors.normal)
         .highlight_style({
-            if active {colors.highlighted}
-            else {colors.normal}
+            if active {
+                colors.highlighted
+            } else {
+                colors.normal
+            }
         })
         .highlight_spacing(HighlightSpacing::Always);
     if !list.is_empty() && episodes.state.selected().is_none() {
