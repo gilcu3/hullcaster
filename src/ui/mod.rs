@@ -1249,7 +1249,7 @@ fn render_play_area(
     if let Some(ep) = ep {
         let elapsed = *ep.elapsed.read().unwrap();
         if let Some(total) = ep.duration {
-            ratio = elapsed as f64 / total as f64;
+            ratio = (elapsed as f64 / total as f64).min(1.0);
         }
         let total_label = format_duration(ep.duration);
         title = ep.title.clone();
