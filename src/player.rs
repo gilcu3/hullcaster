@@ -64,6 +64,7 @@ impl Player {
             self.sink.stop();
         }
         self.sink.append(source);
+        self.sink.play();
     }
     fn play_pause(&self) {
         if self.sink.is_paused() {
