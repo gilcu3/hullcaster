@@ -598,10 +598,22 @@ impl UiState {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
                                         self.construct_current_episode();
-                                        return UiMsg::Play(pod_id, ep_id);
+                                        return UiMsg::Play(pod_id, ep_id, false);
                                     }
                                 }
                             }
+                        },
+
+                        Some(UserAction::PlayExternal) => match self.active_panel {
+                            Panel::Queue | Panel::Episodes | Panel::Unplayed => {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    if let Some(ep_id) = self.get_episode_id() {
+                                        self.construct_current_episode();
+                                        return UiMsg::Play(pod_id, ep_id, true);
+                                    }
+                                }
+                            }
+                            Panel::Podcasts => {}
                         },
 
                         Some(UserAction::Enqueue) => match self.active_panel {

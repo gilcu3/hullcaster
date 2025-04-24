@@ -3,7 +3,7 @@ use crate::types::FilterType;
 #[derive(Debug)]
 pub enum UiMsg {
     AddFeed(String),
-    Play(i64, i64),
+    Play(i64, i64, bool),
     MarkPlayed(i64, i64, bool),
     MarkAllPlayed(i64, bool),
     Sync(i64),

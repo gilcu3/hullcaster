@@ -47,6 +47,7 @@ pub enum UserAction {
     Information,
     Back,
     Switch,
+    PlayExternal,
 }
 
 /// Wrapper around a hash map that keeps track of all keybindings. Multiple
@@ -111,6 +112,7 @@ impl Keybindings {
             (config.unplayed_list, UserAction::UnplayedList),
             (config.back, UserAction::Back),
             (config.switch, UserAction::Switch),
+            (config.play_external, UserAction::PlayExternal),
         ];
 
         let mut keymap = Self::default();
@@ -184,6 +186,7 @@ impl Keybindings {
             (UserAction::Information, vec!["i".to_string()]),
             (UserAction::Back, vec!["Esc".to_string()]),
             (UserAction::Switch, vec!["Tab".to_string()]),
+            (UserAction::PlayExternal, vec!["P".to_string()]),
         ]
     }
 }

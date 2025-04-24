@@ -137,6 +137,7 @@ unplayed_list = [ "u" ]
 
 switch = [ "Tab" ]
 back = [ "Esc" ]
+play_external = [ "P" ]
 
 
 [colors]

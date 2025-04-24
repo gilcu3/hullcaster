@@ -179,7 +179,9 @@ impl App {
                     }
                 }
 
-                Message::Ui(UiMsg::Play(pod_id, ep_id)) => self.play_file(pod_id, ep_id),
+                Message::Ui(UiMsg::Play(pod_id, ep_id, external)) => {
+                    self.play_file(pod_id, ep_id, external)
+                }
 
                 Message::Ui(UiMsg::MarkPlayed(pod_id, ep_id, played)) => {
                     self.mark_played(pod_id, ep_id, played);
@@ -578,10 +580,7 @@ impl App {
     }
 
     /// Attempts to execute the play command on the given podcast episode.
-    pub fn play_file(&self, pod_id: i64, ep_id: i64) {
-        if self.config.mark_as_played_on_play {
-            self.mark_played(pod_id, ep_id, true);
-        }
+    pub fn play_file(&self, pod_id: i64, ep_id: i64, external: bool) {
         let (ep_path, ep_url) = {
             let pod = self.podcasts.get(pod_id).unwrap();
             let pod = pod.read().unwrap();
@@ -589,26 +588,24 @@ impl App {
             let episode = episode_map.get(&ep_id).unwrap().read().unwrap();
             (episode.path.clone(), episode.url.clone())
         };
-
-        match ep_path {
-            // if there is a local file, try to play that
-            Some(path) => match path.to_str() {
-                Some(_p) => {
-                    // if play_file::execute(&self.config.play_command, p).is_err() {
-                    //     self.notif_to_ui(
-                    //         "Error: Could not play file. Check configuration.".to_string(),
-                    //         true,
-                    //     );
-                    // }
-                    self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
-                }
-                None => self.notif_to_ui("Error: Filepath is not valid Unicode.".to_string(), true),
-            },
-            // otherwise, try to stream the URL
-            None => {
-                if play_file::execute(&self.config.play_command, &ep_url).is_err() {
-                    self.notif_to_ui("Error: Could not stream URL.".to_string(), true);
-                }
+        if external {
+            if play_file::execute(&self.config.play_command, &ep_url).is_err() {
+                self.notif_to_ui("Error: Could not stream URL.".to_string(), true);
+            } else if self.config.mark_as_played_on_play {
+                self.mark_played(pod_id, ep_id, true);
+            }
+        } else {
+            match ep_path {
+                Some(path) => match path.to_str() {
+                    Some(_p) => {
+                        self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
+                    }
+                    None => self.notif_to_ui(
+                        format!("Error: Filepath {} is not valid Unicode.", path.display()),
+                        true,
+                    ),
+                },
+                None => self.notif_to_ui("Error: Download the episode first.".to_string(), true),
             }
         }
     }
