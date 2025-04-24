@@ -30,7 +30,7 @@
 # podcast or download an episode.
 # Default: 3
 
-#max_retries = 3
+# max_retries = 3
 
 # Mark episode as played automatically.
 # Default: true
@@ -109,7 +109,7 @@ sync = [ "s" ]
 sync_all = [ "S" ]
 sync_gpodder = [ "A" ]
 
-play_pause = [ "p" ]
+play_pause = [ "Space" ]
 enter = [ "Enter" ]
 mark_played = [ "m" ]
 mark_all_played = [ "M" ]
@@ -129,6 +129,9 @@ help = [ "?" ]
 quit = [ "q" ]
 
 unplayed_list = [ "u" ]
+
+switch = [ "Tab" ]
+back = [ "Esc" ]
 
 
 [colors]

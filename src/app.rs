@@ -262,6 +262,7 @@ impl App {
                             self.filters.downloaded = new_filter;
                         }
                     }
+                    // TODO: "Use filters"
                     self.notif_to_ui(format!("Filter: {message}"), false);
                     self.update_filters(self.filters, false);
                 }

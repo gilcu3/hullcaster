@@ -45,6 +45,8 @@ pub enum UserAction {
 
     UnplayedList,
     Information,
+    Back,
+    Switch,
 }
 
 /// Wrapper around a hash map that keeps track of all keybindings. Multiple
@@ -107,6 +109,8 @@ impl Keybindings {
             (config.help, UserAction::Help),
             (config.quit, UserAction::Quit),
             (config.unplayed_list, UserAction::UnplayedList),
+            (config.back, UserAction::Back),
+            (config.switch, UserAction::Switch),
         ];
 
         let mut keymap = Self::default();
@@ -162,7 +166,7 @@ impl Keybindings {
             (UserAction::Sync, vec!["s".to_string()]),
             (UserAction::SyncAll, vec!["S".to_string()]),
             (UserAction::SyncGpodder, vec!["A".to_string()]),
-            (UserAction::PlayPause, vec!["p".to_string()]),
+            (UserAction::PlayPause, vec!["Space".to_string()]),
             (UserAction::Enter, vec!["Enter".to_string()]),
             (UserAction::MarkPlayed, vec!["m".to_string()]),
             (UserAction::MarkAllPlayed, vec!["M".to_string()]),
@@ -178,6 +182,8 @@ impl Keybindings {
             (UserAction::Quit, vec!["q".to_string()]),
             (UserAction::UnplayedList, vec!["u".to_string()]),
             (UserAction::Information, vec!["i".to_string()]),
+            (UserAction::Back, vec!["Esc".to_string()]),
+            (UserAction::Switch, vec!["Tab".to_string()]),
         ]
     }
 }
@@ -227,6 +233,8 @@ pub fn input_to_str(input: KeyEvent) -> Option<String> {
                 Some(format!("{ctrl}{alt}{shift}Enter"))
             } else if c == '\t' {
                 Some(format!("{ctrl}{alt}{shift}Tab"))
+            } else if c == ' ' {
+                Some(format!("{ctrl}{alt}{shift}Space"))
             } else {
                 // here we don't include "shift" because that will
                 // already be encoded in the character itself

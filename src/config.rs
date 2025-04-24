@@ -95,6 +95,8 @@ pub struct KeybindingsFromToml {
     pub help: Option<Vec<String>>,
     pub quit: Option<Vec<String>>,
     pub unplayed_list: Option<Vec<String>>,
+    pub back: Option<Vec<String>>,
+    pub switch: Option<Vec<String>>,
 }
 
 /// A temporary struct used to deserialize colors data from the TOML
@@ -162,6 +164,8 @@ impl Config {
                     help: None,
                     quit: None,
                     unplayed_list: None,
+                    back: None,
+                    switch: None,
                 };
 
                 let colors = AppColorsFromToml {

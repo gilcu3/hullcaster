@@ -485,15 +485,13 @@ impl UiState {
                             Popup::Welcome | Popup::Details | Popup::Help => match action {
                                 Some(a @ UserAction::Down)
                                 | Some(a @ UserAction::Up)
-                                | Some(a @ UserAction::Left)
-                                | Some(a @ UserAction::Right)
                                 | Some(a @ UserAction::PageUp)
                                 | Some(a @ UserAction::PageDown)
                                 | Some(a @ UserAction::GoTop)
                                 | Some(a @ UserAction::GoBot) => {
                                     self.move_cursor(&a);
                                 }
-                                Some(UserAction::Quit) => {
+                                Some(UserAction::Back) => {
                                     self.active_popup = None;
                                 }
                                 Some(UserAction::Help) => {
@@ -541,13 +539,19 @@ impl UiState {
                         match action {
                             Some(a @ UserAction::Down)
                             | Some(a @ UserAction::Up)
-                            | Some(a @ UserAction::Left)
-                            | Some(a @ UserAction::Right)
                             | Some(a @ UserAction::PageUp)
                             | Some(a @ UserAction::PageDown)
                             | Some(a @ UserAction::GoTop)
                             | Some(a @ UserAction::GoBot) => {
                                 self.move_cursor(&a);
+                            }
+
+                            Some(UserAction::Left) => {
+                                todo!("Seek backward")
+                            }
+
+                            Some(UserAction::Right) => {
+                                todo!("Seek forward")
                             }
 
                             Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
@@ -559,6 +563,7 @@ impl UiState {
                             }
 
                             Some(UserAction::AddFeed) => {
+                                self.input.reset();
                                 self.active_popup = Some(Popup::AddPodcast);
                             }
 
@@ -736,6 +741,19 @@ impl UiState {
                                 }
                                 self.active_popup = Some(Popup::Details);
                             }
+                            Some(UserAction::Back) => {
+                                if self.active_panel == Panel::Episodes {
+                                    self.select_panel(Panel::Podcasts);
+                                }
+                            }
+                            Some(UserAction::Switch) => match self.active_panel {
+                                Panel::Episodes | Panel::Podcasts | Panel::Unplayed => {
+                                    self.select_panel(Panel::Queue);
+                                }
+                                Panel::Queue => {
+                                    self.select_panel(self.left_panel.clone());
+                                }
+                            },
                             None => (),
                         }
                     }
@@ -951,8 +969,6 @@ fn render_shortcut_help_popup(
     frame: &mut Frame, area: Rect, scroll: u16, keymap: &Keybindings, colors: &AppColors,
 ) {
     let actions = vec![
-        (Some(UserAction::Left), "Left:"),
-        (Some(UserAction::Right), "Right:"),
         (Some(UserAction::Up), "Up:"),
         (Some(UserAction::Down), "Down:"),
         (Some(UserAction::PageUp), "Page up:"),
@@ -967,6 +983,8 @@ fn render_shortcut_help_popup(
         //(None, ""),
         (Some(UserAction::Enter), "Open podcast/Play episode:"),
         (Some(UserAction::PlayPause), "Play/Pause:"),
+        (Some(UserAction::Left), "Seek backward:"),
+        (Some(UserAction::Right), "Seek forward:"),
         (Some(UserAction::MarkPlayed), "Mark as played:"),
         (Some(UserAction::MarkAllPlayed), "Mark all as played:"),
         //(None, ""),
@@ -978,9 +996,11 @@ fn render_shortcut_help_popup(
         (Some(UserAction::DeleteAll), "Delete all files:"),
         (Some(UserAction::UnplayedList), "Show/Hide Unplayed Panel"),
         (Some(UserAction::Help), "Help:"),
+        (Some(UserAction::Back), "Back:"),
         (Some(UserAction::Quit), "Quit:"),
     ];
     let mut key_strs = Vec::new();
+    let mut back_key = "<missing>".to_string();
     for (action, action_str) in actions {
         match action {
             Some(action) => {
@@ -991,6 +1011,9 @@ fn render_shortcut_help_popup(
                         1 => format!("{:>28} \"{}\"", action_str, &keys[0]),
                         _ => format!("{:>28} \"{}\" or \"{}\"", action_str, &keys[0], &keys[1]),
                     };
+                    if action == UserAction::Back && !keys.is_empty() {
+                        back_key = format!("\"{}\"", keys[0]);
+                    }
                     key_strs.push(key_str);
                 }
             }
@@ -999,7 +1022,8 @@ fn render_shortcut_help_popup(
     }
     let line: Vec<Line> = key_strs.iter().map(|s| Line::from(s.as_str())).collect();
     let paragraph = Paragraph::new(line).scroll((scroll, 0));
-    let last_line = Line::from("Press \"q\" to close this window.").alignment(Alignment::Right);
+    let last_line =
+        Line::from(format!("Press {} to close this window.", back_key)).alignment(Alignment::Right);
 
     let vertical = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]);
 
@@ -1124,7 +1148,9 @@ fn render_details_popup(
 fn render_help_line(frame: &mut Frame, area: Rect, keymap: &Keybindings, colors: &AppColors) {
     let actions = vec![
         (UserAction::Quit, "Quit"),
+        (UserAction::Back, "Back"),
         (UserAction::Help, "Help"),
+        (UserAction::Switch, "Switch"),
         (UserAction::Enter, "Open podcast/Play episode"),
         (UserAction::SyncAll, "Refresh podcasts"),
         (UserAction::SyncGpodder, "Sync"),
