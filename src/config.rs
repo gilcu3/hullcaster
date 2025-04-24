@@ -220,8 +220,11 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     // paths are set by user, or they resolve to OS-specific path as
     // provided by dirs crate
-    let download_path =
-        parse_create_dir(config_toml.download_path.as_deref(), dirs::data_local_dir())?;
+    let default_path = dirs::data_local_dir().map(|mut p| {
+        p.push("hullcaster");
+        p
+    });
+    let download_path = parse_create_dir(config_toml.download_path.as_deref(), default_path)?;
 
     let play_command = match config_toml.play_command.as_deref() {
         Some(cmd) => cmd.to_string(),
