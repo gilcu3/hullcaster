@@ -41,6 +41,7 @@ pub struct Config {
     pub sync_on_start: bool,
     pub keybindings: Keybindings,
     pub colors: AppColors,
+    pub confirm_quit: bool,
 }
 
 /// A temporary struct used to deserialize data from the TOML configuration
@@ -60,6 +61,7 @@ struct ConfigFromToml {
     sync_on_start: Option<bool>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
+    confirm_quit: Option<bool>,
 }
 
 /// A temporary struct used to deserialize keybinding data from the TOML
@@ -194,6 +196,7 @@ impl Config {
                     sync_on_start: Some(true),
                     keybindings: Some(keybindings),
                     colors: Some(colors),
+                    confirm_quit: Some(true),
                 }
             }
         };
@@ -270,6 +273,8 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     let sync_on_start = config_toml.sync_on_start.unwrap_or(true);
 
+    let confirm_quit = config_toml.confirm_quit.unwrap_or(true);
+
     Ok(Config {
         download_path,
         play_command,
@@ -283,5 +288,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         sync_on_start,
         keybindings: keymap,
         colors,
+        confirm_quit,
     })
 }

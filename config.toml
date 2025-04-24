@@ -76,6 +76,11 @@
 
 # sync_on_start = true
 
+# Confirm before quitting
+# Default: True
+
+# confirm_quit = true
+
 [keybindings]
 
 # Keybindings must be an array of one or more strings.

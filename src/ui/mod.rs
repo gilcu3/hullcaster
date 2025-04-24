@@ -174,7 +174,7 @@ impl UiState {
         Self {
             keymap: config.keybindings.clone(),
             colors: config.colors.clone(),
-            confirm_quit: true, // TODO: pass option from config
+            confirm_quit: config.confirm_quit,
             podcasts: PodcastList {
                 title: "Podcasts".to_string(),
                 items,

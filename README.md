@@ -57,7 +57,7 @@ features stated below, while learning `rust` at the same time.
 - [x] `~` folder created when creating logs
 - [x] Show in the UI when an episode is currently downloaded
 - [ ] Add tests for the new UI
-- [ ] Add config parameter `confirm_on_exit`.
+- [x] Add config parameter `confirm_on_exit`.
 
 ## Installing hullcaster
 
