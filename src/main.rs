@@ -202,13 +202,17 @@ fn setup_logs() -> Result<()> {
         "ERROR" => simplelog::LevelFilter::Error,
         _ => simplelog::LevelFilter::Info, // Default to INFO if the variable is not set correctly
     };
+    let mut _log_config = simplelog::ConfigBuilder::new();
+    let mut log_config = _log_config
+        .set_time_format_rfc2822()
+        .set_time_offset_to_local()
+        .unwrap();
+    if level_filter != simplelog::LevelFilter::Debug {
+        log_config = log_config.add_filter_ignore_str("symphonia")
+    }
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,
-        simplelog::ConfigBuilder::new()
-            .set_time_format_rfc2822()
-            .set_time_offset_to_local()
-            .unwrap()
-            .build(),
+        log_config.build(),
         log_file,
     )])
     .unwrap();
