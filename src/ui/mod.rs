@@ -481,15 +481,6 @@ impl UiState {
                 Event::Key(input) => {
                     let action = self.keymap.get_from_input(input).cloned();
                     if let Some(popup) = self.active_popup.clone() {
-                        match action {
-                            Some(UserAction::Quit) => {
-                                self.active_popup = None;
-                            }
-                            Some(UserAction::Help) => {
-                                self.active_popup = Some(Popup::Help);
-                            }
-                            _ => {}
-                        }
                         match popup {
                             Popup::Welcome | Popup::Details | Popup::Help => match action {
                                 Some(a @ UserAction::Down)
@@ -501,6 +492,12 @@ impl UiState {
                                 | Some(a @ UserAction::GoTop)
                                 | Some(a @ UserAction::GoBot) => {
                                     self.move_cursor(&a);
+                                }
+                                Some(UserAction::Quit) => {
+                                    self.active_popup = None;
+                                }
+                                Some(UserAction::Help) => {
+                                    self.active_popup = Some(Popup::Help);
                                 }
                                 _ => {}
                             },
