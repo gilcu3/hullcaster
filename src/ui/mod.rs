@@ -893,6 +893,7 @@ impl UiState {
                     let pod = pod_map.get(&ep.pod_id);
                     pod.map(|pod| pod.read().unwrap().title.clone()).unwrap()
                 };
+                *self.elapsed.write().unwrap() = 0;
                 self.current_episode = Some(CurrentEpisode {
                     title: ep.title.clone(),
                     podcast_title,
