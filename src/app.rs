@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::info;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -17,7 +18,7 @@ use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::{UiMsg, UiState};
 use crate::utils::{
-    audio_duration, current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection,
+    current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection,
 };
 
 /// Enum used for communicating with other threads.
@@ -681,15 +682,17 @@ impl App {
 
         if self.config.enable_sync {
             if duration.is_none() {
-                duration = audio_duration(&ep_url);
-                if duration.is_none() {
-                    self.notif_to_ui(
-                        "Could not mark episode as played in gpodder: missing duration."
-                            .to_string(),
-                        true,
-                    );
-                    return None;
-                }
+                // duration = audio_duration(&ep_url);
+                // if duration.is_none() {
+                //     self.notif_to_ui(
+                //         "Could not mark episode as played in gpodder: missing duration."
+                //             .to_string(),
+                //         true,
+                //     );
+                //     return None;
+                // }
+                duration = Some(10000);
+                info!("Setting duration to infinity for episode {}, else cannot mark as played on gpodder", ep_url);
             }
             self.sync_agent
                 .as_ref()
@@ -784,6 +787,7 @@ impl App {
                                     url: ep.url.clone(),
                                     pubdate: ep.pubdate,
                                     file_path: None,
+                                    duration: None,
                                 },
                                 ep.path.is_none(),
                             )
@@ -805,6 +809,7 @@ impl App {
                                 url: ep.url.clone(),
                                 pubdate: ep.pubdate,
                                 file_path: None,
+                                duration: ep.duration,
                             })
                         } else {
                             None
@@ -868,6 +873,9 @@ impl App {
             let mut episode_map = podcast.episodes.borrow_map();
             let mut episode = episode_map.get_mut(&ep_data.id)?.write().unwrap();
             episode.path = Some(file_path.clone());
+            if let Some(duration) = ep_data.duration {
+                episode.duration = Some(duration);
+            }
         }
 
         self.download_tracker.remove(&ep_data.id);

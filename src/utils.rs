@@ -2,7 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::io::{Cursor, Read};
+use std::fs;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
@@ -122,17 +123,17 @@ pub fn execute_request_get(
     }
 }
 
-pub fn audio_duration(url: &str) -> Option<i64> {
-    log::info!("Getting audio duration for {}", url);
-    let mut response = ureq::get(url).call().ok()?;
-    let bytes = response
-        .body_mut()
-        .as_reader()
-        .bytes()
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-    log::info!("Bytes: {:?}", bytes.len());
-    let cursor = Cursor::new(bytes);
+pub fn audio_duration(audio_bytes: Vec<u8>) -> Option<i64> {
+    // log::info!("Getting audio duration for {}", url);
+    // let mut response = ureq::get(url).call().ok()?;
+    // let bytes = response
+    //     .body_mut()
+    //     .as_reader()
+    //     .bytes()
+    //     .collect::<Result<Vec<_>, _>>()
+    //     .ok()?;
+    // log::info!("Bytes: {:?}", bytes.len());
+    let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
     let probed = get_probe()
         .format(
@@ -153,6 +154,14 @@ pub fn audio_duration(url: &str) -> Option<i64> {
         }
     }
     Some(duration as i64)
+}
+
+pub fn audio_duration_file(file_path: PathBuf) -> Option<i64> {
+    if let Ok(bytes) = fs::read(file_path) {
+        audio_duration(bytes)
+    } else {
+        None
+    }
 }
 
 /// Some helper functions for dealing with Unicode strings.

@@ -8,6 +8,7 @@ use sanitize_filename::{sanitize_with_options, Options};
 
 use crate::threadpool::Threadpool;
 use crate::types::Message;
+use crate::utils::audio_duration_file;
 
 /// Enum used for communicating back to the main controller upon
 /// successful or unsuccessful downloading of a file. i32 value
@@ -29,6 +30,7 @@ pub struct EpData {
     pub url: String,
     pub pubdate: Option<DateTime<Utc>>,
     pub file_path: Option<PathBuf>,
+    pub duration: Option<i64>,
 }
 
 /// This is the function the main controller uses to indicate new
@@ -112,7 +114,9 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
         return DownloadMsg::FileCreateError(ep_data);
     };
 
-    ep_data.file_path = Some(file_path);
+    ep_data.file_path = Some(file_path.clone());
+    ep_data.duration = audio_duration_file(file_path);
+
     let mut body = response.into_body();
     let mut reader = body.as_reader();
     match std::io::copy(&mut reader, &mut dst.unwrap()) {

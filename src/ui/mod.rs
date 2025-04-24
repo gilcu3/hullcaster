@@ -27,6 +27,7 @@ mod types;
 
 use crate::{
     app::MainMessage,
+    config::SEEK_LENGTH,
     player::{Player, PlayerMessage},
     types::{FilterType, LockVec, Menuable, Message},
     utils::{clean_html, format_duration},
@@ -543,11 +544,15 @@ impl UiState {
                         }
 
                         Some(UserAction::Left) => {
-                            todo!("Seek backward")
+                            let _ = self
+                                .tx_to_player
+                                .send(PlayerMessage::Seek(SEEK_LENGTH, false));
                         }
 
                         Some(UserAction::Right) => {
-                            todo!("Seek forward")
+                            let _ = self
+                                .tx_to_player
+                                .send(PlayerMessage::Seek(SEEK_LENGTH, true));
                         }
 
                         Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
@@ -930,7 +935,7 @@ impl UiState {
         if let Some(ep) = &self.current_episode {
             if let Some(path) = &ep.path {
                 self.tx_to_player
-                    .send(PlayerMessage::PlayFile(path.clone()))
+                    .send(PlayerMessage::PlayFile(path.clone(), ep.duration.unwrap()))
                     .ok()?;
             }
         }

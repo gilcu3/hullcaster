@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::keymap::Keybindings;
 use crate::ui::colors::AppColors;
@@ -25,6 +26,9 @@ pub const SCROLL_AMOUNT: u16 = 6;
 
 /// Amount of time between ticks in the event loop
 pub const TICK_RATE: u64 = 50;
+
+/// Amount of time between ticks in the event loop
+pub const SEEK_LENGTH: Duration = Duration::from_secs(30);
 
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]

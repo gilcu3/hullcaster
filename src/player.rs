@@ -13,7 +13,8 @@ use crate::config::TICK_RATE;
 
 pub enum PlayerMessage {
     PlayPause,
-    PlayFile(PathBuf),
+    PlayFile(PathBuf, u64),
+    Seek(Duration, bool),
     Quit,
 }
 
@@ -21,6 +22,7 @@ pub struct Player {
     _stream: OutputStream, // else the sink stops working
     sink: Sink,
     elapsed: Arc<RwLock<u64>>,
+    duration: u64,
 }
 
 impl Player {
@@ -31,6 +33,7 @@ impl Player {
             _stream,
             sink,
             elapsed,
+            duration: 0,
         }
     }
     pub fn spawn(
@@ -43,8 +46,20 @@ impl Player {
             loop {
                 if let Some(message) = message_iter.next() {
                     match message {
-                        PlayerMessage::PlayPause => player.play_pause(),
-                        PlayerMessage::PlayFile(path) => player.play_file(&path),
+                        PlayerMessage::PlayPause => {
+                            if !player.sink.empty() {
+                                player.play_pause()
+                            }
+                        }
+                        PlayerMessage::PlayFile(path, duration) => {
+                            player.play_file(&path);
+                            player.duration = duration;
+                        }
+                        PlayerMessage::Seek(shift, direction) => {
+                            if !player.sink.empty() {
+                                player.seek(shift, direction)
+                            }
+                        }
                         PlayerMessage::Quit => break,
                     }
                 }
@@ -72,6 +87,25 @@ impl Player {
         } else {
             self.sink.pause();
         }
+    }
+
+    fn seek(&mut self, shift: Duration, direction: bool) {
+        let pos = self.sink.get_pos();
+        let _ = self.sink.try_seek({
+            if direction {
+                let max_pos = Duration::from_secs(self.duration);
+                if pos + shift >= max_pos {
+                    max_pos
+                } else {
+                    pos + shift
+                }
+            } else if pos >= shift {
+                pos - shift
+            } else {
+                Duration::ZERO
+            }
+        });
+        self.set_elapsed();
     }
 
     fn set_elapsed(&mut self) {
