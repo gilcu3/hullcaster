@@ -421,7 +421,7 @@ impl<T: Clone + Menuable> LockVec<T> {
     where
         F: FnOnce(&T) -> B,
     {
-        let order = self.borrow_filtered_order();
+        let order = self.borrow_order();
         match order.get(index) {
             Some(id) => self.map_single(*id, f),
             None => None,
