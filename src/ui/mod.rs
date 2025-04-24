@@ -476,11 +476,12 @@ impl UiState {
     /// data back to the main controller.
     fn getch(&mut self) -> UiMsg {
         if event::poll(Duration::from_millis(TICK_RATE)).expect("Can't poll for inputs") {
-            match event::read().expect("Can't read inputs") {
-                // Event::Resize(n_col, n_row) => {}
-                Event::Key(input) => {
-                    let action = self.keymap.get_from_input(input).cloned();
-                    if let Some(popup) = self.active_popup.clone() {
+            if let Event::Key(input) = event::read().expect("Can't read inputs") {
+                let action = self.keymap.get_from_input(input).cloned();
+                if let Some(popup) = self.active_popup.clone() {
+                    if action == Some(UserAction::Back) {
+                        self.active_popup = None;
+                    } else {
                         match popup {
                             Popup::Welcome | Popup::Details | Popup::Help => match action {
                                 Some(a @ UserAction::Down)
@@ -491,9 +492,6 @@ impl UiState {
                                 | Some(a @ UserAction::GoBot) => {
                                     self.move_cursor(&a);
                                 }
-                                Some(UserAction::Back) => {
-                                    self.active_popup = None;
-                                }
                                 Some(UserAction::Help) => {
                                     self.active_popup = Some(Popup::Help);
                                 }
@@ -503,9 +501,6 @@ impl UiState {
                                 KeyCode::Enter => {
                                     self.active_popup = None;
                                     return UiMsg::AddFeed(self.input.value().to_string());
-                                }
-                                KeyCode::Esc => {
-                                    self.active_popup = None;
                                 }
                                 _ => {
                                     self.input.handle_event(&Event::Key(input));
@@ -535,230 +530,229 @@ impl UiState {
                                 _ => {}
                             },
                         }
-                    } else {
-                        match action {
-                            Some(a @ UserAction::Down)
-                            | Some(a @ UserAction::Up)
-                            | Some(a @ UserAction::PageUp)
-                            | Some(a @ UserAction::PageDown)
-                            | Some(a @ UserAction::GoTop)
-                            | Some(a @ UserAction::GoBot) => {
-                                self.move_cursor(&a);
-                            }
+                    }
+                } else {
+                    match action {
+                        Some(a @ UserAction::Down)
+                        | Some(a @ UserAction::Up)
+                        | Some(a @ UserAction::PageUp)
+                        | Some(a @ UserAction::PageDown)
+                        | Some(a @ UserAction::GoTop)
+                        | Some(a @ UserAction::GoBot) => {
+                            self.move_cursor(&a);
+                        }
 
-                            Some(UserAction::Left) => {
-                                todo!("Seek backward")
-                            }
+                        Some(UserAction::Left) => {
+                            todo!("Seek backward")
+                        }
 
-                            Some(UserAction::Right) => {
-                                todo!("Seek forward")
-                            }
+                        Some(UserAction::Right) => {
+                            todo!("Seek forward")
+                        }
 
-                            Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
-                                if let Panel::Queue = self.active_panel {
-                                    if let Some(ui_msg) = self.move_eps(&a) {
-                                        return ui_msg;
+                        Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
+                            if let Panel::Queue = self.active_panel {
+                                if let Some(ui_msg) = self.move_eps(&a) {
+                                    return ui_msg;
+                                }
+                            }
+                        }
+
+                        Some(UserAction::AddFeed) => {
+                            self.input.reset();
+                            self.active_popup = Some(Popup::AddPodcast);
+                        }
+
+                        Some(UserAction::Sync) => {
+                            if let Panel::Podcasts = self.active_panel {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    return UiMsg::Sync(pod_id);
+                                }
+                            }
+                        }
+                        Some(UserAction::SyncAll) => {
+                            return UiMsg::SyncAll;
+                        }
+
+                        Some(UserAction::SyncGpodder) => {
+                            return UiMsg::SyncGpodder;
+                        }
+
+                        Some(UserAction::Enter) => match self.active_panel {
+                            Panel::Podcasts => {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    self.select_panel(Panel::Episodes);
+
+                                    if let Some(items) = self
+                                        .podcasts
+                                        .items
+                                        .map_single(pod_id, |x| x.episodes.clone())
+                                    {
+                                        self.episodes.items = items;
+                                        self.episodes.state =
+                                            ListState::default().with_selected(Some(0));
                                     }
                                 }
                             }
-
-                            Some(UserAction::AddFeed) => {
-                                self.input.reset();
-                                self.active_popup = Some(Popup::AddPodcast);
-                            }
-
-                            Some(UserAction::Sync) => {
-                                if let Panel::Podcasts = self.active_panel {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        return UiMsg::Sync(pod_id);
-                                    }
-                                }
-                            }
-                            Some(UserAction::SyncAll) => {
-                                return UiMsg::SyncAll;
-                            }
-
-                            Some(UserAction::SyncGpodder) => {
-                                return UiMsg::SyncGpodder;
-                            }
-
-                            Some(UserAction::Enter) => match self.active_panel {
-                                Panel::Podcasts => {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        self.select_panel(Panel::Episodes);
-
-                                        if let Some(items) = self
-                                            .podcasts
-                                            .items
-                                            .map_single(pod_id, |x| x.episodes.clone())
-                                        {
-                                            self.episodes.items = items;
-                                            self.episodes.state =
-                                                ListState::default().with_selected(Some(0));
-                                        }
-                                    }
-                                }
-                                Panel::Queue | Panel::Episodes | Panel::Unplayed => {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        if let Some(ep_id) = self.get_episode_id() {
-                                            self.construct_current_episode();
-                                            return UiMsg::Play(pod_id, ep_id);
-                                        }
-                                    }
-                                }
-                            },
-
-                            Some(UserAction::Enqueue) => match self.active_panel {
-                                Panel::Episodes | Panel::Unplayed => {
+                            Panel::Queue | Panel::Episodes | Panel::Unplayed => {
+                                if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
-                                        if !self.queue.items.contains_key(ep_id) {
-                                            if self.left_panel == Panel::Episodes {
-                                                if let Some(ep) = self.episodes.items.get(ep_id) {
-                                                    self.queue.items.push_arc(ep);
-                                                    return UiMsg::QueueModified;
-                                                }
-                                            } else if self.left_panel == Panel::Unplayed {
-                                                if let Some(ep) = self.unplayed.items.get(ep_id) {
-                                                    self.queue.items.push_arc(ep);
-                                                    return UiMsg::QueueModified;
-                                                }
+                                        self.construct_current_episode();
+                                        return UiMsg::Play(pod_id, ep_id);
+                                    }
+                                }
+                            }
+                        },
+
+                        Some(UserAction::Enqueue) => match self.active_panel {
+                            Panel::Episodes | Panel::Unplayed => {
+                                if let Some(ep_id) = self.get_episode_id() {
+                                    if !self.queue.items.contains_key(ep_id) {
+                                        if self.left_panel == Panel::Episodes {
+                                            if let Some(ep) = self.episodes.items.get(ep_id) {
+                                                self.queue.items.push_arc(ep);
+                                                return UiMsg::QueueModified;
+                                            }
+                                        } else if self.left_panel == Panel::Unplayed {
+                                            if let Some(ep) = self.unplayed.items.get(ep_id) {
+                                                self.queue.items.push_arc(ep);
+                                                return UiMsg::QueueModified;
                                             }
                                         }
                                     }
                                 }
-                                Panel::Queue | Panel::Podcasts => {}
-                            },
-                            Some(UserAction::PlayPause) => {
-                                let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
                             }
-                            Some(UserAction::MarkPlayed) => match self.active_panel {
-                                Panel::Episodes | Panel::Unplayed | Panel::Queue => {
-                                    if let Some(ui_msg) = self.mark_played() {
-                                        return ui_msg;
-                                    }
-                                }
-                                _ => {}
-                            },
-                            Some(UserAction::MarkAllPlayed) => {
-                                if let Panel::Episodes = self.active_panel {
-                                    if let Some(ui_msg) = self.mark_all_played() {
-                                        return ui_msg;
-                                    }
-                                }
-                            }
-
-                            Some(UserAction::Download) => match self.active_panel {
-                                Panel::Episodes | Panel::Unplayed | Panel::Queue => {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        if let Some(ep_id) = self.get_episode_id() {
-                                            return UiMsg::Download(pod_id, ep_id);
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            },
-                            Some(UserAction::DownloadAll) => {
-                                if let Panel::Podcasts = self.active_panel {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        return UiMsg::DownloadAll(pod_id);
-                                    }
-                                }
-                            }
-
-                            Some(UserAction::Delete) => match self.active_panel {
-                                Panel::Episodes | Panel::Queue | Panel::Unplayed => {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        if let Some(ep_id) = self.get_episode_id() {
-                                            return UiMsg::Delete(pod_id, ep_id);
-                                        }
-                                    }
-                                }
-                                Panel::Podcasts => {}
-                            },
-                            Some(UserAction::DeleteAll) => {
-                                if let Panel::Podcasts = self.active_panel {
-                                    if let Some(pod_id) = self.get_podcast_id() {
-                                        return UiMsg::DeleteAll(pod_id);
-                                    }
-                                }
-                            }
-
-                            Some(UserAction::Remove) => match self.active_panel {
-                                Panel::Podcasts => {
-                                    self.active_popup = Some(Popup::ConfirmRemovePodcast);
-                                }
-                                Panel::Queue => {
-                                    if let Some(ep_id) = self.get_episode_id() {
-                                        self.queue.items.remove(ep_id);
-                                        return UiMsg::QueueModified;
-                                    }
-                                }
-                                _ => {}
-                            },
-
-                            Some(UserAction::FilterPlayed) => {
-                                return UiMsg::FilterChange(FilterType::Played);
-                            }
-                            Some(UserAction::FilterDownloaded) => {
-                                return UiMsg::FilterChange(FilterType::Downloaded);
-                            }
-
-                            Some(UserAction::Help) => {
-                                self.active_popup = Some(Popup::Help);
-                            }
-
-                            Some(UserAction::Quit) => {
-                                if self.active_popup.is_some() {
-                                    self.active_popup = None;
-                                } else if self.confirm_quit {
-                                    self.active_popup = Some(Popup::ConfirmQuit);
-                                } else {
-                                    return UiMsg::Quit;
-                                }
-                            }
-
-                            Some(UserAction::UnplayedList) => {
-                                if self.active_popup.is_none() {
-                                    match self.active_panel {
-                                        Panel::Podcasts => {
-                                            self.select_panel(Panel::Unplayed);
-                                        }
-                                        Panel::Unplayed => {
-                                            self.select_panel(Panel::Podcasts);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            Some(UserAction::Information) => {
-                                match self.active_panel {
-                                    Panel::Episodes | Panel::Queue | Panel::Unplayed => {
-                                        self.construct_details_episode();
-                                    }
-                                    Panel::Podcasts => {
-                                        self.construct_details_podcast();
-                                    }
-                                }
-                                self.active_popup = Some(Popup::Details);
-                            }
-                            Some(UserAction::Back) => {
-                                if self.active_panel == Panel::Episodes {
-                                    self.select_panel(Panel::Podcasts);
-                                }
-                            }
-                            Some(UserAction::Switch) => match self.active_panel {
-                                Panel::Episodes | Panel::Podcasts | Panel::Unplayed => {
-                                    self.select_panel(Panel::Queue);
-                                }
-                                Panel::Queue => {
-                                    self.select_panel(self.left_panel.clone());
-                                }
-                            },
-                            None => (),
+                            Panel::Queue | Panel::Podcasts => {}
+                        },
+                        Some(UserAction::PlayPause) => {
+                            let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
                         }
+                        Some(UserAction::MarkPlayed) => match self.active_panel {
+                            Panel::Episodes | Panel::Unplayed | Panel::Queue => {
+                                if let Some(ui_msg) = self.mark_played() {
+                                    return ui_msg;
+                                }
+                            }
+                            _ => {}
+                        },
+                        Some(UserAction::MarkAllPlayed) => {
+                            if let Panel::Episodes = self.active_panel {
+                                if let Some(ui_msg) = self.mark_all_played() {
+                                    return ui_msg;
+                                }
+                            }
+                        }
+
+                        Some(UserAction::Download) => match self.active_panel {
+                            Panel::Episodes | Panel::Unplayed | Panel::Queue => {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    if let Some(ep_id) = self.get_episode_id() {
+                                        return UiMsg::Download(pod_id, ep_id);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        },
+                        Some(UserAction::DownloadAll) => {
+                            if let Panel::Podcasts = self.active_panel {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    return UiMsg::DownloadAll(pod_id);
+                                }
+                            }
+                        }
+
+                        Some(UserAction::Delete) => match self.active_panel {
+                            Panel::Episodes | Panel::Queue | Panel::Unplayed => {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    if let Some(ep_id) = self.get_episode_id() {
+                                        return UiMsg::Delete(pod_id, ep_id);
+                                    }
+                                }
+                            }
+                            Panel::Podcasts => {}
+                        },
+                        Some(UserAction::DeleteAll) => {
+                            if let Panel::Podcasts = self.active_panel {
+                                if let Some(pod_id) = self.get_podcast_id() {
+                                    return UiMsg::DeleteAll(pod_id);
+                                }
+                            }
+                        }
+
+                        Some(UserAction::Remove) => match self.active_panel {
+                            Panel::Podcasts => {
+                                self.active_popup = Some(Popup::ConfirmRemovePodcast);
+                            }
+                            Panel::Queue => {
+                                if let Some(ep_id) = self.get_episode_id() {
+                                    self.queue.items.remove(ep_id);
+                                    return UiMsg::QueueModified;
+                                }
+                            }
+                            _ => {}
+                        },
+
+                        Some(UserAction::FilterPlayed) => {
+                            return UiMsg::FilterChange(FilterType::Played);
+                        }
+                        Some(UserAction::FilterDownloaded) => {
+                            return UiMsg::FilterChange(FilterType::Downloaded);
+                        }
+
+                        Some(UserAction::Help) => {
+                            self.active_popup = Some(Popup::Help);
+                        }
+
+                        Some(UserAction::Quit) => {
+                            if self.active_popup.is_some() {
+                                self.active_popup = None;
+                            } else if self.confirm_quit {
+                                self.active_popup = Some(Popup::ConfirmQuit);
+                            } else {
+                                return UiMsg::Quit;
+                            }
+                        }
+
+                        Some(UserAction::UnplayedList) => {
+                            if self.active_popup.is_none() {
+                                match self.active_panel {
+                                    Panel::Podcasts => {
+                                        self.select_panel(Panel::Unplayed);
+                                    }
+                                    Panel::Unplayed => {
+                                        self.select_panel(Panel::Podcasts);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Some(UserAction::Information) => {
+                            match self.active_panel {
+                                Panel::Episodes | Panel::Queue | Panel::Unplayed => {
+                                    self.construct_details_episode();
+                                }
+                                Panel::Podcasts => {
+                                    self.construct_details_podcast();
+                                }
+                            }
+                            self.active_popup = Some(Popup::Details);
+                        }
+                        Some(UserAction::Back) => {
+                            if self.active_panel == Panel::Episodes {
+                                self.select_panel(Panel::Podcasts);
+                            }
+                        }
+                        Some(UserAction::Switch) => match self.active_panel {
+                            Panel::Episodes | Panel::Podcasts | Panel::Unplayed => {
+                                self.select_panel(Panel::Queue);
+                            }
+                            Panel::Queue => {
+                                self.select_panel(self.left_panel.clone());
+                            }
+                        },
+                        None => (),
                     }
                 }
-                _ => (),
             }
         }
         std::thread::sleep(Duration::from_millis(TICK_RATE));
