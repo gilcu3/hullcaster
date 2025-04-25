@@ -13,7 +13,7 @@ use crate::utils::{format_duration, StringUtils};
 
 /// Struct holding data about an individual podcast feed. This includes a
 /// (possibly empty) vector of episodes.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct Podcast {
     pub id: i64,
@@ -59,7 +59,7 @@ impl Ord for Podcast {
 /// is metadata, but if the episode has been downloaded to the local
 /// machine, the filepath will be included here as well. `played`
 /// indicates whether the podcast has been marked as played or unplayed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Episode {
     pub id: i64,
     pub pod_id: i64,
@@ -251,14 +251,14 @@ type ShareableMutex<T> = Arc<Mutex<T>>;
 #[derive(Debug)]
 pub struct LockVec<T>
 where
-    T: Clone + Menuable,
+    T: Menuable,
 {
     data: ShareableMutex<HashMap<i64, ShareableRwLock<T>, BuildNoHashHasher<i64>>>,
     order: Arc<Mutex<Vec<i64>>>,
     filtered_order: Arc<Mutex<Vec<i64>>>,
 }
 
-impl<T: Clone + Menuable> LockVec<T> {
+impl<T: Menuable> LockVec<T> {
     /// Create a new LockVec.
     pub fn new(data: Vec<T>) -> LockVec<T> {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
@@ -292,13 +292,14 @@ impl<T: Clone + Menuable> LockVec<T> {
         }
     }
 
-    pub fn push(&self, item: T) {
-        let id = item.get_id();
-        let (mut map, mut order, mut filtered_order) = self.borrow();
-        map.insert(id, Arc::new(RwLock::new(item)));
-        order.push(id);
-        filtered_order.push(id);
-    }
+    // Not needed anymore, as Episodes nor Podcasts should ever be cloned
+    // pub fn push(&self, item: T) {
+    //     let id = item.get_id();
+    //     let (mut map, mut order, mut filtered_order) = self.borrow();
+    //     map.insert(id, Arc::new(RwLock::new(item)));
+    //     order.push(id);
+    //     filtered_order.push(id);
+    // }
 
     pub fn push_arc(&self, item: Arc<RwLock<T>>) {
         let id = item.read().unwrap().get_id();
@@ -467,7 +468,7 @@ impl<T: Clone + Menuable> LockVec<T> {
     }
 }
 
-impl<T: Clone + Menuable> Clone for LockVec<T> {
+impl<T: Menuable> Clone for LockVec<T> {
     fn clone(&self) -> Self {
         LockVec {
             data: Arc::clone(&self.data),
@@ -478,7 +479,7 @@ impl<T: Clone + Menuable> Clone for LockVec<T> {
 }
 
 impl LockVec<Podcast> {
-    pub fn get_episodes_map(&self) -> Option<HashMap<i64, Arc<RwLock<Episode>>>> {
+    pub fn get_episodes_map(&self) -> HashMap<i64, Arc<RwLock<Episode>>> {
         let mut all_ep_map = HashMap::new();
         let pod_map = self.borrow_map();
         for (_pod_id, pod) in pod_map.iter() {
@@ -488,7 +489,7 @@ impl LockVec<Podcast> {
                 all_ep_map.insert(*ep_id, ep.clone());
             }
         }
-        Some(all_ep_map)
+        all_ep_map
     }
 }
 

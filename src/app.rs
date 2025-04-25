@@ -93,7 +93,7 @@ impl App {
 
         let stored_queue = db_inst.get_queue()?;
         let queue_items = LockVec::new_arc({
-            let all_eps_map = podcast_list.get_episodes_map().unwrap();
+            let all_eps_map = podcast_list.get_episodes_map();
             let res = stored_queue
                 .iter()
                 .map(|v| all_eps_map.get(v).unwrap().clone())
@@ -674,20 +674,24 @@ impl App {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
-            if let Some(duration) = episode.duration {
-                if !episode.played && position == duration {
-                    changed = true;
-                    episode.played = true;
+            let w_episode = episode_map.get_mut(&ep_id)?;
+            {
+                let mut episode = w_episode.write().unwrap();
+                if let Some(duration) = episode.duration {
+                    if !episode.played && position == duration {
+                        changed = true;
+                        episode.played = true;
+                    }
                 }
+                episode.position = position;
             }
-            episode.position = position;
+            let episode = w_episode.read().unwrap();
 
             if episode.played && self.unplayed.contains_key(ep_id) {
                 self.unplayed.remove(ep_id);
                 changed = true;
             } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                self.unplayed.push(episode.clone());
+                self.unplayed.push_arc(w_episode.clone());
                 changed = true;
             }
             self.db
@@ -723,21 +727,26 @@ impl App {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
-            if episode.played != played {
-                changed = true;
-                episode.played = played;
-                if !played {
-                    episode.position = 0;
+            let w_episode = episode_map.get_mut(&ep_id)?;
+            {
+                let mut episode = w_episode.write().unwrap();
+                if episode.played != played {
+                    changed = true;
+                    episode.played = played;
+                    if !played {
+                        episode.position = 0;
+                    }
                 }
             }
+            let episode = w_episode.read().unwrap();
             if episode.played && self.unplayed.contains_key(ep_id) {
                 self.unplayed.remove(ep_id);
                 changed = true;
             } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                self.unplayed.push(episode.clone());
+                self.unplayed.push_arc(w_episode.clone());
                 changed = true;
             }
+
             self.db
                 .set_played_status(ep_id, episode.position, episode.duration, played)
                 .ok()?;
@@ -788,16 +797,21 @@ impl App {
             let mut db_list = Vec::new();
             let mut episode_map = podcast.episodes.borrow_map();
             for (ep_id, episode) in episode_map.iter_mut() {
-                let mut episode = episode.write().unwrap();
-                if episode.played != played {
-                    changed = true;
-                    episode.played = played;
+                let w_episode = episode;
+                {
+                    let mut episode = w_episode.write().unwrap();
+                    if episode.played != played {
+                        changed = true;
+                        episode.played = played;
+                    }
                 }
+                let episode = w_episode.read().unwrap();
+
                 if episode.played && self.unplayed.contains_key(*ep_id) {
                     self.unplayed.remove(*ep_id);
                     changed = true;
                 } else if !episode.played && !self.unplayed.contains_key(*ep_id) {
-                    self.unplayed.push(episode.clone());
+                    self.unplayed.push_arc(w_episode.clone());
                     changed = true;
                 }
                 if self.config.enable_sync {
