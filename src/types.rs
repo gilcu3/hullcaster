@@ -246,7 +246,7 @@ impl Menuable for NewEpisode {
 /// order only for the items that are currently filtered in, if the
 /// user has set an active filter for played/unplayed or downloaded/
 /// undownloaded.
-type ShareableRwLock<T> = Arc<RwLock<T>>;
+pub type ShareableRwLock<T> = Arc<RwLock<T>>;
 type ShareableMutex<T> = Arc<Mutex<T>>;
 #[derive(Debug)]
 pub struct LockVec<T>

@@ -17,17 +17,24 @@ pub enum PlayerMessage {
     Seek(Duration, bool),
     Quit,
 }
+#[derive(PartialEq)]
+pub enum PlaybackStatus {
+    Ready,
+    Playing,
+    Paused,
+    Finished,
+}
 
 pub struct Player {
     _stream: OutputStream, // else the sink stops working
     sink: Sink,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
-    playing: Arc<RwLock<bool>>,
+    playing: Arc<RwLock<PlaybackStatus>>,
 }
 
 impl Player {
-    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<bool>>) -> Self {
+    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
         let (_stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
         Self {
@@ -39,7 +46,8 @@ impl Player {
         }
     }
     pub fn spawn(
-        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<bool>>,
+        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
+        playing: Arc<RwLock<PlaybackStatus>>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut message_iter = rx_from_ui.try_iter();
@@ -56,7 +64,7 @@ impl Player {
                         PlayerMessage::PlayFile(path, position, duration) => {
                             player.duration = duration;
                             *player.elapsed.write().unwrap() = position;
-                            *player.playing.write().unwrap() = true;
+                            *player.playing.write().unwrap() = PlaybackStatus::Playing;
                             player.play_file(&path);
                         }
                         PlayerMessage::Seek(shift, direction) => {
@@ -69,7 +77,7 @@ impl Player {
                 }
                 thread::sleep(time::Duration::from_millis(TICK_RATE));
 
-                if *player.playing.read().unwrap() {
+                if *player.playing.read().unwrap() == PlaybackStatus::Playing {
                     let now = Instant::now();
                     if now.duration_since(last_time) >= Duration::from_secs(1) {
                         player.set_elapsed();
@@ -93,10 +101,10 @@ impl Player {
     fn play_pause(&self) {
         if self.sink.is_paused() {
             self.sink.play();
-            *self.playing.write().unwrap() = true;
+            *self.playing.write().unwrap() = PlaybackStatus::Playing;
         } else {
             self.sink.pause();
-            *self.playing.write().unwrap() = false;
+            *self.playing.write().unwrap() = PlaybackStatus::Paused;
         }
     }
 
@@ -122,7 +130,7 @@ impl Player {
     fn set_elapsed(&mut self) {
         let elapsed = self.sink.get_pos();
         if self.sink.empty() {
-            *self.playing.write().unwrap() = false;
+            *self.playing.write().unwrap() = PlaybackStatus::Finished;
             // Allow for tiny error in duration
             if self.duration <= elapsed.as_secs() + 1 {
                 *self.elapsed.write().unwrap() = self.duration;

@@ -484,8 +484,7 @@ impl App {
         let mut updates = Vec::new();
 
         for ((pod_id, ep_id), (position, total)) in last_actions {
-            let played = (total - position).abs() <= 10;
-            updates.push((pod_id, ep_id, played));
+            updates.push((pod_id, ep_id, position, total));
         }
         let number_updates = updates.len();
         let timestamp = &sync_agent.get_timestamp().to_string();
@@ -618,13 +617,16 @@ impl App {
         }
     }
 
-    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, bool)>) -> Option<()> {
+    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, i64, i64)>) -> Option<()> {
         let mut pod_map = HashMap::new();
-        for (pod_id, ep_id, played) in updates {
+        for (pod_id, ep_id, position, total) in updates {
             if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
-                e.insert(vec![(ep_id, played)]);
+                e.insert(vec![(ep_id, position, total)]);
             } else {
-                pod_map.get_mut(&pod_id).unwrap().push((ep_id, played));
+                pod_map
+                    .get_mut(&pod_id)
+                    .unwrap()
+                    .push((ep_id, position, total));
             }
         }
         let mut changed = false;
@@ -634,13 +636,22 @@ impl App {
                 let podcast = podcast_map.get(pod_id)?.read().unwrap();
                 let mut episode_map = podcast.episodes.borrow_map();
                 let mut batch = Vec::new();
-                for (ep_id, played) in pod_map.get(pod_id).unwrap() {
+                for (ep_id, position, total) in pod_map.get(pod_id).unwrap() {
                     let mut episode = episode_map.get_mut(ep_id).unwrap().write().unwrap();
-                    if episode.played != *played {
-                        changed = true;
-                        episode.played = *played;
+                    episode.position = *position;
+                    if episode.duration.is_none() {
+                        episode.duration = Some(*total);
                     }
-                    batch.push((episode.id, episode.position, episode.duration, *played));
+                    let played = if let Some(duration) = episode.duration {
+                        (duration - position).abs() <= 1
+                    } else {
+                        episode.played
+                    };
+                    if episode.played != played {
+                        changed = true;
+                        episode.played = played;
+                    }
+                    batch.push((episode.id, episode.position, episode.duration, played));
                 }
                 batch
             };
@@ -716,6 +727,9 @@ impl App {
             if episode.played != played {
                 changed = true;
                 episode.played = played;
+                if !played {
+                    episode.position = 0;
+                }
             }
             if episode.played && self.unplayed.contains_key(ep_id) {
                 self.unplayed.remove(ep_id);

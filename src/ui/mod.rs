@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{mpsc, Arc, RwLock},
     thread,
     time::Duration,
@@ -19,6 +18,7 @@ use ratatui::{
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
+use crate::player::PlaybackStatus;
 pub use types::UiMsg;
 
 pub mod colors;
@@ -29,7 +29,7 @@ use crate::{
     app::MainMessage,
     config::SEEK_LENGTH,
     player::{Player, PlayerMessage},
-    types::{FilterType, LockVec, Menuable, Message},
+    types::{FilterType, LockVec, Menuable, Message, ShareableRwLock},
     utils::{clean_html, format_duration},
 };
 use crate::{
@@ -74,17 +74,6 @@ struct EpisodeList {
 }
 
 #[derive(Debug)]
-struct CurrentEpisode {
-    title: String,
-    podcast_title: String,
-    path: Option<PathBuf>,
-    start_position: u64,
-    duration: Option<u64>,
-    pod_id: i64,
-    ep_ip: i64,
-}
-
-#[derive(Debug)]
 pub struct Details {
     pub pubdate: Option<DateTime<Utc>>,
     pub duration: Option<String>,
@@ -109,12 +98,13 @@ pub struct UiState {
     active_popup: Option<Popup>,
     scroll_popup: u16,
     notification: NotificationManager,
-    current_episode: Option<CurrentEpisode>,
+    current_episode: Option<ShareableRwLock<Episode>>,
+    current_podcast_title: Option<String>,
     current_details: Option<Details>,
     input: Input,
     pub tx_to_player: mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
-    playing: Arc<RwLock<bool>>,
+    playing: Arc<RwLock<PlaybackStatus>>,
 }
 
 impl UiState {
@@ -133,6 +123,7 @@ impl UiState {
                     if let Some(msg) = ui.update_position() {
                         let _ = tx_to_main.send(Message::Ui(msg));
                     }
+                    *ui.playing.write().unwrap() = PlaybackStatus::Ready;
                     ui.current_episode = None;
                 }
                 let msgs = ui.getch();
@@ -181,8 +172,8 @@ impl UiState {
 
         let (tx_to_player, rx_from_ui) = mpsc::channel();
         let elapsed = Arc::new(RwLock::new(0));
-        let playing = Arc::new(RwLock::new(false));
-        // should store this somehow
+        let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
+        // TODO: should store this somehow
         let _player_thread = Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
 
         Self {
@@ -215,6 +206,7 @@ impl UiState {
             scroll_popup: 0,
             notification: NotificationManager::new(),
             current_episode: None,
+            current_podcast_title: None,
             current_details: None,
             input: Input::default(),
             tx_to_player,
@@ -241,6 +233,7 @@ impl UiState {
             frame,
             play_area,
             &self.current_episode,
+            &self.current_podcast_title,
             *self.elapsed.read().unwrap(),
             &self.colors,
         );
@@ -622,20 +615,21 @@ impl UiState {
                             Panel::Queue | Panel::Episodes | Panel::Unplayed => {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
-                                        let (same, prev, cur_ep_id, cur_pod_id) =
+                                        let (same, playing, cur_ep_id, cur_pod_id) =
                                             if let Some(cur_ep) = &self.current_episode {
+                                                let cur_ep = cur_ep.read().unwrap();
                                                 (
-                                                    cur_ep.ep_ip == ep_id
-                                                        && cur_ep.pod_id == pod_id,
-                                                    *self.playing.read().unwrap(),
-                                                    cur_ep.ep_ip,
+                                                    cur_ep.id == ep_id && cur_ep.pod_id == pod_id,
+                                                    *self.playing.read().unwrap()
+                                                        == PlaybackStatus::Playing,
+                                                    cur_ep.id,
                                                     cur_ep.pod_id,
                                                 )
                                             } else {
                                                 (false, false, 0, 0)
                                             };
                                         if !same {
-                                            if prev {
+                                            if playing {
                                                 let position = *self.elapsed.read().unwrap() as i64;
                                                 self.construct_current_episode();
                                                 return vec![
@@ -648,6 +642,11 @@ impl UiState {
                                                 self.construct_current_episode();
                                                 return vec![UiMsg::Play(pod_id, ep_id, false)];
                                             }
+                                        } else if *self.playing.read().unwrap()
+                                            == PlaybackStatus::Paused
+                                        {
+                                            let _ =
+                                                self.tx_to_player.send(PlayerMessage::PlayPause);
                                         }
                                     }
                                 }
@@ -687,9 +686,13 @@ impl UiState {
                             Panel::Queue | Panel::Podcasts => {}
                         },
                         Some(UserAction::PlayPause) => {
+                            let playing = self.playing.read().unwrap();
                             let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
-                            if let Some(ui_msg) = self.update_position() {
-                                return vec![ui_msg];
+                            // only updates position after Pause
+                            if *playing == PlaybackStatus::Playing {
+                                if let Some(ui_msg) = self.update_position() {
+                                    return vec![ui_msg];
+                                }
                             }
                         }
                         Some(UserAction::MarkPlayed) => match self.active_panel {
@@ -960,34 +963,28 @@ impl UiState {
                 Panel::Unplayed => self.unplayed.items.get(ep_id),
                 Panel::Podcasts => None,
             };
-            if let Some(ep) = _ep {
-                let ep = ep.read().unwrap();
+            if let Some(_ep) = _ep {
+                let ep = _ep.read().unwrap();
                 let podcast_title = {
                     let pod_map = self.podcasts.items.borrow_map();
                     let pod = pod_map.get(&ep.pod_id);
                     pod.map(|pod| pod.read().unwrap().title.clone()).unwrap()
                 };
-                self.current_episode = Some(CurrentEpisode {
-                    title: ep.title.clone(),
-                    podcast_title,
-                    path: ep.path.clone(),
-                    start_position: ep.position as u64,
-                    duration: ep.duration.map(|x| x as u64),
-                    pod_id: ep.pod_id,
-                    ep_ip: ep.id,
-                })
+                self.current_podcast_title = Some(podcast_title);
+                self.current_episode = Some(_ep.clone());
             }
         }
     }
 
     fn play_current(&mut self) -> Option<()> {
         if let Some(ep) = &self.current_episode {
+            let ep = ep.read().unwrap();
             if let Some(path) = &ep.path {
                 self.tx_to_player
                     .send(PlayerMessage::PlayFile(
                         path.clone(),
-                        ep.start_position,
-                        ep.duration.unwrap(),
+                        ep.position as u64,
+                        ep.duration.unwrap() as u64,
                     ))
                     .ok()?;
             }
@@ -995,16 +992,14 @@ impl UiState {
         None
     }
     fn playback_finished(&self) -> bool {
-        if let Some(cur_ep) = &self.current_episode {
-            return *self.elapsed.read().unwrap() == cur_ep.duration.unwrap();
-        }
-        false
+        self.current_episode.is_some() && *self.playing.read().unwrap() == PlaybackStatus::Finished
     }
 
     fn update_position(&self) -> Option<UiMsg> {
         if let Some(cur_ep) = &self.current_episode {
             let position = *self.elapsed.read().unwrap() as i64;
-            return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.ep_ip, position));
+            let cur_ep = cur_ep.read().unwrap();
+            return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position));
         }
         None
     }
@@ -1338,7 +1333,8 @@ fn render_episode_area(
 }
 
 fn render_play_area(
-    frame: &mut Frame, area: Rect, ep: &Option<CurrentEpisode>, elapsed: u64, colors: &AppColors,
+    frame: &mut Frame, area: Rect, ep: &Option<ShareableRwLock<Episode>>,
+    pod_title: &Option<String>, elapsed: u64, colors: &AppColors,
 ) {
     let block = Block::bordered()
         .title(Line::from(" Playing "))
@@ -1349,12 +1345,17 @@ fn render_play_area(
     let mut label = "".to_string();
 
     if let Some(ep) = ep {
+        let ep = ep.read().unwrap();
         if let Some(total) = ep.duration {
             ratio = (elapsed as f64 / total as f64).min(1.0);
         }
-        let total_label = format_duration(ep.duration);
+        let total_label = format_duration(ep.duration.map(|x| x as u64));
         title = ep.title.clone();
-        podcast_title = ep.podcast_title.clone();
+        podcast_title = if let Some(pod_title) = pod_title {
+            pod_title.clone()
+        } else {
+            "".into()
+        };
         label = format!("{}/{}", format_duration(Some(elapsed)), total_label);
     }
     let progress = Gauge::default()
