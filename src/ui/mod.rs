@@ -631,7 +631,6 @@ impl UiState {
                                         if !same {
                                             if playing {
                                                 let position = *self.elapsed.read().unwrap() as i64;
-                                                self.construct_current_episode();
                                                 return vec![
                                                     UiMsg::UpdatePosition(
                                                         cur_pod_id, cur_ep_id, position,
@@ -639,7 +638,6 @@ impl UiState {
                                                     UiMsg::Play(pod_id, ep_id, false),
                                                 ];
                                             } else {
-                                                self.construct_current_episode();
                                                 return vec![UiMsg::Play(pod_id, ep_id, false)];
                                             }
                                         } else if *self.playing.read().unwrap()
@@ -977,9 +975,13 @@ impl UiState {
     }
 
     fn play_current(&mut self) -> Option<()> {
+        self.construct_current_episode();
         if let Some(ep) = &self.current_episode {
             let ep = ep.read().unwrap();
             if let Some(path) = &ep.path {
+                // TODO: is this the best way to achieve this?
+                // without it flickering happens
+                *self.elapsed.write().unwrap() = ep.position as u64;
                 self.tx_to_player
                     .send(PlayerMessage::PlayFile(
                         path.clone(),
