@@ -9,7 +9,7 @@ use std::{
 
 use rodio::{OutputStream, Sink};
 
-use crate::config::TICK_RATE;
+use crate::config::{FADING_TIME, TICK_RATE};
 
 pub enum PlayerMessage {
     PlayPause,
@@ -93,10 +93,13 @@ impl Player {
         if !self.sink.empty() {
             self.sink.stop();
         }
+        self.sink.set_volume(0.0);
         self.sink.append(source);
         let position = *self.elapsed.read().unwrap();
         let _ = self.sink.try_seek(Duration::from_secs(position));
         self.sink.play();
+        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        self.sink.set_volume(1.0);
     }
     fn play_pause(&self) {
         if self.sink.is_paused() {
@@ -110,6 +113,8 @@ impl Player {
 
     fn seek(&mut self, shift: Duration, direction: bool) {
         let pos = self.sink.get_pos();
+        self.sink.pause();
+        self.sink.set_volume(0.0);
         let _ = self.sink.try_seek({
             if direction {
                 let max_pos = Duration::from_secs(self.duration);
@@ -124,6 +129,9 @@ impl Player {
                 Duration::ZERO
             }
         });
+        self.sink.play();
+        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        self.sink.set_volume(1.0);
         self.set_elapsed();
     }
 
