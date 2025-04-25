@@ -79,6 +79,7 @@ struct EpisodeList {
 #[derive(Debug)]
 pub struct Details {
     pub pubdate: Option<DateTime<Utc>>,
+    pub position: Option<String>,
     pub duration: Option<String>,
     pub explicit: Option<bool>,
     pub description: Option<String>,
@@ -86,6 +87,7 @@ pub struct Details {
     pub last_checked: Option<DateTime<Utc>>,
     pub episode_title: Option<String>,
     pub podcast_title: Option<String>,
+    url: String,
 }
 
 pub struct UiState {
@@ -935,6 +937,7 @@ impl UiState {
                 };
                 self.current_details = Some(Details {
                     pubdate: ep.pubdate,
+                    position: Some(format_duration(Some(ep.position as u64))),
                     duration: Some(format_duration(ep.duration.map(|x| x as u64))),
                     explicit: None,
                     description: Some(desc),
@@ -942,6 +945,7 @@ impl UiState {
                     last_checked: None,
                     episode_title: Some(ep.title.clone()),
                     podcast_title,
+                    url: ep.url.clone(),
                 });
             }
         }
@@ -954,6 +958,7 @@ impl UiState {
                 let desc = pod.description.clone().map(|desc| clean_html(&desc));
                 self.current_details = Some(Details {
                     pubdate: None,
+                    position: None,
                     duration: None,
                     explicit: pod.explicit,
                     description: desc,
@@ -961,6 +966,7 @@ impl UiState {
                     last_checked: Some(pod.last_checked),
                     episode_title: None,
                     podcast_title: Some(pod.title.clone()),
+                    url: pod.url.clone(),
                 });
             }
         }
@@ -1214,10 +1220,18 @@ fn render_details_popup(
             v.push(Line::from(""));
         }
 
+        if let Some(pos) = &details.position {
+            v.push(Line::from("Elapsed: ".to_string() + pos));
+            v.push(Line::from(""));
+        }
+
         if let Some(dur) = &details.duration {
             v.push(Line::from("Duration: ".to_string() + dur));
             v.push(Line::from(""));
         }
+
+        v.push(Line::from("URL: ".to_string() + &details.url));
+        v.push(Line::from(""));
 
         if let Some(exp) = &details.explicit {
             v.push(Line::from(
