@@ -18,7 +18,10 @@ use ratatui::{
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
-use crate::player::PlaybackStatus;
+use crate::{
+    media_control::{init_controls, ControlMessage},
+    player::PlaybackStatus,
+};
 pub use types::UiMsg;
 
 pub mod colors;
@@ -105,6 +108,7 @@ pub struct UiState {
     pub tx_to_player: mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
+    pub rx_from_control: mpsc::Receiver<ControlMessage>,
 }
 
 impl UiState {
@@ -116,7 +120,7 @@ impl UiState {
         thread::spawn(move || {
             let mut ui = UiState::new(config, items, queue_items, unplayed_items);
             let mut terminal = ratatui::init();
-            let mut message_iter = rx_from_main.try_iter();
+            let mut main_message_iter = rx_from_main.try_iter();
             loop {
                 ui.notification.check_notifs();
                 if ui.playback_finished() {
@@ -136,7 +140,16 @@ impl UiState {
                     }
                 }
 
-                if let Some(message) = message_iter.next() {
+                if let Some(msg) = ui.getcontrol() {
+                    match msg {
+                        UiMsg::Noop => (),
+                        msg => tx_to_main
+                            .send(Message::Ui(msg))
+                            .expect("Thread messaging error"),
+                    }
+                }
+
+                if let Some(message) = main_message_iter.next() {
                     match message {
                         MainMessage::SpawnNotif(msg, duration, error) => {
                             ui.notification.timed_notif(msg, duration, error)
@@ -176,6 +189,9 @@ impl UiState {
         // TODO: should store this somehow
         let _player_thread = Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
 
+        let (tx_to_control, rx_from_control) = mpsc::channel();
+        init_controls(tx_to_control);
+
         Self {
             keymap: config.keybindings.clone(),
             colors: config.colors.clone(),
@@ -212,6 +228,7 @@ impl UiState {
             tx_to_player,
             elapsed,
             playing,
+            rx_from_control,
         }
     }
 
@@ -684,13 +701,8 @@ impl UiState {
                             Panel::Queue | Panel::Podcasts => {}
                         },
                         Some(UserAction::PlayPause) => {
-                            let playing = self.playing.read().unwrap();
-                            let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
-                            // only updates position after Pause
-                            if *playing == PlaybackStatus::Playing {
-                                if let Some(ui_msg) = self.update_position() {
-                                    return vec![ui_msg];
-                                }
+                            if let Some(msg) = self.play_pause() {
+                                return vec![msg];
                             }
                         }
                         Some(UserAction::MarkPlayed) => match self.active_panel {
@@ -1004,6 +1016,29 @@ impl UiState {
             return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position));
         }
         None
+    }
+
+    fn getcontrol(&mut self) -> Option<UiMsg> {
+        let mut control_message_iter = self.rx_from_control.try_iter();
+        if let Some(message) = control_message_iter.next() {
+            match message {
+                ControlMessage::PlayPause => {
+                    return self.play_pause();
+                }
+            }
+        }
+        None
+    }
+
+    fn play_pause(&self) -> Option<UiMsg> {
+        let playing = self.playing.read().unwrap();
+        let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
+        // only updates position after Pause
+        if *playing == PlaybackStatus::Playing {
+            self.update_position()
+        } else {
+            None
+        }
     }
 }
 

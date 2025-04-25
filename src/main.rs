@@ -18,6 +18,7 @@ mod downloads;
 mod feeds;
 mod gpodder;
 mod keymap;
+mod media_control;
 mod opml;
 mod play_file;
 mod player;
