@@ -69,6 +69,7 @@ pub struct Episode {
     pub description: String,
     pub pubdate: Option<DateTime<Utc>>,
     pub duration: Option<i64>,
+    pub position: i64,
     pub path: Option<PathBuf>,
     pub played: bool,
 }

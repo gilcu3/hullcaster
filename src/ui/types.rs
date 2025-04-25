@@ -6,6 +6,7 @@ pub enum UiMsg {
     Play(i64, i64, bool),
     MarkPlayed(i64, i64, bool),
     MarkAllPlayed(i64, bool),
+    UpdatePosition(i64, i64, i64),
     Sync(i64),
     SyncAll,
     SyncGpodder,

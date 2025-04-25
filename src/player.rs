@@ -13,7 +13,7 @@ use crate::config::TICK_RATE;
 
 pub enum PlayerMessage {
     PlayPause,
-    PlayFile(PathBuf, u64),
+    PlayFile(PathBuf, u64, u64),
     Seek(Duration, bool),
     Quit,
 }
@@ -23,10 +23,11 @@ pub struct Player {
     sink: Sink,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
+    playing: Arc<RwLock<bool>>,
 }
 
 impl Player {
-    fn new(elapsed: Arc<RwLock<u64>>) -> Self {
+    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<bool>>) -> Self {
         let (_stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
         Self {
@@ -34,14 +35,15 @@ impl Player {
             sink,
             elapsed,
             duration: 0,
+            playing,
         }
     }
     pub fn spawn(
-        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
+        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<bool>>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut message_iter = rx_from_ui.try_iter();
-            let mut player = Player::new(elapsed);
+            let mut player = Player::new(elapsed, playing);
             let mut last_time = Instant::now();
             loop {
                 if let Some(message) = message_iter.next() {
@@ -51,9 +53,11 @@ impl Player {
                                 player.play_pause()
                             }
                         }
-                        PlayerMessage::PlayFile(path, duration) => {
-                            player.play_file(&path);
+                        PlayerMessage::PlayFile(path, position, duration) => {
                             player.duration = duration;
+                            *player.elapsed.write().unwrap() = position;
+                            *player.playing.write().unwrap() = true;
+                            player.play_file(&path);
                         }
                         PlayerMessage::Seek(shift, direction) => {
                             if !player.sink.empty() {
@@ -64,10 +68,13 @@ impl Player {
                     }
                 }
                 thread::sleep(time::Duration::from_millis(TICK_RATE));
-                let now = Instant::now();
-                if now.duration_since(last_time) >= Duration::from_secs(1) {
-                    player.set_elapsed();
-                    last_time = now;
+
+                if *player.playing.read().unwrap() {
+                    let now = Instant::now();
+                    if now.duration_since(last_time) >= Duration::from_secs(1) {
+                        player.set_elapsed();
+                        last_time = now;
+                    }
                 }
             }
         })
@@ -79,13 +86,17 @@ impl Player {
             self.sink.stop();
         }
         self.sink.append(source);
+        let position = *self.elapsed.read().unwrap();
+        let _ = self.sink.try_seek(Duration::from_secs(position));
         self.sink.play();
     }
     fn play_pause(&self) {
         if self.sink.is_paused() {
             self.sink.play();
+            *self.playing.write().unwrap() = true;
         } else {
             self.sink.pause();
+            *self.playing.write().unwrap() = false;
         }
     }
 
@@ -110,6 +121,14 @@ impl Player {
 
     fn set_elapsed(&mut self) {
         let elapsed = self.sink.get_pos();
+        if self.sink.empty() {
+            *self.playing.write().unwrap() = false;
+            // Allow for tiny error in duration
+            if self.duration <= elapsed.as_secs() + 1 {
+                *self.elapsed.write().unwrap() = self.duration;
+            }
+            return;
+        }
         *self.elapsed.write().unwrap() = elapsed.as_secs();
     }
 }

@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
-use crate::config::Config;
+use crate::config::{Config, MAX_DURATION};
 use crate::db::{Database, SyncResult};
 use crate::downloads::{self, DownloadMsg, EpData};
 use crate::feeds::{self, FeedMsg, PodcastFeed};
@@ -190,6 +190,10 @@ impl App {
 
                 Message::Ui(UiMsg::MarkAllPlayed(pod_id, played)) => {
                     self.mark_all_played(pod_id, played);
+                }
+
+                Message::Ui(UiMsg::UpdatePosition(pod_id, ep_id, position)) => {
+                    self.update_position(pod_id, ep_id, position);
                 }
 
                 Message::Ui(UiMsg::Download(pod_id, ep_id)) => self.download(pod_id, Some(ep_id)),
@@ -586,7 +590,10 @@ impl App {
             let pod = self.podcasts.get(pod_id).unwrap();
             let pod = pod.read().unwrap();
             let episode_map = pod.episodes.borrow_map();
-            let episode = episode_map.get(&ep_id).unwrap().read().unwrap();
+            let mut episode = episode_map.get(&ep_id).unwrap().write().unwrap();
+            if Some(episode.position) == episode.duration {
+                episode.position = 0;
+            }
             (episode.path.clone(), episode.url.clone())
         };
         if external {
@@ -633,7 +640,7 @@ impl App {
                         changed = true;
                         episode.played = *played;
                     }
-                    batch.push((episode.id, *played));
+                    batch.push((episode.id, episode.position, episode.duration, *played));
                 }
                 batch
             };
@@ -650,12 +657,58 @@ impl App {
         Some(())
     }
 
-    /// Given a podcast and episode, it marks the given episode as
-    /// played/unplayed, sending this info to the database and updating in
-    /// self.podcasts
+    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) -> Option<()> {
+        let mut changed = false;
+        let (duration, ep_url, pod_url) = {
+            let podcast_map = self.podcasts.borrow_map();
+            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
+            let mut episode_map = podcast.episodes.borrow_map();
+            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
+            if let Some(duration) = episode.duration {
+                if !episode.played && position == duration {
+                    changed = true;
+                    episode.played = true;
+                }
+            }
+            episode.position = position;
+
+            if episode.played && self.unplayed.contains_key(ep_id) {
+                self.unplayed.remove(ep_id);
+                changed = true;
+            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
+                self.unplayed.push(episode.clone());
+                changed = true;
+            }
+            self.db
+                .set_played_status(ep_id, episode.position, episode.duration, episode.played)
+                .ok()?;
+            (episode.duration, episode.url.clone(), podcast.url.clone())
+        };
+
+        if changed {
+            self.update_unplayed(false);
+            self.update_filters(self.filters, false);
+        }
+
+        if self.config.enable_sync {
+            self.sync_agent
+                .as_ref()
+                .unwrap()
+                .mark_played(&pod_url, &ep_url, position, duration);
+        }
+        Some(())
+    }
+
+    /// Given a podcast and episode, it updates the given episode,
+    /// sending this info to the database, updating in self.podcasts and syncing
+    /// with gpodder
+    /// if played is true, do not modify the current position of episode
+    /// if position is near duration, mark episode as played
+    /// else just update position
+    /// TODO: separate mark_played from set position
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
         let mut changed = false;
-        let (mut duration, ep_url, pod_url) = {
+        let (mut duration, ep_position, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map.get(&pod_id)?.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
@@ -671,8 +724,15 @@ impl App {
                 self.unplayed.push(episode.clone());
                 changed = true;
             }
-            self.db.set_played_status(ep_id, played).ok()?;
-            (episode.duration, episode.url.clone(), podcast.url.clone())
+            self.db
+                .set_played_status(ep_id, episode.position, episode.duration, played)
+                .ok()?;
+            (
+                episode.duration,
+                episode.position,
+                episode.url.clone(),
+                podcast.url.clone(),
+            )
         };
 
         if changed {
@@ -682,22 +742,20 @@ impl App {
 
         if self.config.enable_sync {
             if duration.is_none() {
-                // duration = audio_duration(&ep_url);
-                // if duration.is_none() {
-                //     self.notif_to_ui(
-                //         "Could not mark episode as played in gpodder: missing duration."
-                //             .to_string(),
-                //         true,
-                //     );
-                //     return None;
-                // }
-                duration = Some(10000);
+                duration = Some(MAX_DURATION);
                 info!("Setting duration to infinity for episode {}, else cannot mark as played on gpodder", ep_url);
             }
+            let position = {
+                if played {
+                    duration.unwrap()
+                } else {
+                    ep_position
+                }
+            };
             self.sync_agent
                 .as_ref()
                 .unwrap()
-                .mark_played(&pod_url, &ep_url, duration, played);
+                .mark_played(&pod_url, &ep_url, position, duration);
         }
         Some(())
     }
@@ -716,7 +774,6 @@ impl App {
             let mut db_list = Vec::new();
             let mut episode_map = podcast.episodes.borrow_map();
             for (ep_id, episode) in episode_map.iter_mut() {
-                db_list.push((*ep_id, played));
                 let mut episode = episode.write().unwrap();
                 if episode.played != played {
                     changed = true;
@@ -730,13 +787,24 @@ impl App {
                     changed = true;
                 }
                 if self.config.enable_sync {
+                    let duration = if episode.duration.is_some() {
+                        episode.duration
+                    } else {
+                        Some(MAX_DURATION)
+                    };
+                    let position = if played {
+                        duration.unwrap()
+                    } else {
+                        episode.position
+                    };
                     sync_list.push((
                         podcast_url.to_owned(),
                         episode.url.to_owned(),
-                        episode.duration,
-                        played,
+                        position,
+                        duration,
                     ));
                 }
+                db_list.push((*ep_id, episode.position, episode.duration, played));
             }
             (sync_list, db_list)
         };
@@ -751,7 +819,7 @@ impl App {
             self.sync_agent.as_ref().unwrap().mark_played_batch(
                 sync_list
                     .iter()
-                    .map(|(pod, ep, dur, p)| (pod.as_str(), ep.as_str(), *dur, *p))
+                    .map(|(pod, ep, pos, dur)| (pod.as_str(), ep.as_str(), *pos, *dur))
                     .collect(),
             );
         }

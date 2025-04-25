@@ -78,8 +78,10 @@ struct CurrentEpisode {
     title: String,
     podcast_title: String,
     path: Option<PathBuf>,
+    start_position: u64,
     duration: Option<u64>,
-    elapsed: Arc<RwLock<u64>>,
+    pod_id: i64,
+    ep_ip: i64,
 }
 
 #[derive(Debug)]
@@ -112,6 +114,7 @@ pub struct UiState {
     input: Input,
     pub tx_to_player: mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
+    playing: Arc<RwLock<bool>>,
 }
 
 impl UiState {
@@ -126,11 +129,20 @@ impl UiState {
             let mut message_iter = rx_from_main.try_iter();
             loop {
                 ui.notification.check_notifs();
-                match ui.getch() {
-                    UiMsg::Noop => (),
-                    input => tx_to_main
-                        .send(Message::Ui(input))
-                        .expect("Thread messaging error"),
+                if ui.playback_finished() {
+                    if let Some(msg) = ui.update_position() {
+                        let _ = tx_to_main.send(Message::Ui(msg));
+                    }
+                    ui.current_episode = None;
+                }
+                let msgs = ui.getch();
+                for msg in msgs {
+                    match msg {
+                        UiMsg::Noop => (),
+                        msg => tx_to_main
+                            .send(Message::Ui(msg))
+                            .expect("Thread messaging error"),
+                    }
                 }
 
                 if let Some(message) = message_iter.next() {
@@ -169,8 +181,9 @@ impl UiState {
 
         let (tx_to_player, rx_from_ui) = mpsc::channel();
         let elapsed = Arc::new(RwLock::new(0));
+        let playing = Arc::new(RwLock::new(false));
         // should store this somehow
-        let _player_thread = Player::spawn(rx_from_ui, elapsed.clone());
+        let _player_thread = Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
 
         Self {
             keymap: config.keybindings.clone(),
@@ -206,6 +219,7 @@ impl UiState {
             input: Input::default(),
             tx_to_player,
             elapsed,
+            playing,
         }
     }
 
@@ -223,7 +237,13 @@ impl UiState {
         let [play_area, center_area, notif_area, help_area] = vertical_layout.areas(area);
         let [select_area, queue_area] = horizontal_layout.areas(center_area);
 
-        render_play_area(frame, play_area, &self.current_episode, &self.colors);
+        render_play_area(
+            frame,
+            play_area,
+            &self.current_episode,
+            *self.elapsed.read().unwrap(),
+            &self.colors,
+        );
         match self.left_panel {
             Panel::Podcasts => render_podcast_area(
                 frame,
@@ -475,7 +495,7 @@ impl UiState {
     /// degree of abstraction; for example, input to add a new podcast feed
     /// spawns a UI window to capture the feed URL, and only then passes this
     /// data back to the main controller.
-    fn getch(&mut self) -> UiMsg {
+    fn getch(&mut self) -> Vec<UiMsg> {
         if event::poll(Duration::from_millis(TICK_RATE)).expect("Can't poll for inputs") {
             if let Event::Key(input) = event::read().expect("Can't read inputs") {
                 let action = self.keymap.get_from_input(input).cloned();
@@ -501,7 +521,7 @@ impl UiState {
                             Popup::AddPodcast => match input.code {
                                 KeyCode::Enter => {
                                     self.active_popup = None;
-                                    return UiMsg::AddFeed(self.input.value().to_string());
+                                    return vec![UiMsg::AddFeed(self.input.value().to_string())];
                                 }
                                 _ => {
                                     self.input.handle_event(&Event::Key(input));
@@ -511,7 +531,7 @@ impl UiState {
                                 KeyCode::Char('y') => {
                                     self.active_popup = None;
                                     if let Some(msg) = self.remove_podcast() {
-                                        return msg;
+                                        return vec![msg];
                                     }
                                 }
                                 KeyCode::Char('n') => {
@@ -523,7 +543,7 @@ impl UiState {
                                 KeyCode::Char('y') => {
                                     self.active_popup = None;
                                     let _ = self.tx_to_player.send(PlayerMessage::Quit);
-                                    return UiMsg::Quit;
+                                    return vec![UiMsg::Quit];
                                 }
                                 KeyCode::Char('n') => {
                                     self.active_popup = None;
@@ -558,7 +578,7 @@ impl UiState {
                         Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
                             if let Panel::Queue = self.active_panel {
                                 if let Some(ui_msg) = self.move_eps(&a) {
-                                    return ui_msg;
+                                    return vec![ui_msg];
                                 }
                             }
                         }
@@ -571,16 +591,16 @@ impl UiState {
                         Some(UserAction::Sync) => {
                             if let Panel::Podcasts = self.active_panel {
                                 if let Some(pod_id) = self.get_podcast_id() {
-                                    return UiMsg::Sync(pod_id);
+                                    return vec![UiMsg::Sync(pod_id)];
                                 }
                             }
                         }
                         Some(UserAction::SyncAll) => {
-                            return UiMsg::SyncAll;
+                            return vec![UiMsg::SyncAll];
                         }
 
                         Some(UserAction::SyncGpodder) => {
-                            return UiMsg::SyncGpodder;
+                            return vec![UiMsg::SyncGpodder];
                         }
 
                         Some(UserAction::Enter) => match self.active_panel {
@@ -602,8 +622,33 @@ impl UiState {
                             Panel::Queue | Panel::Episodes | Panel::Unplayed => {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
-                                        self.construct_current_episode();
-                                        return UiMsg::Play(pod_id, ep_id, false);
+                                        let (same, prev, cur_ep_id, cur_pod_id) =
+                                            if let Some(cur_ep) = &self.current_episode {
+                                                (
+                                                    cur_ep.ep_ip == ep_id
+                                                        && cur_ep.pod_id == pod_id,
+                                                    *self.playing.read().unwrap(),
+                                                    cur_ep.ep_ip,
+                                                    cur_ep.pod_id,
+                                                )
+                                            } else {
+                                                (false, false, 0, 0)
+                                            };
+                                        if !same {
+                                            if prev {
+                                                let position = *self.elapsed.read().unwrap() as i64;
+                                                self.construct_current_episode();
+                                                return vec![
+                                                    UiMsg::UpdatePosition(
+                                                        cur_pod_id, cur_ep_id, position,
+                                                    ),
+                                                    UiMsg::Play(pod_id, ep_id, false),
+                                                ];
+                                            } else {
+                                                self.construct_current_episode();
+                                                return vec![UiMsg::Play(pod_id, ep_id, false)];
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -614,7 +659,7 @@ impl UiState {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
                                         self.construct_current_episode();
-                                        return UiMsg::Play(pod_id, ep_id, true);
+                                        return vec![UiMsg::Play(pod_id, ep_id, true)];
                                     }
                                 }
                             }
@@ -628,12 +673,12 @@ impl UiState {
                                         if self.left_panel == Panel::Episodes {
                                             if let Some(ep) = self.episodes.items.get(ep_id) {
                                                 self.queue.items.push_arc(ep);
-                                                return UiMsg::QueueModified;
+                                                return vec![UiMsg::QueueModified];
                                             }
                                         } else if self.left_panel == Panel::Unplayed {
                                             if let Some(ep) = self.unplayed.items.get(ep_id) {
                                                 self.queue.items.push_arc(ep);
-                                                return UiMsg::QueueModified;
+                                                return vec![UiMsg::QueueModified];
                                             }
                                         }
                                     }
@@ -643,11 +688,14 @@ impl UiState {
                         },
                         Some(UserAction::PlayPause) => {
                             let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
+                            if let Some(ui_msg) = self.update_position() {
+                                return vec![ui_msg];
+                            }
                         }
                         Some(UserAction::MarkPlayed) => match self.active_panel {
                             Panel::Episodes | Panel::Unplayed | Panel::Queue => {
                                 if let Some(ui_msg) = self.mark_played() {
-                                    return ui_msg;
+                                    return vec![ui_msg];
                                 }
                             }
                             _ => {}
@@ -655,7 +703,7 @@ impl UiState {
                         Some(UserAction::MarkAllPlayed) => {
                             if let Panel::Episodes = self.active_panel {
                                 if let Some(ui_msg) = self.mark_all_played() {
-                                    return ui_msg;
+                                    return vec![ui_msg];
                                 }
                             }
                         }
@@ -664,7 +712,7 @@ impl UiState {
                             Panel::Episodes | Panel::Unplayed | Panel::Queue => {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
-                                        return UiMsg::Download(pod_id, ep_id);
+                                        return vec![UiMsg::Download(pod_id, ep_id)];
                                     }
                                 }
                             }
@@ -673,7 +721,7 @@ impl UiState {
                         Some(UserAction::DownloadAll) => {
                             if let Panel::Podcasts = self.active_panel {
                                 if let Some(pod_id) = self.get_podcast_id() {
-                                    return UiMsg::DownloadAll(pod_id);
+                                    return vec![UiMsg::DownloadAll(pod_id)];
                                 }
                             }
                         }
@@ -682,7 +730,7 @@ impl UiState {
                             Panel::Episodes | Panel::Queue | Panel::Unplayed => {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
-                                        return UiMsg::Delete(pod_id, ep_id);
+                                        return vec![UiMsg::Delete(pod_id, ep_id)];
                                     }
                                 }
                             }
@@ -691,7 +739,7 @@ impl UiState {
                         Some(UserAction::DeleteAll) => {
                             if let Panel::Podcasts = self.active_panel {
                                 if let Some(pod_id) = self.get_podcast_id() {
-                                    return UiMsg::DeleteAll(pod_id);
+                                    return vec![UiMsg::DeleteAll(pod_id)];
                                 }
                             }
                         }
@@ -703,17 +751,17 @@ impl UiState {
                             Panel::Queue => {
                                 if let Some(ep_id) = self.get_episode_id() {
                                     self.queue.items.remove(ep_id);
-                                    return UiMsg::QueueModified;
+                                    return vec![UiMsg::QueueModified];
                                 }
                             }
                             _ => {}
                         },
 
                         Some(UserAction::FilterPlayed) => {
-                            return UiMsg::FilterChange(FilterType::Played);
+                            return vec![UiMsg::FilterChange(FilterType::Played)];
                         }
                         Some(UserAction::FilterDownloaded) => {
-                            return UiMsg::FilterChange(FilterType::Downloaded);
+                            return vec![UiMsg::FilterChange(FilterType::Downloaded)];
                         }
 
                         Some(UserAction::Help) => {
@@ -726,7 +774,7 @@ impl UiState {
                             } else if self.confirm_quit {
                                 self.active_popup = Some(Popup::ConfirmQuit);
                             } else {
-                                return UiMsg::Quit;
+                                return vec![UiMsg::Quit];
                             }
                         }
 
@@ -773,7 +821,7 @@ impl UiState {
             }
         }
         std::thread::sleep(Duration::from_millis(TICK_RATE));
-        UiMsg::Noop
+        vec![UiMsg::Noop]
     }
 
     fn mark_played(&mut self) -> Option<UiMsg> {
@@ -919,13 +967,14 @@ impl UiState {
                     let pod = pod_map.get(&ep.pod_id);
                     pod.map(|pod| pod.read().unwrap().title.clone()).unwrap()
                 };
-                *self.elapsed.write().unwrap() = 0;
                 self.current_episode = Some(CurrentEpisode {
                     title: ep.title.clone(),
                     podcast_title,
                     path: ep.path.clone(),
+                    start_position: ep.position as u64,
                     duration: ep.duration.map(|x| x as u64),
-                    elapsed: self.elapsed.clone(),
+                    pod_id: ep.pod_id,
+                    ep_ip: ep.id,
                 })
             }
         }
@@ -935,9 +984,27 @@ impl UiState {
         if let Some(ep) = &self.current_episode {
             if let Some(path) = &ep.path {
                 self.tx_to_player
-                    .send(PlayerMessage::PlayFile(path.clone(), ep.duration.unwrap()))
+                    .send(PlayerMessage::PlayFile(
+                        path.clone(),
+                        ep.start_position,
+                        ep.duration.unwrap(),
+                    ))
                     .ok()?;
             }
+        }
+        None
+    }
+    fn playback_finished(&self) -> bool {
+        if let Some(cur_ep) = &self.current_episode {
+            return *self.elapsed.read().unwrap() == cur_ep.duration.unwrap();
+        }
+        false
+    }
+
+    fn update_position(&self) -> Option<UiMsg> {
+        if let Some(cur_ep) = &self.current_episode {
+            let position = *self.elapsed.read().unwrap() as i64;
+            return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.ep_ip, position));
         }
         None
     }
@@ -1271,7 +1338,7 @@ fn render_episode_area(
 }
 
 fn render_play_area(
-    frame: &mut Frame, area: Rect, ep: &Option<CurrentEpisode>, colors: &AppColors,
+    frame: &mut Frame, area: Rect, ep: &Option<CurrentEpisode>, elapsed: u64, colors: &AppColors,
 ) {
     let block = Block::bordered()
         .title(Line::from(" Playing "))
@@ -1282,7 +1349,6 @@ fn render_play_area(
     let mut label = "".to_string();
 
     if let Some(ep) = ep {
-        let elapsed = *ep.elapsed.read().unwrap();
         if let Some(total) = ep.duration {
             ratio = (elapsed as f64 / total as f64).min(1.0);
         }

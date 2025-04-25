@@ -194,7 +194,7 @@ impl GpodderController {
     }
 
     pub fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, duration: Option<i64>, played: bool,
+        &self, podcast_url: &str, episode_url: &str, position: i64, duration: Option<i64>,
     ) -> Option<String> {
         duration?;
         self.require_login();
@@ -208,7 +208,7 @@ impl GpodderController {
             action: Action::play,
             timestamp: current_time(),
             started: Some(0),
-            position: if played { duration } else { Some(0) },
+            position: Some(position),
             total: duration,
         };
         let actions = [action];
@@ -222,8 +222,8 @@ impl GpodderController {
         );
         if res.is_some() {
             log::info!(
-                "Marked played: {} episode: {} podcast: {}",
-                played,
+                "Marked position: {} episode: {} podcast: {}",
+                position,
                 episode_url,
                 podcast_url
             );
@@ -231,7 +231,7 @@ impl GpodderController {
         res
     }
 
-    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, Option<i64>, bool)>) -> Option<String> {
+    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, i64, Option<i64>)>) -> Option<String> {
         self.require_login();
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -239,15 +239,14 @@ impl GpodderController {
         );
         let actions: Vec<EpisodeAction> = eps
             .iter()
-            .filter(|(_, _, duration, _)| duration.is_some())
             .map(
-                |(podcast_url, episode_url, duration, played)| EpisodeAction {
+                |(podcast_url, episode_url, position, duration)| EpisodeAction {
                     podcast: podcast_url.to_string(),
                     episode: episode_url.to_string(),
                     action: Action::play,
                     timestamp: current_time(),
                     started: Some(0),
-                    position: if *played { *duration } else { Some(0) },
+                    position: Some(*position),
                     total: *duration,
                 },
             )

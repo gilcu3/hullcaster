@@ -439,7 +439,8 @@ impl Database {
             && new_ep.url == old_ep.url
             && new_ep.guid == old_ep.guid
             && new_ep.description == old_ep.description
-            && new_ep.duration == old_ep.duration
+            // do not update duration, we can take it from the audio file
+            // && new_ep.duration == old_ep.duration
             && pd_match)
         {
             return true;
@@ -448,22 +449,30 @@ impl Database {
     }
 
     /// Updates an episode to mark it as played or unplayed.
-    pub fn set_played_status(&self, episode_id: i64, played: bool) -> Result<()> {
+    pub fn set_played_status(
+        &self, episode_id: i64, position: i64, duration: Option<i64>, played: bool,
+    ) -> Result<()> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
 
-        let mut stmt = conn.prepare_cached("UPDATE episodes SET played = ? WHERE id = ?;")?;
-        stmt.execute(params![played, episode_id])?;
+        let mut stmt = conn.prepare_cached(
+            "UPDATE episodes SET played = ?, position = ?, duration = ? WHERE id = ?;",
+        )?;
+        stmt.execute(params![played, position, duration, episode_id])?;
         Ok(())
     }
 
     /// Updates an episode to mark it as played or unplayed.
-    pub fn set_played_status_batch(&mut self, eps: Vec<(i64, bool)>) -> Result<()> {
+    pub fn set_played_status_batch(
+        &mut self, eps: Vec<(i64, i64, Option<i64>, bool)>,
+    ) -> Result<()> {
         let conn = self.conn.as_mut().expect("Error connecting to database.");
         let tx = conn.transaction()?;
         {
-            let mut stmt = tx.prepare("UPDATE episodes SET played = ? WHERE id = ?;")?;
-            for (episode_id, played) in eps {
-                stmt.execute(params![played, episode_id])?;
+            let mut stmt = tx.prepare(
+                "UPDATE episodes SET played = ?, position = ?, duration = ? WHERE id = ?;",
+            )?;
+            for (episode_id, position, duration, played) in eps {
+                stmt.execute(params![played, position, duration, episode_id])?;
             }
         }
         tx.commit()?;
@@ -530,6 +539,7 @@ impl Database {
                 description: row.get("description")?,
                 pubdate: convert_date(row.get("pubdate")),
                 duration: row.get("duration")?,
+                position: row.get("position")?,
                 path,
                 played: row.get("played")?,
             })

@@ -30,6 +30,9 @@ pub const TICK_RATE: u64 = 50;
 /// Amount of time between ticks in the event loop
 pub const SEEK_LENGTH: Duration = Duration::from_secs(30);
 
+/// Maximum duration of episode when unknown
+pub const MAX_DURATION: i64 = 10000;
+
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]
 pub struct Config {
