@@ -103,7 +103,7 @@ pub struct UiState {
     active_popup: Option<Popup>,
     scroll_popup: u16,
     notification: NotificationManager,
-    current_episode: Option<ShareableRwLock<Episode>>,
+    current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
     current_podcast_title: Option<String>,
     current_details: Option<Details>,
     input: Input,
@@ -130,7 +130,7 @@ impl UiState {
                         let _ = tx_to_main.send(Message::Ui(msg));
                     }
                     *ui.playing.write().unwrap() = PlaybackStatus::Ready;
-                    ui.current_episode = None;
+                    *ui.current_episode.write().unwrap() = None;
                 }
                 let msgs = ui.getch();
                 for msg in msgs {
@@ -188,11 +188,12 @@ impl UiState {
         let (tx_to_player, rx_from_ui) = mpsc::channel();
         let elapsed = Arc::new(RwLock::new(0));
         let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
-        // TODO: should store this somehow
-        let _player_thread = Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
+        // TODO: handle threads properly
+        Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
 
         let (tx_to_control, rx_from_control) = mpsc::channel();
-        init_controls(tx_to_control);
+        let current_episode = Arc::new(RwLock::new(None));
+        init_controls(tx_to_control, current_episode.clone(), playing.clone());
 
         Self {
             keymap: config.keybindings.clone(),
@@ -223,7 +224,7 @@ impl UiState {
             active_popup,
             scroll_popup: 0,
             notification: NotificationManager::new(),
-            current_episode: None,
+            current_episode,
             current_podcast_title: None,
             current_details: None,
             input: Input::default(),
@@ -635,7 +636,9 @@ impl UiState {
                                 if let Some(pod_id) = self.get_podcast_id() {
                                     if let Some(ep_id) = self.get_episode_id() {
                                         let (same, playing, cur_ep_id, cur_pod_id) =
-                                            if let Some(cur_ep) = &self.current_episode {
+                                            if let Some(cur_ep) =
+                                                self.current_episode.read().unwrap().as_ref()
+                                            {
                                                 let cur_ep = cur_ep.read().unwrap();
                                                 (
                                                     cur_ep.id == ep_id && cur_ep.pod_id == pod_id,
@@ -987,14 +990,14 @@ impl UiState {
                     pod.map(|pod| pod.read().unwrap().title.clone()).unwrap()
                 };
                 self.current_podcast_title = Some(podcast_title);
-                self.current_episode = Some(_ep.clone());
+                *self.current_episode.write().unwrap() = Some(_ep.clone());
             }
         }
     }
 
     fn play_current(&mut self) -> Option<()> {
         self.construct_current_episode();
-        if let Some(ep) = &self.current_episode {
+        if let Some(ep) = self.current_episode.read().unwrap().as_ref() {
             let ep = ep.read().unwrap();
             if let Some(path) = &ep.path {
                 // TODO: is this the best way to achieve this?
@@ -1012,11 +1015,12 @@ impl UiState {
         None
     }
     fn playback_finished(&self) -> bool {
-        self.current_episode.is_some() && *self.playing.read().unwrap() == PlaybackStatus::Finished
+        self.current_episode.read().unwrap().is_some()
+            && *self.playing.read().unwrap() == PlaybackStatus::Finished
     }
 
     fn update_position(&self) -> Option<UiMsg> {
-        if let Some(cur_ep) = &self.current_episode {
+        if let Some(cur_ep) = self.current_episode.read().unwrap().as_ref() {
             let position = *self.elapsed.read().unwrap() as i64;
             let cur_ep = cur_ep.read().unwrap();
             return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position));
@@ -1384,7 +1388,7 @@ fn render_episode_area(
 }
 
 fn render_play_area(
-    frame: &mut Frame, area: Rect, ep: &Option<ShareableRwLock<Episode>>,
+    frame: &mut Frame, area: Rect, ep: &ShareableRwLock<Option<ShareableRwLock<Episode>>>,
     pod_title: &Option<String>, elapsed: u64, colors: &AppColors,
 ) {
     let block = Block::bordered()
@@ -1395,7 +1399,7 @@ fn render_play_area(
     let mut podcast_title = "".to_string();
     let mut label = "".to_string();
 
-    if let Some(ep) = ep {
+    if let Some(ep) = ep.read().unwrap().as_ref() {
         let ep = ep.read().unwrap();
         if let Some(total) = ep.duration {
             ratio = (elapsed as f64 / total as f64).min(1.0);

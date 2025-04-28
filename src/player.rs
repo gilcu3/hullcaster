@@ -17,7 +17,7 @@ pub enum PlayerMessage {
     Seek(Duration, bool),
     Quit,
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Copy, Clone)]
 pub enum PlaybackStatus {
     Ready,
     Playing,
