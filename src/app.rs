@@ -553,6 +553,8 @@ impl App {
         match db_result {
             Ok(result) => {
                 if !result.added.is_empty() || !result.updated.is_empty() {
+                    // TODO: this is quite inefficient, and currently only necessary
+                    // to keep the order
                     {
                         self.podcasts.replace_all(
                             self.db
@@ -561,6 +563,7 @@ impl App {
                         );
                     }
                     self.update_unplayed(true);
+                    self.update_queue();
                     self.update_filters(self.filters, true);
                 }
 
@@ -1101,6 +1104,7 @@ impl App {
             );
         }
         self.update_unplayed(true);
+        self.update_queue();
         self.update_filters(self.filters, false);
     }
 
@@ -1146,6 +1150,17 @@ impl App {
         self.tx_to_ui.send(MainMessage::TearDown).unwrap();
         if let Some(thread) = self.ui_thread.take() {
             thread.join().unwrap(); // wait for UI thread to finish teardown
+        }
+    }
+
+    fn update_queue(&self) {
+        let order = self.queue.borrow_order();
+        let mut quemap = self.queue.borrow_map();
+        let epmap = self.podcasts.get_episodes_map();
+        for id in order.iter() {
+            if let Some(ep) = epmap.get(id) {
+                quemap.insert(*id, ep.clone());
+            }
         }
     }
 }
