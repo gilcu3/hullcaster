@@ -209,7 +209,10 @@ fn setup_logs() -> Result<()> {
         .set_time_offset_to_local()
         .unwrap();
     if level_filter != simplelog::LevelFilter::Debug {
-        log_config = log_config.add_filter_ignore_str("symphonia")
+        log_config = log_config
+            .add_filter_ignore_str("symphonia")
+            // https://github.com/RustAudio/cpal/issues/671
+            .add_filter_ignore_str("alsa")
     }
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,
