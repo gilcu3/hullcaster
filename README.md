@@ -20,7 +20,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Option to avoid marking as read when playing
 - [x] Syncing with the gpodder API
 - [x] Add playing queue
-- [ ] Internal Player using [rodio](https://github.com/RustAudio/rodio)
+- [x] Internal Player using [rodio](https://github.com/RustAudio/rodio)
 - [x] Show key bindings in a bar on the bottom
 - [x] Migrate to [ratatui](https://ratatui.rs/)
 - [x] Add option to sync automatically on start, enabled by default
@@ -58,6 +58,9 @@ features stated below, while learning `rust` at the same time.
 - [x] Show in the UI when an episode is currently downloaded
 - [ ] Add tests for the new UI
 - [x] Add config parameter `confirm_on_exit`.
+- [ ] Make synchronization in a new thread, cope with bad network conditions
+- [ ] Support streaming play
+- [ ] Add play next from queue automatically
 
 ## Installing hullcaster
 
