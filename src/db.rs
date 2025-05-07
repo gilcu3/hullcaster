@@ -88,10 +88,7 @@ impl Database {
         let param_str: rusqlite::Result<String> = stmt
             .unwrap()
             .query_row(rusqlite::params![key], |row| row.get(0));
-        match param_str {
-            Ok(ps) => Some(ps),
-            Err(_) => None,
-        }
+        param_str.ok()
     }
 
     pub fn set_param(&self, key: &str, value: &str) -> Result<()> {

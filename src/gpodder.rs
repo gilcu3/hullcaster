@@ -440,11 +440,7 @@ impl GpodderController {
         res.as_ref()?;
         let json_string = res.unwrap();
         let parsed: serde_json::Result<Vec<Device>> = serde_json::from_str(json_string.as_str());
-        if let Ok(parsed_ok) = parsed {
-            Some(parsed_ok)
-        } else {
-            None
-        }
+        parsed.ok()
     }
 
     fn register_device(&self) -> bool {
