@@ -615,7 +615,10 @@ impl App {
                         true,
                     ),
                 },
-                None => self.notif_to_ui("Error: Download the episode first.".to_string(), true),
+                None => {
+                    // self.notif_to_ui("Error: Download the episode first.".to_string(), true)
+                    self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
+                }
             }
         }
     }

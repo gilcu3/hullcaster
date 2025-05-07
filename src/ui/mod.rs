@@ -1010,6 +1010,15 @@ impl UiState {
                         ep.duration.unwrap() as u64,
                     ))
                     .ok()?;
+            } else {
+                *self.elapsed.write().unwrap() = ep.position as u64;
+                self.tx_to_player
+                    .send(PlayerMessage::PlayUrl(
+                        ep.url.clone(),
+                        ep.position as u64,
+                        ep.duration.unwrap() as u64,
+                    ))
+                    .ok()?;
             }
         }
         None

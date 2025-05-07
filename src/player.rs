@@ -1,5 +1,5 @@
-use core::time;
 use std::{
+    error::Error,
     io::BufReader,
     path::PathBuf,
     sync::{mpsc::Receiver, Arc, RwLock},
@@ -7,13 +7,21 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Result;
 use rodio::{OutputStream, Sink};
+use stream_download::source::SourceStream;
+use stream_download::{
+    http::{reqwest::Client, HttpStream},
+    storage::temp::TempStorageProvider,
+    Settings, StreamDownload,
+};
 
 use crate::config::{FADING_TIME, TICK_RATE};
 
 pub enum PlayerMessage {
     PlayPause,
     PlayFile(PathBuf, u64, u64),
+    PlayUrl(String, u64, u64),
     Seek(Duration, bool),
     Quit,
 }
@@ -45,46 +53,61 @@ impl Player {
             playing,
         }
     }
+    #[tokio::main]
+    pub async fn spawn_async(
+        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
+        playing: Arc<RwLock<PlaybackStatus>>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut message_iter = rx_from_ui.try_iter();
+        let mut player = Player::new(elapsed, playing);
+        let mut last_time = Instant::now();
+        loop {
+            if let Some(message) = message_iter.next() {
+                match message {
+                    PlayerMessage::PlayPause => {
+                        if !player.sink.empty() {
+                            player.play_pause()
+                        }
+                    }
+                    PlayerMessage::PlayFile(path, position, duration) => {
+                        player.duration = duration;
+                        *player.elapsed.write().unwrap() = position;
+                        *player.playing.write().unwrap() = PlaybackStatus::Playing;
+                        player.play_file(&path);
+                    }
+                    PlayerMessage::PlayUrl(url, position, duration) => {
+                        player.duration = duration;
+                        *player.elapsed.write().unwrap() = position;
+                        *player.playing.write().unwrap() = PlaybackStatus::Playing;
+                        let _ = player.play_url(&url).await;
+                    }
+                    PlayerMessage::Seek(shift, direction) => {
+                        if !player.sink.empty() {
+                            player.seek(shift, direction)
+                        }
+                    }
+                    PlayerMessage::Quit => break,
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
+
+            if *player.playing.read().unwrap() == PlaybackStatus::Playing {
+                let now = Instant::now();
+                if now.duration_since(last_time) >= Duration::from_secs(1) {
+                    player.set_elapsed();
+                    last_time = now;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn spawn(
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
-            let mut message_iter = rx_from_ui.try_iter();
-            let mut player = Player::new(elapsed, playing);
-            let mut last_time = Instant::now();
-            loop {
-                if let Some(message) = message_iter.next() {
-                    match message {
-                        PlayerMessage::PlayPause => {
-                            if !player.sink.empty() {
-                                player.play_pause()
-                            }
-                        }
-                        PlayerMessage::PlayFile(path, position, duration) => {
-                            player.duration = duration;
-                            *player.elapsed.write().unwrap() = position;
-                            *player.playing.write().unwrap() = PlaybackStatus::Playing;
-                            player.play_file(&path);
-                        }
-                        PlayerMessage::Seek(shift, direction) => {
-                            if !player.sink.empty() {
-                                player.seek(shift, direction)
-                            }
-                        }
-                        PlayerMessage::Quit => break,
-                    }
-                }
-                thread::sleep(time::Duration::from_millis(TICK_RATE));
-
-                if *player.playing.read().unwrap() == PlaybackStatus::Playing {
-                    let now = Instant::now();
-                    if now.duration_since(last_time) >= Duration::from_secs(1) {
-                        player.set_elapsed();
-                        last_time = now;
-                    }
-                }
-            }
+            let _ = Player::spawn_async(rx_from_ui, elapsed, playing);
         })
     }
     fn play_file(&mut self, path: &PathBuf) {
@@ -100,6 +123,27 @@ impl Player {
         self.sink.play();
         std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
         self.sink.set_volume(1.0);
+    }
+
+    async fn play_url(&mut self, url: &str) -> Result<()> {
+        let stream = HttpStream::<Client>::create(url.parse()?).await?;
+        let reader =
+            StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
+                .await?;
+        let source = rodio::Decoder::new(reader)?;
+        if !self.sink.empty() {
+            self.sink.stop();
+        }
+
+        self.sink.set_volume(0.0);
+        self.sink.append(source);
+
+        let position = *self.elapsed.read().unwrap();
+        let _ = self.sink.try_seek(Duration::from_secs(position));
+        self.sink.play();
+        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        self.sink.set_volume(1.0);
+        Ok(())
     }
     fn play_pause(&self) {
         if self.sink.is_paused() {
