@@ -16,7 +16,10 @@ use stream_download::{
     Settings, StreamDownload,
 };
 
-use crate::config::{FADING_TIME, TICK_RATE};
+use crate::{
+    config::{FADING_TIME, TICK_RATE},
+    utils::resolve_redirection,
+};
 
 pub enum PlayerMessage {
     PlayPause,
@@ -126,6 +129,7 @@ impl Player {
     }
 
     async fn play_url(&mut self, url: &str) -> Result<()> {
+        let url = resolve_redirection(url).unwrap_or(url.to_string());
         let stream = HttpStream::<Client>::create(url.parse()?).await?;
         let reader =
             StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
