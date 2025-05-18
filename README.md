@@ -59,8 +59,8 @@ features stated below, while learning `rust` at the same time.
 - [ ] Add tests for the new UI
 - [x] Add config parameter `confirm_on_exit`.
 - [ ] Make synchronization in a new thread, cope with bad network conditions
-- [ ] Support streaming play
-- [ ] Add play next from queue automatically
+- [x] Support streaming play
+- [ ] Fix gpodder sync not working when episode link needs redirects
 
 ## Installing hullcaster
 
