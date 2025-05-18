@@ -27,7 +27,7 @@ pub enum MainMessage {
     SpawnNotif(String, u64, bool),
     SpawnPersistentNotif(String, bool),
     ClearPersistentNotif,
-    PlayCurrent,
+    PlayCurrent(i64),
     TearDown,
 }
 
@@ -608,7 +608,7 @@ impl App {
             match ep_path {
                 Some(path) => match path.to_str() {
                     Some(_p) => {
-                        self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
+                        self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id)).unwrap();
                     }
                     None => self.notif_to_ui(
                         format!("Error: Filepath {} is not valid Unicode.", path.display()),
@@ -617,7 +617,7 @@ impl App {
                 },
                 None => {
                     // self.notif_to_ui("Error: Download the episode first.".to_string(), true)
-                    self.tx_to_ui.send(MainMessage::PlayCurrent).unwrap();
+                    self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id)).unwrap();
                 }
             }
         }

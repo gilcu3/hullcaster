@@ -321,6 +321,18 @@ impl<T: Menuable> LockVec<T> {
         borrowed.get(&id).cloned()
     }
 
+    pub fn get_index(&self, id: i64) -> Option<usize> {
+        if self.contains_key(id) {
+            let borrowed = self.borrow_order();
+            for (i, el) in borrowed.iter().enumerate() {
+                if *el == id {
+                    return Some(i);
+                }
+            }
+        }
+        None
+    }
+
     pub fn contains_key(&self, id: i64) -> bool {
         let borrowed = self.borrow_map();
         borrowed.contains_key(&id)
