@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
+use gag::Gag;
 use log::info;
 use utils::parse_create_dir;
 
@@ -129,6 +130,9 @@ fn main() -> Result<()> {
         info!("Logging set up.");
     }
 
+    // fix https://github.com/RustAudio/cpal/issues/671
+    let _printerr_gag = Gag::stderr().unwrap();
+
     let mut db_path = config_path;
     if !db_path.pop() {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
@@ -209,10 +213,7 @@ fn setup_logs() -> Result<()> {
         .set_time_offset_to_local()
         .unwrap();
     if level_filter != simplelog::LevelFilter::Debug {
-        log_config = log_config
-            .add_filter_ignore_str("symphonia")
-            // https://github.com/RustAudio/cpal/issues/671
-            .add_filter_ignore_str("alsa")
+        log_config = log_config.add_filter_ignore_str("symphonia")
     }
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,

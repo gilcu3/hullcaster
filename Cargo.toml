@@ -49,3 +49,4 @@ rodio = {version = "0.20.1", features = ["tracing"]}
 souvlaki = "0.8.2"
 stream-download = {version = "0.19.1", features = ["reqwest-native-tls"]}
 tokio = {version = "1.45.0", features = ["rt-multi-thread"]}
+gag = "1.0.0"
