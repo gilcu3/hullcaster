@@ -45,6 +45,16 @@ struct PodcastChanges {
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
+struct Podcast {
+    feed: String,
+    title: Option<String>,
+    website: Option<String>,
+    description: Option<String>,
+}
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
 struct UploadPodcastChanges {
     update_urls: Vec<Vec<String>>,
     timestamp: i64,
@@ -416,10 +426,10 @@ impl GpodderController {
             vec![],
             &self.encoded_credentials,
         )?;
-        let parsed: serde_json::Result<Vec<String>> = serde_json::from_str(json_string.as_str());
+        let parsed: serde_json::Result<Vec<Podcast>> = serde_json::from_str(json_string.as_str());
 
         if let Ok(subscriptions) = parsed {
-            Some(subscriptions)
+            Some(subscriptions.iter().map(|f| f.feed.clone()).collect())
         } else {
             log::info!("Error parsing subscriptions");
             None
