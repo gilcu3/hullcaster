@@ -93,7 +93,7 @@ impl NotificationManager {
     /// notification is already being displayed, this method will
     /// overwrite that message.
     pub fn persistent_notif(&mut self, message: String, error: bool) {
-        info!("{}", message);
+        info!("{message}");
         let notif = Notification::new(message, error, None);
         self.persistent_msg = Some(notif.clone());
         if self.msg_stack.is_empty() {

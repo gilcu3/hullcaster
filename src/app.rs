@@ -498,7 +498,7 @@ impl App {
         self.update_unplayed(true);
         self.update_filters(self.filters, false);
         self.notif_to_ui(
-            format!("Gpodder sync finished with {} updates", number_updates).to_string(),
+            format!("Gpodder sync finished with {number_updates} updates").to_string(),
             false,
         );
     }
@@ -772,7 +772,7 @@ impl App {
         if self.config.enable_sync {
             if duration.is_none() {
                 duration = Some(MAX_DURATION);
-                info!("Setting duration to infinity for episode {}, else cannot mark as played on gpodder", ep_url);
+                info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
             }
             let position = {
                 if played {

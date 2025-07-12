@@ -221,12 +221,7 @@ impl GpodderController {
             &self.encoded_credentials,
         );
         if res.is_some() {
-            log::info!(
-                "Marked position: {} episode: {} podcast: {}",
-                position,
-                episode_url,
-                podcast_url
-            );
+            log::info!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
         }
         res
     }
@@ -359,10 +354,10 @@ impl GpodderController {
         let parsed: serde_json::Result<PodcastChanges> = serde_json::from_str(json_string.as_str());
         if let Ok(changes) = parsed {
             for sub in &changes.add {
-                log::info!("podcast added {}", sub);
+                log::info!("podcast added {sub}");
             }
             for sub in &changes.remove {
-                log::info!("podcast removed {}", sub);
+                log::info!("podcast removed {sub}");
             }
             self.subscriptions_timestamp.set(changes.timestamp + 1);
             Some((changes.add, changes.remove))
@@ -511,7 +506,7 @@ impl GpodderController {
         let res = self.get_devices();
         let mut exists = false;
         for dev in res.unwrap() {
-            println!("{:?}", dev);
+            println!("{dev:?}");
             if dev.id == self.device_id {
                 exists = true;
                 break;
@@ -556,16 +551,16 @@ impl GpodderController {
         let (added, removed) = self.get_subscription_changes()?;
 
         for sub in added {
-            println!("Added: {}", sub);
+            println!("Added: {sub}");
         }
 
         for sub in removed {
-            println!("Removed: {}", sub);
+            println!("Removed: {sub}");
         }
 
         let subs = self.get_all_subscriptions()?;
         for sub in subs {
-            println!("Subscription: {}", sub);
+            println!("Subscription: {sub}");
         }
 
         Some(())

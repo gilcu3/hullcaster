@@ -1170,7 +1170,7 @@ fn render_shortcut_help_popup(
                 if let Some(keys) = keymap.keys_for_action(action) {
                     // longest prefix is 21 chars long
                     let key_str = match keys.len() {
-                        0 => format!("{:>28} <missing>", action_str),
+                        0 => format!("{action_str:>28} <missing>"),
                         1 => format!("{:>28} \"{}\"", action_str, &keys[0]),
                         _ => format!("{:>28} \"{}\" or \"{}\"", action_str, &keys[0], &keys[1]),
                     };
@@ -1186,7 +1186,7 @@ fn render_shortcut_help_popup(
     let line: Vec<Line> = key_strs.iter().map(|s| Line::from(s.as_str())).collect();
     let paragraph = Paragraph::new(line).scroll((scroll, 0));
     let last_line =
-        Line::from(format!("Press {} to close this window.", back_key)).alignment(Alignment::Right);
+        Line::from(format!("Press {back_key} to close this window.")).alignment(Alignment::Right);
 
     let vertical = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]);
 
@@ -1255,14 +1255,14 @@ fn render_details_popup(
 
         if let Some(last_checked) = details.last_checked {
             v.push(Line::from(
-                "Last checked: ".to_string() + format!("{}", last_checked).as_str(),
+                "Last checked: ".to_string() + format!("{last_checked}").as_str(),
             ));
             v.push(Line::from(""));
         }
 
         if let Some(date) = details.pubdate {
             v.push(Line::from(
-                "Published: ".to_string() + format!("{}", date).as_str(),
+                "Published: ".to_string() + format!("{date}").as_str(),
             ));
             v.push(Line::from(""));
         }
@@ -1337,7 +1337,7 @@ fn render_help_line(frame: &mut Frame, area: Rect, keymap: &Keybindings, colors:
         if let Some(keys) = keymap.keys_for_action(action) {
             // longest prefix is 21 chars long
             let key_str = match keys.len() {
-                0 => format!(":{}", action_str),
+                0 => format!(":{action_str}"),
                 _ => format!("{}:{}", &keys[0], action_str,),
             };
             if cur_length + key_str.len() as i16 + 3 > area.width as i16 {

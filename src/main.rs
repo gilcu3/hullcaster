@@ -266,7 +266,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
             Message::Feed(FeedMsg::Error(feed)) => {
                 failure = true;
                 match feed.title {
-                    Some(t) => eprintln!("Error retrieving RSS feed for {}.", t),
+                    Some(t) => eprintln!("Error retrieving RSS feed for {t}."),
                     None => eprintln!("Error retrieving RSS feed."),
                 }
             }

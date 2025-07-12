@@ -53,7 +53,7 @@ pub fn execute_request_post(
     let request = loop {
         let response = agent
             .post(&url)
-            .header("Authorization", &format!("Basic {}", encoded_credentials))
+            .header("Authorization", &format!("Basic {encoded_credentials}"))
             .send(&body);
 
         match response {
@@ -63,7 +63,7 @@ pub fn execute_request_post(
             }
             Err(Error::StatusCode(code)) => {
                 // Handle HTTP error statuses (e.g., 404, 500)
-                println!("Error code: {}", code);
+                println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
                     break Err(());
@@ -92,7 +92,7 @@ pub fn execute_request_get(
     let request = loop {
         let response = agent
             .get(&url)
-            .header("Authorization", &format!("Basic {}", encoded_credentials))
+            .header("Authorization", &format!("Basic {encoded_credentials}"))
             .query_pairs(params.clone())
             .call();
 
@@ -102,7 +102,7 @@ pub fn execute_request_get(
                 break Ok(resp);
             }
             Err(Error::StatusCode(code)) => {
-                println!("Error code: {}", code);
+                println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
                     break Err(());
