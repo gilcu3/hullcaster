@@ -37,7 +37,7 @@ pub enum PlaybackStatus {
 }
 
 pub struct Player {
-    _stream: OutputStream, // else the sink stops working
+    _stream_handle: OutputStream, // else the sink stops working
     sink: Sink,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
@@ -46,10 +46,10 @@ pub struct Player {
 
 impl Player {
     fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
-        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
+        let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
+        let sink = rodio::Sink::connect_new(stream_handle.mixer());
         Self {
-            _stream,
+            _stream_handle: stream_handle,
             sink,
             elapsed,
             duration: 0,
