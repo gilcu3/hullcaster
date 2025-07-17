@@ -130,9 +130,6 @@ fn main() -> Result<()> {
         info!("Logging set up.");
     }
 
-    // fix https://github.com/RustAudio/cpal/issues/671
-    let _printerr_gag = Gag::stderr().unwrap();
-
     let mut db_path = config_path;
     if !db_path.pop() {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
@@ -150,6 +147,9 @@ fn main() -> Result<()> {
 
         // MAIN COMMAND -------------------------------------------------
         _ => {
+            // fix https://github.com/RustAudio/cpal/issues/671
+            let _printerr_gag = Gag::stderr().unwrap();
+
             let mut app = App::new(config, &db_path)?;
             let app_result = app.run(); // main loop
             app.finalize();
