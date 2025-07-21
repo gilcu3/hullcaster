@@ -1002,7 +1002,7 @@ impl UiState {
                     .send(PlayerMessage::PlayUrl(
                         ep.url.clone(),
                         ep.position as u64,
-                        ep.duration.unwrap() as u64,
+                        ep.duration.map_or_else(|| 0, |x| x) as u64,
                     ))
                     .ok()?;
             }

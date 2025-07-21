@@ -124,15 +124,6 @@ pub fn execute_request_get(
 }
 
 pub fn audio_duration(audio_bytes: Vec<u8>) -> Option<i64> {
-    // log::info!("Getting audio duration for {}", url);
-    // let mut response = ureq::get(url).call().ok()?;
-    // let bytes = response
-    //     .body_mut()
-    //     .as_reader()
-    //     .bytes()
-    //     .collect::<Result<Vec<_>, _>>()
-    //     .ok()?;
-    // log::info!("Bytes: {:?}", bytes.len());
     let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
     let probed = get_probe()

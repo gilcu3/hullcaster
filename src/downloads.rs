@@ -115,12 +115,14 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     };
 
     ep_data.file_path = Some(file_path.clone());
-    ep_data.duration = audio_duration_file(file_path);
 
     let mut body = response.into_body();
     let mut reader = body.as_reader();
     match std::io::copy(&mut reader, &mut dst.unwrap()) {
-        Ok(_) => DownloadMsg::Complete(ep_data),
+        Ok(_) => {
+            ep_data.duration = audio_duration_file(file_path);
+            DownloadMsg::Complete(ep_data)
+        }
         Err(_) => DownloadMsg::FileWriteError(ep_data),
     }
 }

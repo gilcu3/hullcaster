@@ -188,7 +188,8 @@ impl Player {
         if self.sink.empty() {
             *self.playing.write().unwrap() = PlaybackStatus::Finished;
             // Allow for tiny error in duration
-            if self.duration <= elapsed.as_secs() + 1 {
+            // TODO: this is a hack that should be done better
+            if self.duration > 0 && self.duration <= elapsed.as_secs() + 1 {
                 *self.elapsed.write().unwrap() = self.duration;
             }
             return;
