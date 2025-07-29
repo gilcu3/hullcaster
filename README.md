@@ -44,7 +44,7 @@ features stated below, while learning `rust` at the same time.
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue
 - [ ] Create lock file to prevent several instances of hullcaster
-- [ ] Add option to play next from queue automatically, makes sense only after internal player is implemented
+- [x] Add option to play next from queue automatically, makes sense only after internal player is implemented
 - [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
 - [x] Avoid repeated elements in queue
 - [x] Fix bug where queue actions are not persistent, hard to reproduce
@@ -60,7 +60,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Add config parameter `confirm_on_exit`.
 - [ ] Make synchronization in a new thread, cope with bad network conditions
 - [x] Support streaming play
-- [ ] Fix gpodder sync not working when episode link needs redirects
+- [x] Fix gpodder sync not working when episode link needs redirects
+- [ ] Fix initial setup issues when using gpodder
 
 ## Installing hullcaster
 
