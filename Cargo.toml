@@ -13,6 +13,13 @@ repository = "https://github.com/gilcu3/hullcaster"
 documentation = "https://github.com/gilcu3/hullcaster"
 readme = "README.md"
 
+[profile.reproducible]
+inherits = "release"
+debug = false
+panic = "abort"
+codegen-units = 1
+overflow-checks = true
+
 [dependencies]
 rss = "2.0.12"
 rusqlite = { version = "0.37.0", features = ["bundled"] }

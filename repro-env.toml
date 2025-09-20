@@ -1,0 +1,6 @@
+[container]
+image = "archlinux"
+
+[packages]
+system = "archlinux"
+dependencies = ["rustup", "gcc", "openssl", "pkgconf", "alsa-lib"]

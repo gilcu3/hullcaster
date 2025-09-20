@@ -18,3 +18,7 @@ args = [
   "--all-targets",
   "--locked",
 ]
+
+[tasks.repro]
+command = "repro-env"
+args = ["build", "--", "cargo", "build","--profile", "reproducible", "--locked"]
