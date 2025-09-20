@@ -1,4 +1,6 @@
 name: CD
+permissions:
+  contents: write
 
 on:
   push:
