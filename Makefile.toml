@@ -3,11 +3,19 @@ alias = "check-all"
 
 [tasks.check-all]
 description = "Run all checks"
-dependencies = ["clippy", "fmt", "typos", "shear", "test"]
+dependencies = ["clippy", "fmt", "taplo", "typos", "shear", "test"]
 
 [tasks.clippy]
 command = "cargo"
-args = ["clippy", "--all-features", "--all-targets", "--locked"]
+args = [
+  "clippy",
+  "--all-features",
+  "--all-targets",
+  "--locked",
+  "--",
+  "-D",
+  "warnings",
+]
 
 [tasks.fmt]
 command = "cargo"
@@ -20,15 +28,22 @@ command = "typos"
 command = "cargo"
 args = ["shear"]
 
+[tasks.taplo]
+command = "taplo"
+args = ["format", "--check", "*.toml"]
+
 [tasks.test]
 command = "cargo"
-args = [
-  "test",
-  "--all-features",
-  "--all-targets",
-  "--locked",
-]
+args = ["test", "--all-features", "--all-targets", "--locked"]
 
 [tasks.repro]
 command = "repro-env"
-args = ["build", "--", "cargo", "build","--profile", "reproducible", "--locked"]
+args = [
+  "build",
+  "--",
+  "cargo",
+  "build",
+  "--profile",
+  "reproducible",
+  "--locked",
+]
