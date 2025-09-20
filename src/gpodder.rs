@@ -353,8 +353,8 @@ impl GpodderController {
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
         );
-        let pasttime = self.subscriptions_timestamp.get().to_string();
-        let params = vec![("since", pasttime.as_str())];
+        let pastime = self.subscriptions_timestamp.get().to_string();
+        let params = vec![("since", pastime.as_str())];
         let json_string = execute_request_get(
             &self.agent,
             url_subscription_changes,

@@ -396,9 +396,9 @@ impl App {
 
     fn gpodder_sync(&mut self) {
         let sync_agent = self.sync_agent.as_ref().unwrap();
-        let subcription_changes = sync_agent.get_subscription_changes();
+        let subscription_changes = sync_agent.get_subscription_changes();
 
-        let removed_pods = if let Some((added, deleted)) = subcription_changes {
+        let removed_pods = if let Some((added, deleted)) = subscription_changes {
             let pod_map = self
                 .podcasts
                 .borrow_map()
