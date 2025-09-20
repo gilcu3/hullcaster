@@ -20,33 +20,20 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
             target: aarch64-apple-darwin
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             dependencies: "libssl-dev libasound2-dev libdbus-1-dev"
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            cross_arch: true
-        toolchain: [1.88.0]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install libssl-dev libasound2-dev libdbus-1-dev
         if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get update && sudo apt-get install ${{ matrix.dependencies }}
 
       - name: Checkout source
         uses: actions/checkout@v5
-
-      - name: Install Rust toolchain
-        id: install_toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          components: clippy, rustfmt
 
       - name: Cache cargo deps
         uses: actions/cache@v4
