@@ -8,6 +8,7 @@ use sanitize_filename::{sanitize_with_options, Options};
 
 use crate::threadpool::Threadpool;
 use crate::types::Message;
+use crate::utils::audio_duration_file;
 
 /// Enum used for communicating back to the main controller upon
 /// successful or unsuccessful downloading of a file. i32 value
@@ -29,6 +30,7 @@ pub struct EpData {
     pub url: String,
     pub pubdate: Option<DateTime<Utc>>,
     pub file_path: Option<PathBuf>,
+    pub duration: Option<i64>,
 }
 
 /// This is the function the main controller uses to indicate new
@@ -54,12 +56,12 @@ pub fn download_list(
 /// Downloads a file to a local filepath, returning DownloadMsg variant
 /// indicating success or failure.
 fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
-    let agent_builder = ureq::builder()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(120));
-    let agent = agent_builder.build();
+    let agent_builder = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .timeout_global(Some(Duration::from_secs(120)));
+    let agent: ureq::Agent = agent_builder.build().into();
 
-    let request: Result<ureq::Response, ()> = loop {
+    let request = loop {
         let response = agent.get(&ep_data.url).call();
         match response {
             Ok(resp) => break Ok(resp),
@@ -80,7 +82,16 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
 
     // figure out the file type
     // assume .mp3 unless we figure out otherwise
-    let ext = get_file_ext(response.header("content-type"), &ep_data.url).unwrap_or("mp3");
+    let ext = get_file_ext(
+        response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .ok(),
+        &ep_data.url,
+    )
+    .unwrap_or("mp3");
 
     let mut file_name = sanitize_with_options(
         &ep_data.title,
@@ -103,11 +114,15 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
         return DownloadMsg::FileCreateError(ep_data);
     };
 
-    ep_data.file_path = Some(file_path);
+    ep_data.file_path = Some(file_path.clone());
 
-    let mut reader = response.into_reader();
+    let mut body = response.into_body();
+    let mut reader = body.as_reader();
     match std::io::copy(&mut reader, &mut dst.unwrap()) {
-        Ok(_) => DownloadMsg::Complete(ep_data),
+        Ok(_) => {
+            ep_data.duration = audio_duration_file(file_path);
+            DownloadMsg::Complete(ep_data)
+        }
         Err(_) => DownloadMsg::FileWriteError(ep_data),
     }
 }

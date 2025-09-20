@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
-use crossterm::style::Color;
 use once_cell::sync::Lazy;
+use ratatui::style::Color;
 use regex::Regex;
 
 use crate::config::AppColorsFromToml;
@@ -27,10 +27,10 @@ impl AppColors {
     /// Creates an AppColors struct with default color values.
     pub fn default() -> Self {
         Self {
-            normal: (Color::Grey, Color::Black),
-            bold: (Color::White, Color::DarkBlue),
-            highlighted_active: (Color::Black, Color::DarkYellow),
-            highlighted: (Color::Black, Color::Grey),
+            normal: (Color::Gray, Color::Black),
+            bold: (Color::White, Color::Blue),
+            highlighted_active: (Color::Black, Color::Yellow),
+            highlighted: (Color::Black, Color::Gray),
             error: (Color::Red, Color::Black),
         }
     }
@@ -99,42 +99,36 @@ impl AppColors {
     pub fn color_from_str(text: &str) -> Result<Color> {
         if text.starts_with('#') {
             if let Some(cap) = RE_COLOR_HEX.captures(text) {
-                return Ok(Color::Rgb {
-                    r: u8::from_str_radix(&cap[1], 16)?,
-                    g: u8::from_str_radix(&cap[2], 16)?,
-                    b: u8::from_str_radix(&cap[3], 16)?,
-                });
+                return Ok(Color::Rgb(
+                    u8::from_str_radix(&cap[1], 16)?,
+                    u8::from_str_radix(&cap[2], 16)?,
+                    u8::from_str_radix(&cap[3], 16)?,
+                ));
             }
             Err(anyhow!("Invalid color hex code"))
         } else if text.starts_with("rgb") || text.starts_with("RGB") {
             #[allow(clippy::from_str_radix_10)]
             if let Some(cap) = RE_COLOR_RGB.captures(text) {
-                return Ok(Color::Rgb {
-                    r: u8::from_str_radix(&cap[1], 10)?,
-                    g: u8::from_str_radix(&cap[2], 10)?,
-                    b: u8::from_str_radix(&cap[3], 10)?,
-                });
+                return Ok(Color::Rgb(
+                    u8::from_str_radix(&cap[1], 10)?,
+                    u8::from_str_radix(&cap[2], 10)?,
+                    u8::from_str_radix(&cap[3], 10)?,
+                ));
             }
             return Err(anyhow!("Invalid color RGB code"));
         } else {
             let text_lower = text.to_lowercase();
             return match &text_lower[..] {
                 "black" => Ok(Color::Black),
-                "darkgrey" | "darkgray" => Ok(Color::DarkGrey),
+                "darkgrey" | "darkgray" => Ok(Color::DarkGray),
                 "red" => Ok(Color::Red),
-                "darkred" => Ok(Color::DarkRed),
                 "green" => Ok(Color::Green),
-                "darkgreen" => Ok(Color::DarkGreen),
                 "yellow" => Ok(Color::Yellow),
-                "darkyellow" => Ok(Color::DarkYellow),
                 "blue" => Ok(Color::Blue),
-                "darkblue" => Ok(Color::DarkBlue),
                 "magenta" => Ok(Color::Magenta),
-                "darkmagenta" => Ok(Color::DarkMagenta),
                 "cyan" => Ok(Color::Cyan),
-                "darkcyan" => Ok(Color::DarkCyan),
                 "white" => Ok(Color::White),
-                "grey" | "gray" => Ok(Color::Grey),
+                "grey" | "gray" => Ok(Color::Gray),
                 "terminal" => Ok(Color::Reset),
                 _ => Err(anyhow!("Invalid color code")),
             };
@@ -152,7 +146,7 @@ mod tests {
         let color = String::from("#ff0000");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(parsed.unwrap(), Color::Rgb(255, 0, 0));
     }
 
     #[test]
@@ -172,7 +166,7 @@ mod tests {
         let color = String::from("rgb(255, 0, 0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(parsed.unwrap(), Color::Rgb(255, 0, 0));
     }
 
     #[test]
@@ -180,7 +174,7 @@ mod tests {
         let color = String::from("RGB(255, 0, 0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(parsed.unwrap(), Color::Rgb(255, 0, 0));
     }
 
     #[test]
@@ -188,6 +182,6 @@ mod tests {
         let color = String::from("rgb(255,0,0)");
         let parsed = AppColors::color_from_str(&color);
         assert!(parsed.is_ok());
-        assert_eq!(parsed.unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(parsed.unwrap(), Color::Rgb(255, 0, 0));
     }
 }

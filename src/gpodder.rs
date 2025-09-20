@@ -8,7 +8,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use ureq::{builder, Agent};
+use ureq::Agent;
 
 use chrono::{DateTime, TimeZone, Utc};
 use std::fmt;
@@ -45,6 +45,16 @@ struct PodcastChanges {
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
+struct Podcast {
+    feed: String,
+    title: Option<String>,
+    website: Option<String>,
+    description: Option<String>,
+}
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
 struct UploadPodcastChanges {
     update_urls: Vec<Vec<String>>,
     timestamp: i64,
@@ -73,7 +83,7 @@ where
 {
     struct GpodderDate;
 
-    impl<'de> Visitor<'de> for GpodderDate {
+    impl Visitor<'_> for GpodderDate {
         type Value = i64;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -146,10 +156,10 @@ impl GpodderController {
     pub fn new(
         config: Arc<Config>, timestamp: Option<i64>, device_id: String,
     ) -> Option<GpodderController> {
-        let agent_builder = builder()
-            .timeout_connect(Duration::from_secs(10))
-            .timeout_read(Duration::from_secs(30));
-        let agent = agent_builder.build();
+        let agent_builder = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_global(Some(Duration::from_secs(30)));
+        let agent = agent_builder.build().into();
         let timestamp = timestamp.unwrap_or(0);
         let credentials = format!("{}:{}", config.sync_username, config.sync_password);
         let encoded_credentials = base64::engine::general_purpose::STANDARD.encode(credentials);
@@ -194,7 +204,7 @@ impl GpodderController {
     }
 
     pub fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, duration: Option<i64>, played: bool,
+        &self, podcast_url: &str, episode_url: &str, position: i64, duration: Option<i64>,
     ) -> Option<String> {
         duration?;
         self.require_login();
@@ -208,7 +218,7 @@ impl GpodderController {
             action: Action::play,
             timestamp: current_time(),
             started: Some(0),
-            position: if played { duration } else { Some(0) },
+            position: Some(position),
             total: duration,
         };
         let actions = [action];
@@ -221,17 +231,12 @@ impl GpodderController {
             &self.encoded_credentials,
         );
         if res.is_some() {
-            log::info!(
-                "Marked played: {} episode: {} podcast: {}",
-                played,
-                episode_url,
-                podcast_url
-            );
+            log::info!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
         }
         res
     }
 
-    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, Option<i64>, bool)>) -> Option<String> {
+    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, i64, Option<i64>)>) -> Option<String> {
         self.require_login();
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -239,15 +244,14 @@ impl GpodderController {
         );
         let actions: Vec<EpisodeAction> = eps
             .iter()
-            .filter(|(_, _, duration, _)| duration.is_some())
             .map(
-                |(podcast_url, episode_url, duration, played)| EpisodeAction {
+                |(podcast_url, episode_url, position, duration)| EpisodeAction {
                     podcast: podcast_url.to_string(),
                     episode: episode_url.to_string(),
                     action: Action::play,
                     timestamp: current_time(),
                     started: Some(0),
-                    position: if *played { *duration } else { Some(0) },
+                    position: Some(*position),
                     total: *duration,
                 },
             )
@@ -349,8 +353,8 @@ impl GpodderController {
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
         );
-        let pasttime = self.subscriptions_timestamp.get().to_string();
-        let params = vec![("since", pasttime.as_str())];
+        let pastime = self.subscriptions_timestamp.get().to_string();
+        let params = vec![("since", pastime.as_str())];
         let json_string = execute_request_get(
             &self.agent,
             url_subscription_changes,
@@ -360,10 +364,10 @@ impl GpodderController {
         let parsed: serde_json::Result<PodcastChanges> = serde_json::from_str(json_string.as_str());
         if let Ok(changes) = parsed {
             for sub in &changes.add {
-                log::info!("podcast added {}", sub);
+                log::info!("podcast added {sub}");
             }
             for sub in &changes.remove {
-                log::info!("podcast removed {}", sub);
+                log::info!("podcast removed {sub}");
             }
             self.subscriptions_timestamp.set(changes.timestamp + 1);
             Some((changes.add, changes.remove))
@@ -422,10 +426,10 @@ impl GpodderController {
             vec![],
             &self.encoded_credentials,
         )?;
-        let parsed: serde_json::Result<Vec<String>> = serde_json::from_str(json_string.as_str());
+        let parsed: serde_json::Result<Vec<Podcast>> = serde_json::from_str(json_string.as_str());
 
         if let Ok(subscriptions) = parsed {
-            Some(subscriptions)
+            Some(subscriptions.iter().map(|f| f.feed.clone()).collect())
         } else {
             log::info!("Error parsing subscriptions");
             None
@@ -441,11 +445,7 @@ impl GpodderController {
         res.as_ref()?;
         let json_string = res.unwrap();
         let parsed: serde_json::Result<Vec<Device>> = serde_json::from_str(json_string.as_str());
-        if let Ok(parsed_ok) = parsed {
-            Some(parsed_ok)
-        } else {
-            None
-        }
+        parsed.ok()
     }
 
     fn register_device(&self) -> bool {
@@ -516,7 +516,7 @@ impl GpodderController {
         let res = self.get_devices();
         let mut exists = false;
         for dev in res.unwrap() {
-            println!("{:?}", dev);
+            println!("{dev:?}");
             if dev.id == self.device_id {
                 exists = true;
                 break;
@@ -561,16 +561,16 @@ impl GpodderController {
         let (added, removed) = self.get_subscription_changes()?;
 
         for sub in added {
-            println!("Added: {}", sub);
+            println!("Added: {sub}");
         }
 
         for sub in removed {
-            println!("Removed: {}", sub);
+            println!("Removed: {sub}");
         }
 
         let subs = self.get_all_subscriptions()?;
         for sub in subs {
-            println!("Subscription: {}", sub);
+            println!("Subscription: {sub}");
         }
 
         Some(())
@@ -582,6 +582,7 @@ mod tests {
     use super::*;
     use crate::get_config_path;
 
+    #[ignore = "test is server dependent"]
     #[test]
     fn gpodder() {
         let config_path = get_config_path(None).unwrap();

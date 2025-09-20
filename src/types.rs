@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 
 use chrono::{DateTime, Utc};
 use nohash_hasher::BuildNoHashHasher;
@@ -9,26 +9,18 @@ use nohash_hasher::BuildNoHashHasher;
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
 use crate::ui::UiMsg;
-use crate::utils::StringUtils;
-
-/// Defines interface used for both podcasts and episodes, to be
-/// used and displayed in menus.
-pub trait Menuable {
-    fn get_id(&self) -> i64;
-    fn get_title(&self, length: usize) -> String;
-    fn is_played(&self) -> bool;
-}
+use crate::utils::{format_duration, StringUtils};
 
 /// Struct holding data about an individual podcast feed. This includes a
 /// (possibly empty) vector of episodes.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct Podcast {
     pub id: i64,
     pub title: String,
     pub url: String,
     pub description: Option<String>,
     pub author: Option<String>,
-    #[allow(dead_code)]
     pub explicit: Option<bool>,
     pub last_checked: DateTime<Utc>,
     pub episodes: LockVec<Episode>,
@@ -37,12 +29,108 @@ pub struct Podcast {
 impl Podcast {
     /// Counts and returns the number of unplayed episodes in the podcast.
     fn num_unplayed(&self) -> usize {
-        return self
-            .episodes
+        self.episodes
             .map(|ep| !ep.is_played() as usize, false)
             .iter()
-            .sum();
+            .sum()
     }
+}
+
+impl PartialEq for Podcast {
+    fn eq(&self, other: &Self) -> bool {
+        self.title == other.title
+    }
+}
+impl Eq for Podcast {}
+
+impl PartialOrd for Podcast {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Podcast {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.title.cmp(&other.title)
+    }
+}
+
+/// Struct holding data about an individual podcast episode. Most of this
+/// is metadata, but if the episode has been downloaded to the local
+/// machine, the filepath will be included here as well. `played`
+/// indicates whether the podcast has been marked as played or unplayed.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Episode {
+    pub id: i64,
+    pub pod_id: i64,
+    pub title: String,
+    pub url: String,
+    pub guid: String,
+    pub description: String,
+    pub pubdate: Option<DateTime<Utc>>,
+    pub duration: Option<i64>,
+    pub position: i64,
+    pub path: Option<PathBuf>,
+    pub played: bool,
+}
+
+impl Ord for Episode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.pubdate.cmp(&other.pubdate)
+    }
+}
+
+impl PartialOrd for Episode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Struct holding data about an individual podcast feed, before it has
+/// been inserted into the database. This includes a
+/// (possibly empty) vector of episodes.
+#[derive(Debug, Clone)]
+pub struct PodcastNoId {
+    pub title: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub explicit: Option<bool>,
+    pub last_checked: DateTime<Utc>,
+    pub episodes: Vec<EpisodeNoId>,
+}
+
+/// Struct holding data about an individual podcast episode, before it
+/// has been inserted into the database.
+#[derive(Debug, Clone)]
+pub struct EpisodeNoId {
+    pub title: String,
+    pub url: String,
+    pub guid: String,
+    pub description: String,
+    pub pubdate: Option<DateTime<Utc>>,
+    pub duration: Option<i64>,
+}
+
+/// Struct holding data about an individual podcast episode, specifically
+/// for the popup window that asks users which new episodes they wish to
+/// download.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct NewEpisode {
+    pub id: i64,
+    pub pod_id: i64,
+    pub title: String,
+    pub pod_title: String,
+    pub selected: bool,
+}
+
+/// Defines interface used for both podcasts and episodes, to be
+/// used and displayed in menus.
+pub trait Menuable {
+    fn get_id(&self) -> i64;
+    fn get_title(&self, length: usize) -> String;
+    fn is_played(&self) -> bool;
 }
 
 impl Menuable for Podcast {
@@ -77,72 +165,6 @@ impl Menuable for Podcast {
     }
 }
 
-impl PartialEq for Podcast {
-    fn eq(&self, other: &Self) -> bool {
-        self.title == other.title
-    }
-}
-impl Eq for Podcast {}
-
-impl PartialOrd for Podcast {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Podcast {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.title.cmp(&other.title)
-    }
-}
-
-/// Struct holding data about an individual podcast episode. Most of this
-/// is metadata, but if the episode has been downloaded to the local
-/// machine, the filepath will be included here as well. `played`
-/// indicates whether the podcast has been marked as played or unplayed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Episode {
-    pub id: i64,
-    pub pod_id: i64,
-    pub title: String,
-    pub url: String,
-    pub guid: String,
-    pub description: String,
-    pub pubdate: Option<DateTime<Utc>>,
-    pub duration: Option<i64>,
-    pub path: Option<PathBuf>,
-    pub played: bool,
-}
-
-impl Episode {
-    /// Formats the duration in seconds into an HH:MM:SS format.
-    pub fn format_duration(&self) -> String {
-        match self.duration {
-            Some(dur) => {
-                let mut seconds = dur;
-                let hours = seconds / 3600;
-                seconds -= hours * 3600;
-                let minutes = seconds / 60;
-                seconds -= minutes * 60;
-                format!("{hours:02}:{minutes:02}:{seconds:02}")
-            }
-            None => "--:--:--".to_string(),
-        }
-    }
-}
-
-impl Ord for Episode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.pubdate.cmp(&other.pubdate)
-    }
-}
-
-impl PartialOrd for Episode {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl Menuable for Episode {
     /// Returns the database ID for the episode.
     fn get_id(&self) -> i64 {
@@ -151,76 +173,32 @@ impl Menuable for Episode {
 
     /// Returns the title for the episode, up to length characters.
     fn get_title(&self, length: usize) -> String {
-        let out = match self.path {
-            Some(_) => {
-                let title = self.title.substr(0, length - 4);
-                format!("[D] {title}")
-            }
-            None => self.title.substr(0, length),
-        };
-        if length > crate::config::EPISODE_PUBDATE_LENGTH {
-            let dur = self.format_duration();
-            let meta_dur = format!("[{dur}]");
+        let played = '✔';
+        let downloaded = '↓';
+        let title = self.title.substr(0, length - 3);
+        let out = format!(
+            "{}{} {}",
+            if self.played { played } else { ' ' },
+            if self.path.is_some() { downloaded } else { ' ' },
+            title
+        );
 
+        if length > crate::config::EPISODE_DURATION_LENGTH {
+            let dur = format_duration(self.duration.map(|x| x as u64));
+            let meta_dur = format!("[{dur}]");
             let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
             format!(
                 " {out_added} {meta_dur:>width$} ",
                 width = length - out_added.grapheme_len() - 3
             )
-        } else if length > crate::config::EPISODE_DURATION_LENGTH {
-            let dur = self.format_duration();
-            let meta_dur = format!("[{dur}]");
-            let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
-            return format!(
-                " {out_added} {meta_dur:>width$} ",
-                width = length - out_added.grapheme_len() - 3
-            );
         } else {
-            return format!(" {} ", out.substr(0, length - 2));
+            format!(" {} ", out.substr(0, length - 2))
         }
     }
 
     fn is_played(&self) -> bool {
         self.played
     }
-}
-
-/// Struct holding data about an individual podcast feed, before it has
-/// been inserted into the database. This includes a
-/// (possibly empty) vector of episodes.
-#[derive(Debug, Clone)]
-pub struct PodcastNoId {
-    pub title: String,
-    pub url: String,
-    pub description: Option<String>,
-    pub author: Option<String>,
-    pub explicit: Option<bool>,
-    pub last_checked: DateTime<Utc>,
-    pub episodes: Vec<EpisodeNoId>,
-}
-
-/// Struct holding data about an individual podcast episode, before it
-/// has been inserted into the database.
-#[derive(Debug, Clone)]
-pub struct EpisodeNoId {
-    pub title: String,
-    pub url: String,
-    pub guid: String,
-    pub description: String,
-    pub pubdate: Option<DateTime<Utc>>,
-    pub duration: Option<i64>,
-}
-
-/// Struct holding data about an individual podcast episode, specifically
-/// for the popup window that asks users which new episodes they wish to
-/// download.
-#[derive(Debug, Clone)]
-pub struct NewEpisode {
-    pub id: i64,
-    pub pod_id: i64,
-    pub title: String,
-    pub pod_title: String,
-    pub selected: bool,
 }
 
 impl Menuable for NewEpisode {
@@ -268,24 +246,26 @@ impl Menuable for NewEpisode {
 /// order only for the items that are currently filtered in, if the
 /// user has set an active filter for played/unplayed or downloaded/
 /// undownloaded.
+pub type ShareableRwLock<T> = Arc<RwLock<T>>;
+type ShareableMutex<T> = Arc<Mutex<T>>;
 #[derive(Debug)]
 pub struct LockVec<T>
 where
-    T: Clone + Menuable,
+    T: Menuable,
 {
-    data: Arc<Mutex<HashMap<i64, T, BuildNoHashHasher<i64>>>>,
+    data: ShareableMutex<HashMap<i64, ShareableRwLock<T>, BuildNoHashHasher<i64>>>,
     order: Arc<Mutex<Vec<i64>>>,
     filtered_order: Arc<Mutex<Vec<i64>>>,
 }
 
-impl<T: Clone + Menuable> LockVec<T> {
+impl<T: Menuable> LockVec<T> {
     /// Create a new LockVec.
     pub fn new(data: Vec<T>) -> LockVec<T> {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
         for i in data.into_iter() {
             let id = i.get_id();
-            hm.insert(i.get_id(), i);
+            hm.insert(i.get_id(), Arc::new(RwLock::new(i)));
             order.push(id);
         }
 
@@ -296,8 +276,33 @@ impl<T: Clone + Menuable> LockVec<T> {
         }
     }
 
-    pub fn push(&self, item: T) {
-        let id = item.get_id();
+    pub fn new_arc(data: Vec<Arc<RwLock<T>>>) -> LockVec<T> {
+        let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
+        let mut order = Vec::new();
+        for i in data.into_iter() {
+            let id = i.read().unwrap().get_id();
+            hm.insert(id, i);
+            order.push(id);
+        }
+
+        LockVec {
+            data: Arc::new(Mutex::new(hm)),
+            order: Arc::new(Mutex::new(order.clone())),
+            filtered_order: Arc::new(Mutex::new(order)),
+        }
+    }
+
+    // Not needed anymore, as Episodes nor Podcasts should ever be cloned
+    // pub fn push(&self, item: T) {
+    //     let id = item.get_id();
+    //     let (mut map, mut order, mut filtered_order) = self.borrow();
+    //     map.insert(id, Arc::new(RwLock::new(item)));
+    //     order.push(id);
+    //     filtered_order.push(id);
+    // }
+
+    pub fn push_arc(&self, item: Arc<RwLock<T>>) {
+        let id = item.read().unwrap().get_id();
         let (mut map, mut order, mut filtered_order) = self.borrow();
         map.insert(id, item);
         order.push(id);
@@ -311,9 +316,21 @@ impl<T: Clone + Menuable> LockVec<T> {
         filtered_order.retain(|&x| x != id);
     }
 
-    pub fn get(&self, id: i64) -> Option<T> {
+    pub fn get(&self, id: i64) -> Option<Arc<RwLock<T>>> {
         let borrowed = self.borrow_map();
         borrowed.get(&id).cloned()
+    }
+
+    pub fn get_index(&self, id: i64) -> Option<usize> {
+        if self.contains_key(id) {
+            let borrowed = self.borrow_order();
+            for (i, el) in borrowed.iter().enumerate() {
+                if *el == id {
+                    return Some(i);
+                }
+            }
+        }
+        None
     }
 
     pub fn contains_key(&self, id: i64) -> bool {
@@ -322,18 +339,18 @@ impl<T: Clone + Menuable> LockVec<T> {
     }
 
     /// Lock the LockVec hashmap for reading/writing.
-    pub fn borrow_map(&self) -> MutexGuard<HashMap<i64, T, BuildNoHashHasher<i64>>> {
-        return self.data.lock().expect("Mutex error");
+    pub fn borrow_map(&self) -> MutexGuard<HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>> {
+        self.data.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec order vector for reading/writing.
     pub fn borrow_order(&self) -> MutexGuard<Vec<i64>> {
-        return self.order.lock().expect("Mutex error");
+        self.order.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec filtered order vector for reading/writing.
     pub fn borrow_filtered_order(&self) -> MutexGuard<Vec<i64>> {
-        return self.filtered_order.lock().expect("Mutex error");
+        self.filtered_order.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec hashmap for reading/writing.
@@ -341,15 +358,15 @@ impl<T: Clone + Menuable> LockVec<T> {
     pub fn borrow(
         &self,
     ) -> (
-        MutexGuard<HashMap<i64, T, BuildNoHashHasher<i64>>>,
+        MutexGuard<HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>>,
         MutexGuard<Vec<i64>>,
         MutexGuard<Vec<i64>>,
     ) {
-        return (
+        (
             self.data.lock().expect("Mutex error"),
             self.order.lock().expect("Mutex error"),
             self.filtered_order.lock().expect("Mutex error"),
-        );
+        )
     }
 
     /// Empty out and replace all the data in the LockVec.
@@ -360,7 +377,20 @@ impl<T: Clone + Menuable> LockVec<T> {
         filtered_order.clear();
         for i in data.into_iter() {
             let id = i.get_id();
-            map.insert(i.get_id(), i);
+            map.insert(i.get_id(), Arc::new(RwLock::new(i)));
+            order.push(id);
+            filtered_order.push(id);
+        }
+    }
+
+    pub fn replace_all_arc(&self, data: Vec<Arc<RwLock<T>>>) {
+        let (mut map, mut order, mut filtered_order) = self.borrow();
+        map.clear();
+        order.clear();
+        filtered_order.clear();
+        for i in data.into_iter() {
+            let id = i.read().unwrap().get_id();
+            map.insert(id, i);
             order.push(id);
             filtered_order.push(id);
         }
@@ -372,19 +402,19 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// rather than an iterator.
     pub fn map<B, F>(&self, mut f: F, filtered: bool) -> Vec<B>
     where
-        F: FnMut(&T) -> B,
+        F: FnMut(&RwLockReadGuard<T>) -> B,
     {
         let (map, order, filtered_order) = self.borrow();
         if filtered {
-            return filtered_order
+            filtered_order
                 .iter()
-                .map(|id| f(map.get(id).expect("Index error in LockVec")))
-                .collect();
+                .map(|id| f(&map.get(id).expect("Index error in LockVec").read().unwrap()))
+                .collect()
         } else {
-            return order
+            order
                 .iter()
-                .map(|id| f(map.get(id).expect("Index error in LockVec")))
-                .collect();
+                .map(|id| f(&map.get(id).expect("Index error in LockVec").read().unwrap()))
+                .collect()
         }
     }
 
@@ -395,10 +425,7 @@ impl<T: Clone + Menuable> LockVec<T> {
         F: FnOnce(&T) -> B,
     {
         let borrowed = self.borrow_map();
-        return match borrowed.get(&id) {
-            Some(item) => Some(f(item)),
-            None => return None,
-        };
+        borrowed.get(&id).map(|x| f(&x.read().unwrap()))
     }
 
     /// Maps a closure to a single element in the LockVec, specified by
@@ -408,11 +435,11 @@ impl<T: Clone + Menuable> LockVec<T> {
     where
         F: FnOnce(&T) -> B,
     {
-        let order = self.borrow_filtered_order();
-        return match order.get(index) {
+        let order = self.borrow_order();
+        match order.get(index) {
             Some(id) => self.map_single(*id, f),
             None => None,
-        };
+        }
     }
 
     /// Maps a closure to every element in the LockVec, in the same way
@@ -429,13 +456,13 @@ impl<T: Clone + Menuable> LockVec<T> {
     /// *not* the sense of the word here.
     pub fn filter_map<B, F>(&self, mut f: F) -> Vec<B>
     where
-        F: FnMut(&T) -> Option<B>,
+        F: FnMut(&Arc<RwLock<T>>) -> Option<B>,
     {
         let (map, order, _u) = self.borrow();
-        return order
+        order
             .iter()
             .filter_map(|id| f(map.get(id).expect("Index error in LockVec")))
-            .collect();
+            .collect()
     }
 
     /// Returns the number of items in the LockVec.
@@ -453,7 +480,7 @@ impl<T: Clone + Menuable> LockVec<T> {
     }
 }
 
-impl<T: Clone + Menuable> Clone for LockVec<T> {
+impl<T: Menuable> Clone for LockVec<T> {
     fn clone(&self) -> Self {
         LockVec {
             data: Arc::clone(&self.data),
@@ -464,16 +491,17 @@ impl<T: Clone + Menuable> Clone for LockVec<T> {
 }
 
 impl LockVec<Podcast> {
-    pub fn get_episodes_map(&self) -> Option<HashMap<i64, Episode>> {
+    pub fn get_episodes_map(&self) -> HashMap<i64, Arc<RwLock<Episode>>> {
         let mut all_ep_map = HashMap::new();
         let pod_map = self.borrow_map();
         for (_pod_id, pod) in pod_map.iter() {
-            let ep_map = pod.episodes.borrow_map();
+            let rpod = pod.read().unwrap();
+            let ep_map = rpod.episodes.borrow_map();
             for (ep_id, ep) in ep_map.iter() {
                 all_ep_map.insert(*ep_id, ep.clone());
             }
         }
-        Some(all_ep_map)
+        all_ep_map
     }
 }
 
@@ -484,8 +512,8 @@ impl LockVec<Episode> {
             .borrow_map()
             .iter()
             .map(|(id, ep)| {
-                if ep.pubdate.is_some() {
-                    (ep.pubdate.unwrap(), *id)
+                if let Some(t) = ep.read().unwrap().pubdate {
+                    (t, *id)
                 } else {
                     (dt, *id)
                 }
@@ -518,15 +546,6 @@ impl LockVec<Episode> {
     }
 }
 
-/// Overarching Message enum that allows multiple threads to communicate
-/// back to the main thread with a single enum type.
-#[derive(Debug)]
-pub enum Message {
-    Ui(UiMsg),
-    Feed(FeedMsg),
-    Dl(DownloadMsg),
-}
-
 /// Simple enum to designate the status of a filter. "Positive" and
 /// "Negative" cases represent, e.g., "played" vs. "unplayed".
 #[derive(Debug, Clone, Copy)]
@@ -557,4 +576,13 @@ impl Default for Filters {
             downloaded: FilterStatus::All,
         }
     }
+}
+
+/// Overarching Message enum that allows multiple threads to communicate
+/// back to the main thread with a single enum type.
+#[derive(Debug)]
+pub enum Message {
+    Ui(UiMsg),
+    Feed(FeedMsg),
+    Dl(DownloadMsg),
 }

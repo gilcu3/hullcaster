@@ -1,0 +1,62 @@
+name: CD
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publishing ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            dependencies: "libssl-dev libasound2-dev libdbus-1-dev"
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross_arch: true
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        if: matrix.dependencies
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.dependencies }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.cross_arch }}
+          command: build
+          args: --locked --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czvf hullcaster-${{ matrix.target }}.tar.gz hullcaster
+          shasum -a 256 hullcaster-${{ matrix.target }}.tar.gz > hullcaster-${{ matrix.target }}.sha256
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/${{ matrix.target }}/release/hullcaster-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

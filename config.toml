@@ -17,19 +17,6 @@
 #play_command = "vlc %s"
 
 
-# Configures what happens when new episodes are found as podcasts are
-# synced:
-#  - "always" will automatically download all new episodes;
-#  - "ask-selected" will open a popup window to let you select which
-#    episodes to download, with all of them selected by default;
-#  - "ask-unselected" will open a popup window to let you select which
-#    episodes to download, with NONE of them selected by default;
-#  - "never" will never automatically download new episodes.
-# Default: "ask-unselected"
-
-#download_new_episodes = "ask-unselected"
-
-
 # Maximum number of files to download simultaneously. Setting this too
 # high could result in network requests being denied. A good general
 # guide would be to set this to the number of processor cores on your
@@ -43,7 +30,7 @@
 # podcast or download an episode.
 # Default: 3
 
-#max_retries = 3
+# max_retries = 3
 
 # Mark episode as played automatically.
 # Default: true
@@ -89,6 +76,11 @@
 
 # sync_on_start = true
 
+# Confirm before quitting
+# Default: True
+
+# confirm_quit = true
+
 [keybindings]
 
 # Keybindings must be an array of one or more strings.
@@ -108,42 +100,44 @@
 
 # Don't try to use backslash, or you're gonna have a bad time
 
-left = [ "Left", "h" ]
-right = [ "Right", "l" ]
-up = [ "Up", "k" ]
-down = [ "Down", "j" ]
-big_up = [ "K" ]
-big_down = [ "J" ]
-page_up = [ "PgUp" ]
-page_down = [ "PgDn" ]
-go_top = [ "g" ]
-go_bot = [ "G" ]
+left = ["Left", "h"]
+right = ["Right", "l"]
+up = ["Up", "k"]
+down = ["Down", "j"]
+page_up = ["PgUp"]
+page_down = ["PgDn"]
+go_top = ["g"]
+go_bot = ["G"]
 
-add_feed = [ "a" ]
-sync = [ "s" ]
-sync_all = [ "S" ]
-sync_gpodder = [ "A" ]
+add_feed = ["a"]
+sync = ["s"]
+sync_all = ["S"]
+sync_gpodder = ["A"]
 
-play = [ "p" ]
-enter = [ "Enter" ]
-mark_played = [ "m" ]
-mark_all_played = [ "M" ]
+play_pause = ["Space"]
+enter = ["Enter"]
+mark_played = ["m"]
+mark_all_played = ["M"]
 
-download = [ "d" ]
-download_all = [ "D" ]
-delete = [ "x" ]
-delete_all = [ "X" ]
-remove = [ "r" ]
+download = ["d"]
+download_all = ["D"]
+delete = ["x"]
+delete_all = ["X"]
+remove = ["r"]
 
-filter_played = [ "1" ]
-filter_downloaded = [ "2" ]
+filter_played = ["1"]
+filter_downloaded = ["2"]
 
-enqueue = [ "e" ]
+enqueue = ["e"]
 
-help = [ "?" ]
-quit = [ "q" ]
+help = ["?"]
+quit = ["q"]
 
-unplayed_list = [ "u" ]
+unplayed_list = ["u"]
+
+switch = ["Tab"]
+back = ["Esc"]
+play_external = ["P"]
 
 
 [colors]

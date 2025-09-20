@@ -64,12 +64,12 @@ pub fn check_feed(
 /// Given a URL, this attempts to pull the data about a podcast and its
 /// episodes from an RSS feed.
 fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
-    let agent_builder = ureq::builder()
-        .timeout_connect(Duration::from_secs(5))
-        .timeout_read(Duration::from_secs(20));
-    let agent = agent_builder.build();
+    let agent_builder = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_global(Some(Duration::from_secs(20)));
+    let agent: ureq::Agent = agent_builder.build().into();
 
-    let request: Result<ureq::Response> = loop {
+    let request: Result<http::Response<ureq::Body>> = loop {
         let response = agent.get(&url).call();
         match response {
             Ok(resp) => break Ok(resp),
@@ -84,7 +84,8 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
 
     match request {
         Ok(resp) => {
-            let mut reader = resp.into_reader();
+            let mut body = resp.into_body();
+            let mut reader = body.as_reader();
             let mut resp_data = Vec::new();
             reader.read_to_end(&mut resp_data)?;
 

@@ -2,9 +2,11 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::io::{Cursor, Read};
+use std::fs;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
@@ -12,7 +14,7 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
-use ureq::{Agent, Error, Response};
+use ureq::{Agent, Error, ResponseExt};
 
 use crate::types::*;
 
@@ -48,20 +50,20 @@ pub fn execute_request_post(
 ) -> Option<String> {
     let mut max_retries = 3;
 
-    let request: Result<Response, ()> = loop {
+    let request = loop {
         let response = agent
             .post(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
-            .send_string(&body);
+            .header("Authorization", &format!("Basic {encoded_credentials}"))
+            .send(&body);
 
         match response {
             Ok(resp) => {
                 //println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
-            Err(Error::Status(code, _error_response)) => {
+            Err(Error::StatusCode(code)) => {
                 // Handle HTTP error statuses (e.g., 404, 500)
-                println!("Error code: {}", code);
+                println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
                     break Err(());
@@ -76,7 +78,7 @@ pub fn execute_request_post(
         }
     };
     if let Ok(req) = request {
-        req.into_string().ok()
+        req.into_body().read_to_string().ok()
     } else {
         None
     }
@@ -87,10 +89,10 @@ pub fn execute_request_get(
 ) -> Option<String> {
     let mut max_retries = 3;
 
-    let request: Result<Response, ()> = loop {
+    let request = loop {
         let response = agent
             .get(&url)
-            .set("Authorization", &format!("Basic {}", encoded_credentials))
+            .header("Authorization", &format!("Basic {encoded_credentials}"))
             .query_pairs(params.clone())
             .call();
 
@@ -99,8 +101,8 @@ pub fn execute_request_get(
                 // println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
-            Err(Error::Status(code, _error_response)) => {
-                println!("Error code: {}", code);
+            Err(Error::StatusCode(code)) => {
+                println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
                     break Err(());
@@ -115,22 +117,14 @@ pub fn execute_request_get(
         }
     };
     if let Ok(req) = request {
-        req.into_string().ok()
+        req.into_body().read_to_string().ok()
     } else {
         None
     }
 }
 
-pub fn audio_duration(url: &str) -> Option<i64> {
-    log::info!("Getting audio duration for {}", url);
-    let response = ureq::get(url).call().ok()?;
-    let bytes = response
-        .into_reader()
-        .bytes()
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-    log::info!("Bytes: {:?}", bytes.len());
-    let cursor = Cursor::new(bytes);
+pub fn audio_duration(audio_bytes: Vec<u8>) -> Option<i64> {
+    let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
     let probed = get_probe()
         .format(
@@ -153,6 +147,14 @@ pub fn audio_duration(url: &str) -> Option<i64> {
     Some(duration as i64)
 }
 
+pub fn audio_duration_file(file_path: PathBuf) -> Option<i64> {
+    if let Ok(bytes) = fs::read(file_path) {
+        audio_duration(bytes)
+    } else {
+        None
+    }
+}
+
 /// Some helper functions for dealing with Unicode strings.
 pub trait StringUtils {
     fn substr(&self, start: usize, length: usize) -> String;
@@ -163,16 +165,15 @@ impl StringUtils for String {
     /// Takes a slice of the String, properly separated at Unicode
     /// grapheme boundaries. Returns a new String.
     fn substr(&self, start: usize, length: usize) -> String {
-        return self
-            .graphemes(true)
+        self.graphemes(true)
             .skip(start)
             .take(length)
-            .collect::<String>();
+            .collect::<String>()
     }
 
     /// Counts the total number of Unicode graphemes in the String.
     fn grapheme_len(&self) -> usize {
-        return self.graphemes(true).count();
+        self.graphemes(true).count()
     }
 }
 
@@ -205,21 +206,23 @@ pub fn clean_html(text: &str) -> String {
 
 // Probably should be done better, without downloading the page
 pub fn resolve_redirection(url: &str) -> Option<String> {
-    let agent = Agent::new();
+    let agent = ureq::agent();
 
     let response = agent.get(url).call().ok()?;
 
-    let final_url = response.get_url().to_string();
+    let final_url = response.get_uri().to_string();
     Some(final_url)
 }
 
-pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Episode> {
+pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
     let podcast_map = podcasts.borrow_map();
     let mut ueps = Vec::new();
     for podcast in podcast_map.values() {
-        let episode_map = podcast.episodes.borrow_map();
+        let rpod = podcast.read().unwrap();
+        let episode_map = rpod.episodes.borrow_map();
         for episode in episode_map.values() {
-            if !episode.played {
+            let rep = episode.read().unwrap();
+            if !rep.played {
                 ueps.push(episode.clone());
             }
         }
@@ -263,4 +266,18 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
     })?;
 
     Ok(final_path)
+}
+
+pub fn format_duration(duration: Option<u64>) -> String {
+    match duration {
+        Some(dur) => {
+            let mut seconds = dur;
+            let hours = seconds / 3600;
+            seconds -= hours * 3600;
+            let minutes = seconds / 60;
+            seconds -= minutes * 60;
+            format!("{hours:02}:{minutes:02}:{seconds:02}")
+        }
+        None => "--:--:--".to_string(),
+    }
 }

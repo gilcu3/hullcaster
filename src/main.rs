@@ -8,27 +8,30 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
+use gag::Gag;
 use log::info;
 use utils::parse_create_dir;
 
+mod app;
 mod config;
 mod db;
 mod downloads;
 mod feeds;
 mod gpodder;
 mod keymap;
-mod main_controller;
+mod media_control;
 mod opml;
 mod play_file;
+mod player;
 mod threadpool;
 mod types;
 mod ui;
 mod utils;
 
+use crate::app::App;
 use crate::config::Config;
 use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
-use crate::main_controller::{MainController, MainMessage};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 
@@ -132,7 +135,7 @@ fn main() -> Result<()> {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
     }
 
-    return match args.subcommand() {
+    match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
         Some(("sync", sub_args)) => sync_podcasts(&db_path, config, sub_args),
 
@@ -144,12 +147,15 @@ fn main() -> Result<()> {
 
         // MAIN COMMAND -------------------------------------------------
         _ => {
-            let mut main_ctrl = MainController::new(config, &db_path)?;
-            main_ctrl.loop_msgs(); // main loop
-            main_ctrl.finalize();
-            Ok(())
+            // fix https://github.com/RustAudio/cpal/issues/671
+            let _printerr_gag = Gag::stderr().unwrap();
+
+            let mut app = App::new(config, &db_path)?;
+            let app_result = app.run(); // main loop
+            app.finalize();
+            app_result
         }
-    };
+    }
 }
 
 /// Gets the path to the config file if one is specified in the command-
@@ -201,13 +207,17 @@ fn setup_logs() -> Result<()> {
         "ERROR" => simplelog::LevelFilter::Error,
         _ => simplelog::LevelFilter::Info, // Default to INFO if the variable is not set correctly
     };
+    let mut _log_config = simplelog::ConfigBuilder::new();
+    let mut log_config = _log_config
+        .set_time_format_rfc2822()
+        .set_time_offset_to_local()
+        .unwrap();
+    if level_filter != simplelog::LevelFilter::Debug {
+        log_config = log_config.add_filter_ignore_str("symphonia")
+    }
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,
-        simplelog::ConfigBuilder::new()
-            .set_time_format_rfc2822()
-            .set_time_offset_to_local()
-            .unwrap()
-            .build(),
+        log_config.build(),
         log_file,
     )])
     .unwrap();
@@ -256,7 +266,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
             Message::Feed(FeedMsg::Error(feed)) => {
                 failure = true;
                 match feed.title {
-                    Some(t) => eprintln!("Error retrieving RSS feed for {}.", t),
+                    Some(t) => eprintln!("Error retrieving RSS feed for {t}."),
                     None => eprintln!("Error retrieving RSS feed."),
                 }
             }

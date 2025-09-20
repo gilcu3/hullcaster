@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::keymap::Keybindings;
 use crate::ui::colors::AppColors;
@@ -20,34 +21,26 @@ pub const PODCAST_UNPLAYED_TOTALS_LENGTH: usize = 25;
 // the episode
 pub const EPISODE_DURATION_LENGTH: usize = 45;
 
-// How many columns we need, minimum, before we display the pubdate
-// of the episode
-pub const EPISODE_PUBDATE_LENGTH: usize = 60;
+// How many lines will be scrolled by the PageUp/PageDown
+pub const SCROLL_AMOUNT: u16 = 6;
 
-// How many columns we need (total terminal window width) before we
-// display the details panel
-pub const DETAILS_PANEL_LENGTH: u16 = 135;
+/// Amount of time between ticks in the event loop
+pub const TICK_RATE: u64 = 50;
 
-// How many lines will be scrolled by the big scroll,
-// in relation to the rows eg: 4 = 1/4 of the screen
-pub const BIG_SCROLL_AMOUNT: u16 = 4;
+/// Amount of time between ticks in the event loop
+pub const SEEK_LENGTH: Duration = Duration::from_secs(30);
 
-/// Identifies the user's selection for what to do with new episodes
-/// when syncing.
-#[derive(Debug, Clone)]
-pub enum DownloadNewEpisodes {
-    Always,
-    AskSelected,
-    AskUnselected,
-    Never,
-}
+/// Maximum duration of episode when unknown
+pub const MAX_DURATION: i64 = 10000;
+
+/// Number of milliseconds on mute to avoid audio artifacts
+pub const FADING_TIME: u64 = 100;
 
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub download_path: PathBuf,
     pub play_command: String,
-    pub download_new_episodes: DownloadNewEpisodes,
     pub simultaneous_downloads: usize,
     pub max_retries: usize,
     pub mark_as_played_on_play: bool,
@@ -58,6 +51,7 @@ pub struct Config {
     pub sync_on_start: bool,
     pub keybindings: Keybindings,
     pub colors: AppColors,
+    pub confirm_quit: bool,
 }
 
 /// A temporary struct used to deserialize data from the TOML configuration
@@ -66,7 +60,6 @@ pub struct Config {
 struct ConfigFromToml {
     download_path: Option<String>,
     play_command: Option<String>,
-    download_new_episodes: Option<String>,
     simultaneous_downloads: Option<usize>,
     max_retries: Option<usize>,
     mark_as_played_on_play: Option<bool>,
@@ -78,6 +71,7 @@ struct ConfigFromToml {
     sync_on_start: Option<bool>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
+    confirm_quit: Option<bool>,
 }
 
 /// A temporary struct used to deserialize keybinding data from the TOML
@@ -88,8 +82,6 @@ pub struct KeybindingsFromToml {
     pub right: Option<Vec<String>>,
     pub up: Option<Vec<String>>,
     pub down: Option<Vec<String>>,
-    pub big_up: Option<Vec<String>>,
-    pub big_down: Option<Vec<String>>,
     pub go_top: Option<Vec<String>>,
     pub go_bot: Option<Vec<String>>,
     pub page_up: Option<Vec<String>>,
@@ -100,7 +92,7 @@ pub struct KeybindingsFromToml {
     pub sync: Option<Vec<String>>,
     pub sync_all: Option<Vec<String>>,
     pub sync_gpodder: Option<Vec<String>>,
-    pub play: Option<Vec<String>>,
+    pub play_pause: Option<Vec<String>>,
     pub enter: Option<Vec<String>>,
     pub mark_played: Option<Vec<String>>,
     pub mark_all_played: Option<Vec<String>>,
@@ -115,6 +107,9 @@ pub struct KeybindingsFromToml {
     pub help: Option<Vec<String>>,
     pub quit: Option<Vec<String>>,
     pub unplayed_list: Option<Vec<String>>,
+    pub back: Option<Vec<String>>,
+    pub switch: Option<Vec<String>>,
+    pub play_external: Option<Vec<String>>,
 }
 
 /// A temporary struct used to deserialize colors data from the TOML
@@ -157,8 +152,6 @@ impl Config {
                     right: None,
                     up: None,
                     down: None,
-                    big_up: None,
-                    big_down: None,
                     go_top: None,
                     go_bot: None,
                     page_up: None,
@@ -169,7 +162,7 @@ impl Config {
                     sync: None,
                     sync_all: None,
                     sync_gpodder: None,
-                    play: None,
+                    play_pause: None,
                     enter: None,
                     mark_played: None,
                     mark_all_played: None,
@@ -184,6 +177,9 @@ impl Config {
                     help: None,
                     quit: None,
                     unplayed_list: None,
+                    back: None,
+                    switch: None,
+                    play_external: None,
                 };
 
                 let colors = AppColorsFromToml {
@@ -201,7 +197,6 @@ impl Config {
                 ConfigFromToml {
                     download_path: None,
                     play_command: None,
-                    download_new_episodes: None,
                     simultaneous_downloads: None,
                     max_retries: None,
                     enable_sync: Some(false),
@@ -213,6 +208,7 @@ impl Config {
                     sync_on_start: Some(true),
                     keybindings: Some(keybindings),
                     colors: Some(colors),
+                    confirm_quit: Some(true),
                 }
             }
         };
@@ -243,20 +239,15 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     // paths are set by user, or they resolve to OS-specific path as
     // provided by dirs crate
-    let download_path =
-        parse_create_dir(config_toml.download_path.as_deref(), dirs::data_local_dir())?;
+    let default_path = dirs::data_local_dir().map(|mut p| {
+        p.push("hullcaster");
+        p
+    });
+    let download_path = parse_create_dir(config_toml.download_path.as_deref(), default_path)?;
 
     let play_command = match config_toml.play_command.as_deref() {
         Some(cmd) => cmd.to_string(),
         None => "vlc %s".to_string(),
-    };
-
-    let download_new_episodes = match config_toml.download_new_episodes.as_deref() {
-        Some("always") => DownloadNewEpisodes::Always,
-        Some("ask-selected") => DownloadNewEpisodes::AskSelected,
-        Some("ask-unselected") => DownloadNewEpisodes::AskUnselected,
-        Some("never") => DownloadNewEpisodes::Never,
-        Some(_) | None => DownloadNewEpisodes::AskUnselected,
     };
 
     let simultaneous_downloads = match config_toml.simultaneous_downloads {
@@ -294,10 +285,11 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     let sync_on_start = config_toml.sync_on_start.unwrap_or(true);
 
+    let confirm_quit = config_toml.confirm_quit.unwrap_or(true);
+
     Ok(Config {
         download_path,
         play_command,
-        download_new_episodes,
         simultaneous_downloads,
         max_retries,
         mark_as_played_on_play,
@@ -308,5 +300,6 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         sync_on_start,
         keybindings: keymap,
         colors,
+        confirm_quit,
     })
 }
