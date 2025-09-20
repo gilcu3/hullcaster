@@ -32,6 +32,11 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: sudo apt-get update && sudo apt-get install ${{ matrix.dependencies }}
 
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --locked --release --target ${{ matrix.target }}
+
       - name: Package
         shell: bash
         run: |
