@@ -1,6 +1,6 @@
 # Hullcaster
 
-Hullcaster is a terminal-based podcast manager, built in Rust. It provides a
+Hullcaster is a terminal-based podcast manager, built-in Rust. It provides a
 terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to
 podcast feeds, and sync feeds to check for new episodes. Episodes may be
 downloaded locally, played with an external media player, and marked as
@@ -26,48 +26,15 @@ features stated below, while learning `rust` at the same time.
 - [x] Add option to sync automatically on start, enabled by default
 - [ ] Add periodic synchronization
 
-### TODO
-
-- [x] Syncing with gpodder episode actions API (rudimentary, tested with
-  [opodsync](https://github.com/kd2org/opodsync))
-- [x] Fix performance of mark-all as read
-- [x] Fix bug deleting file
-- [x] Show the podcast description only when a podcast is selected
-- [x] Fix syncing podcasts, sometimes gets stuck (it seems timeout not working)
-- [x] Support downloading subscriptions from gpodder
-- [x] Support uploading subscriptions to gpodder
-- [x] If gpodder is on, update actions right after syncing podcasts
-- [x] Prevent screen flickering while syncing podcasts
-- [x] Prevent screen flickering at the end of lists
-- [x] Fix vertical screens
-- [x] Clear details panel when nothing is selected
-- [x] Make queue persistent
-- [x] Fix crash when playing from queue
-- [ ] Create lock file to prevent several instances of hullcaster
-- [x] Add option to play next from queue automatically, makes sense only after internal player is implemented
-- [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
-- [x] Avoid repeated elements in queue
-- [x] Fix bug where queue actions are not persistent, hard to reproduce
-- [ ] Fix gpodder test, it should use local files or local server
-- [x] Add panel for unplayed episodes across podcasts
-- [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work
-- [x] Unplayed items not sorted correctly
-- [x] Errors appear sporadically synchronizing podcasts with gpodder
-- [x] Unplayed items not updated after sync
-- [x] `~` folder created when creating logs
-- [x] Show in the UI when an episode is currently downloaded
-- [ ] Add tests for the new UI
-- [x] Add config parameter `confirm_on_exit`.
-- [ ] Make synchronization in a new thread, cope with bad network conditions
-- [x] Support streaming play
-- [x] Fix gpodder sync not working when episode link needs redirects
-- [ ] Fix initial setup issues when using gpodder
-
 ## Installing hullcaster
 
 ### Archlinux
 
 The package is available in the `AUR` [hullcaster-git](https://aur.archlinux.org/packages/hullcaster-git).
+
+```bash
+paru -S hullcaster-git
+```
 
 ### NixOS / Nix
 
@@ -89,7 +56,7 @@ Next, you can clone the Github repo and compile it yourself:
 ```bash
 git clone https://github.com/gilcu3/hullcaster.git
 cd hullcaster
-cargo build --release  # add or remove any features with --features
+cargo build --release --locked # add or remove any features with --features
 
 # no root permissions
 cp target/release/hullcaster ~/.local/bin
@@ -141,7 +108,7 @@ hullcaster export > /path/to/output/file.opml
 
 If you want to change configuration settings, the sample `config.toml` file can
 be copied from
-[here](https://raw.githubusercontent.com/gilcu3/hullcaster/master/config.toml).
+[config.toml](https://raw.githubusercontent.com/gilcu3/hullcaster/master/config.toml).
 Download it, edit it to your fancy, and place it in the following location:
 
 ```bash
@@ -176,7 +143,6 @@ filled in with the default value specified in those comments.
 | s                                 | Synchronize selected feed                |
 | Shift+S                           | Synchronize all feeds                    |
 | Shift+A                           | Synchronize with gpodder                 |
-| p                                 | Play selected episode                    |
 | Enter                             | Play selected episode/open sel. podcast  |
 | m                                 | Mark selected episode as played/unplayed |
 | Shift+M                           | Mark all episodes as played/unplayed     |
@@ -184,11 +150,17 @@ filled in with the default value specified in those comments.
 | Shift+D                           | Download all episodes                    |
 | x                                 | Delete downloaded file                   |
 | Shift+X                           | Delete all downloaded files              |
-| r                                 | Remove selected feed from list           |
-| 1                                 | Toggle played/unplayed filter            |
-| 2                                 | Toggle downloaded/not downloaded filter  |
+| r                                 | Remove selected feed                     |
 | e                                 | Push episode in queue                    |
 | u                                 | Show/hide Unread list of episodes        |
+| Tab                               | Switch selected panel                    |
+| Esc                               | Go to previous view                      |
+| Space                             | Play/Pause currently playing episode     |
+| Ctrl + Up/Down                    | Change order of episodes in the queue    |
+<!-- These are not currently implemented
+| 1                                 | Toggle played/unplayed                   |
+| 2                                 | Toggle downloaded/not downloaded filter  |
+-->
 
 **Note:** Actions can be mapped to more than one key (e.g., "Enter" and "p" both
 play an episode), but a single key may not do more than one action (e.g., you
