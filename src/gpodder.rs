@@ -582,6 +582,7 @@ mod tests {
     use super::*;
     use crate::get_config_path;
 
+    #[ignore = "test is server dependent"]
     #[test]
     fn gpodder() {
         let config_path = get_config_path(None).unwrap();
