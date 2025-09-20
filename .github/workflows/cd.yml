@@ -44,6 +44,11 @@ jobs:
           tar czvf hullcaster-${{ matrix.target }}.tar.gz hullcaster
           shasum -a 256 hullcaster-${{ matrix.target }}.tar.gz > hullcaster-${{ matrix.target }}.sha256
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hullcaster-${{ matrix.target }}.tar.gz
+          path: target/${{ matrix.target }}/release/hullcaster-${{ matrix.target }}.tar.gz
+
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
