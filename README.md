@@ -3,11 +3,11 @@
 Hullcaster is a terminal-based podcast manager, built-in Rust. It provides a
 terminal UI (i.e., an ncurses-like interface) to allow users to subscribe to
 podcast feeds, and sync feeds to check for new episodes. Episodes may be
-downloaded locally, played with an external media player, and marked as
-played/unplayed. Key bindings and other options are configurable via a config
+downloaded locally, played with an internal or external media player, and marked
+as played/unplayed. Key bindings and other options are configurable via a config
 file.
 
-![screen-gif](./assets/hullcaster.gif)
+[![asciicast](https://asciinema.org/a/LZ4C8AY4dgaZRtlQGblI7wo2b.svg)](https://asciinema.org/a/LZ4C8AY4dgaZRtlQGblI7wo2b)
 
 ## Note
 
@@ -46,7 +46,13 @@ nix run github:gilcu3/hullcaster
 
 ### On Linux distributions
 
-Currently, the only option is to build from source.
+### cargo-binstall
+
+```bash
+cargo binstall --git https://github.com/gilcu3/hullcaster hullcaster
+```
+
+### Build from source
 
 First, ensure you have installed the necessary dependencies: `rust`, `gcc`,
 `pkgconf`, `sqlite` (package names in Archlinux).
@@ -157,13 +163,13 @@ filled in with the default value specified in those comments.
 | Esc                               | Go to previous view                      |
 | Space                             | Play/Pause currently playing episode     |
 | Ctrl + Up/Down                    | Change order of episodes in the queue    |
+| Shift+P                           | Play selected episode with external player|
 <!-- These are not currently implemented
 | 1                                 | Toggle played/unplayed                   |
 | 2                                 | Toggle downloaded/not downloaded filter  |
 -->
 
-**Note:** Actions can be mapped to more than one key (e.g., "Enter" and "p" both
-play an episode), but a single key may not do more than one action (e.g., you
+**Note:** Actions can be mapped to more than one key, but a single key may not do more than one action (e.g., you
 can't set "d" to both download and delete episodes).
 
 #### Customizable colors
