@@ -1,10 +1,10 @@
-use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::{env, thread};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
@@ -151,9 +151,28 @@ fn main() -> Result<()> {
             let _printerr_gag = Gag::stderr().unwrap();
 
             let mut app = App::new(config, &db_path)?;
-            let app_result = app.run(); // main loop
-            app.finalize();
-            app_result
+
+            let main_thread = thread::spawn(move || {
+                app.run(); // main loop
+                app.finalize();
+                std::process::exit(0);
+            });
+
+            // the winit's event loop must be run in the main thread
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            {
+                // Start an event loop that listens to OS window events.
+                //
+                // MacOS and Windows require an open window to be able to listen to media
+                // control events. The below code will create an invisible window on startup
+                // to listen to such events.
+
+                let event_loop = winit::event_loop::EventLoop::new()?;
+                #[allow(deprecated)]
+                event_loop.run(move |_, _| {})?;
+            }
+            main_thread.join().unwrap();
+            Ok(())
         }
     }
 }

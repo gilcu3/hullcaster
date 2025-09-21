@@ -139,7 +139,7 @@ impl App {
 
     /// Initiates the main loop where the controller waits for messages coming
     /// in from the UI and other threads, and processes them.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) {
         if self.config.sync_on_start {
             self.sync(None);
         }
@@ -279,7 +279,6 @@ impl App {
                 Message::Ui(UiMsg::Noop) => (),
             }
         }
-        Ok(())
     }
 
     // sync queue back to database
