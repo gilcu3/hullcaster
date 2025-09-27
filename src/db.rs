@@ -53,42 +53,33 @@ impl Database {
             let curr_ver = Version::parse(crate::VERSION)?;
 
             match vstr {
-                Some(vstr) => {
+                Ok(vstr) => {
                     let db_version = Version::parse(&vstr)?;
                     if db_version < curr_ver {
-                        // any version checks for DB migrations should
+                        // Any version checks for DB migrations should
                         // go here first, before we update the version
-
                         db_conn.set_param("version", &curr_ver.to_string())?;
                     }
                 }
-                None => db_conn.set_param("version", &curr_ver.to_string())?,
+                Err(_) => db_conn.set_param("version", &curr_ver.to_string())?,
             }
 
             // get timestamp number stored in database
             let tstr = db_conn.get_param("timestamp");
 
-            match tstr {
-                Some(_) => {}
-                None => {
-                    db_conn.set_param("timestamp", "0")?;
-                }
+            if tstr.is_err() {
+                db_conn.set_param("timestamp", "0")?;
             }
         }
 
         Ok(db_conn)
     }
 
-    pub fn get_param(&self, key: &str) -> Option<String> {
+    pub fn get_param(&self, key: &str) -> Result<String> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
-        let stmt = conn.prepare("SELECT value FROM params WHERE key = ?;");
-        if stmt.is_err() {
-            return None;
-        }
-        let param_str: rusqlite::Result<String> = stmt
-            .unwrap()
-            .query_row(rusqlite::params![key], |row| row.get(0));
-        param_str.ok()
+        let mut stmt = conn.prepare("SELECT value FROM params WHERE key = ?;")?;
+        let param_str: String = stmt.query_row(rusqlite::params![key], |row| row.get(0))?;
+        Ok(param_str)
     }
 
     pub fn set_param(&self, key: &str, value: &str) -> Result<()> {
@@ -483,12 +474,13 @@ impl Database {
         let mut stmt = conn.prepare_cached("SELECT * FROM podcasts;")?;
         let podcast_iter = stmt.query_map(params![], |row| {
             let pod_id = row.get("id")?;
-            let episodes = match self.get_episodes(pod_id) {
-                Ok(ep_list) => Ok(ep_list),
-                Err(_) => Err(rusqlite::Error::QueryReturnedNoRows),
-            }?;
+            let episodes = self
+                .get_episodes(pod_id)
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
             let title: String = row.get("title")?;
+            let last_checked = convert_date(row.get("last_checked")?)
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
             Ok(Podcast {
                 id: pod_id,
@@ -497,7 +489,7 @@ impl Database {
                 description: row.get("description")?,
                 author: row.get("author")?,
                 explicit: row.get("explicit")?,
-                last_checked: convert_date(row.get("last_checked")).unwrap(),
+                last_checked,
                 episodes: LockVec::new(episodes),
             })
         })?;
@@ -521,10 +513,8 @@ impl Database {
                     ORDER BY pubdate DESC;",
         )?;
         let episode_iter = stmt.query_map(params![pod_id], |row| {
-            let path = match row.get::<&str, String>("path") {
-                Ok(val) => Some(PathBuf::from(val)),
-                Err(_) => None,
-            };
+            let path = row.get::<&str, String>("path").ok().map(PathBuf::from);
+            let pubdate = convert_date(row.get("pubdate")?).ok();
             Ok(Episode {
                 id: row.get("id")?,
                 pod_id: row.get("podcast_id")?,
@@ -534,7 +524,7 @@ impl Database {
                     .get::<&str, Option<String>>("guid")?
                     .unwrap_or_else(|| "".to_string()),
                 description: row.get("description")?,
-                pubdate: convert_date(row.get("pubdate")),
+                pubdate,
                 duration: row.get("duration")?,
                 position: row.get("position")?,
                 path,

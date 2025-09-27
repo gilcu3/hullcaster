@@ -189,15 +189,10 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
     match config {
         Some(path) => Some(PathBuf::from(path)),
         None => {
-            let default_config = dirs::config_dir();
-            match default_config {
-                Some(mut path) => {
-                    path.push("hullcaster");
-                    path.push("config.toml");
-                    Some(path)
-                }
-                None => None,
-            }
+            let mut path = dirs::config_dir()?;
+            path.push("hullcaster");
+            path.push("config.toml");
+            Some(path)
         }
     }
 }

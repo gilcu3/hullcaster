@@ -128,13 +128,10 @@ impl Keybindings {
     /// Takes an Input object from crossterm and returns the associated
     /// user action, if one exists.
     pub fn get_from_input(&self, input: KeyEvent) -> Option<&UserAction> {
-        match input_to_str(input) {
-            Some(code) => self.0.get(&code),
-            None => None,
-        }
+        self.0.get(&input_to_str(input)?)
     }
 
-    /// Inserts a set of new keybindings into the hash map, each one
+    /// Inserts a set of new key-bindings into the hash map, each one
     /// corresponding to the same UserAction. Will overwrite the value
     /// of keys that already exist.
     pub fn insert_from_vec(&mut self, vec: Vec<String>, action: UserAction) {

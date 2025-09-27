@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use std::{
     sync::{mpsc, Arc, RwLock},
     thread,
@@ -186,9 +187,12 @@ impl UiState {
                         MainMessage::ClearPersistentNotif => {
                             ui.notification.clear_persistent_notif()
                         }
-                        MainMessage::PlayCurrent(ep_id) => {
-                            ui.play_current(ep_id);
-                        }
+                        MainMessage::PlayCurrent(ep_id) => match ui.play_current(ep_id) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                log::warn!("Playing current episode failed: {err}");
+                            }
+                        },
                         MainMessage::TearDown => {
                             break;
                         }
@@ -448,25 +452,16 @@ impl UiState {
         match self.active_panel {
             Panel::Podcasts => None,
             Panel::Episodes => {
-                if let Some(id) = self.episodes.state.selected() {
-                    self.episodes.items.map_single_by_index(id, |x| x.id)
-                } else {
-                    None
-                }
+                let id = self.episodes.state.selected()?;
+                self.episodes.items.map_single_by_index(id, |x| x.id)
             }
             Panel::Unplayed => {
-                if let Some(id) = self.unplayed.state.selected() {
-                    self.unplayed.items.map_single_by_index(id, |x| x.id)
-                } else {
-                    None
-                }
+                let id = self.unplayed.state.selected()?;
+                self.unplayed.items.map_single_by_index(id, |x| x.id)
             }
             Panel::Queue => {
-                if let Some(id) = self.queue.state.selected() {
-                    self.queue.items.map_single_by_index(id, |x| x.id)
-                } else {
-                    None
-                }
+                let id = self.queue.state.selected()?;
+                self.queue.items.map_single_by_index(id, |x| x.id)
             }
         }
     }
@@ -474,32 +469,20 @@ impl UiState {
     fn get_podcast_id(&self) -> Option<i64> {
         match self.active_panel {
             Panel::Podcasts => {
-                if let Some(id) = self.podcasts.state.selected() {
-                    self.podcasts.items.map_single_by_index(id, |x| x.id)
-                } else {
-                    None
-                }
+                let id = self.podcasts.state.selected()?;
+                self.podcasts.items.map_single_by_index(id, |x| x.id)
             }
             Panel::Episodes => {
-                if let Some(id) = self.episodes.state.selected() {
-                    self.episodes.items.map_single_by_index(id, |x| x.pod_id)
-                } else {
-                    None
-                }
+                let id = self.episodes.state.selected()?;
+                self.episodes.items.map_single_by_index(id, |x| x.pod_id)
             }
             Panel::Unplayed => {
-                if let Some(id) = self.unplayed.state.selected() {
-                    self.unplayed.items.map_single_by_index(id, |x| x.pod_id)
-                } else {
-                    None
-                }
+                let id = self.unplayed.state.selected()?;
+                self.unplayed.items.map_single_by_index(id, |x| x.pod_id)
             }
             Panel::Queue => {
-                if let Some(id) = self.queue.state.selected() {
-                    self.queue.items.map_single_by_index(id, |x| x.pod_id)
-                } else {
-                    None
-                }
+                let id = self.queue.state.selected()?;
+                self.queue.items.map_single_by_index(id, |x| x.pod_id)
             }
         }
     }
@@ -831,80 +814,62 @@ impl UiState {
     }
 
     fn mark_played(&mut self) -> Option<UiMsg> {
-        if let Some(pod_id) = self.get_podcast_id() {
-            if let Some(ep_id) = self.get_episode_id() {
-                match self.active_panel {
-                    Panel::Episodes => {
-                        if let Some(played) =
-                            self.episodes.items.map_single(ep_id, |ep| ep.is_played())
-                        {
-                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
-                        }
-                    }
-                    Panel::Unplayed => {
-                        if let Some(played) =
-                            self.unplayed.items.map_single(ep_id, |ep| ep.is_played())
-                        {
-                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
-                        }
-                    }
-                    Panel::Queue => {
-                        if let Some(played) =
-                            self.queue.items.map_single(ep_id, |ep| ep.is_played())
-                        {
-                            return Some(UiMsg::MarkPlayed(pod_id, ep_id, !played));
-                        }
-                    }
-                    _ => {}
-                }
+        let pod_id = self.get_podcast_id()?;
+        let ep_id = self.get_episode_id()?;
+        match self.active_panel {
+            Panel::Episodes => {
+                let played = self.episodes.items.map_single(ep_id, |ep| ep.is_played())?;
+                Some(UiMsg::MarkPlayed(pod_id, ep_id, !played))
             }
+            Panel::Unplayed => {
+                let played = self.unplayed.items.map_single(ep_id, |ep| ep.is_played())?;
+                Some(UiMsg::MarkPlayed(pod_id, ep_id, !played))
+            }
+            Panel::Queue => {
+                let played = self.queue.items.map_single(ep_id, |ep| ep.is_played())?;
+                Some(UiMsg::MarkPlayed(pod_id, ep_id, !played))
+            }
+            _ => None,
         }
-        None
     }
 
     pub fn mark_all_played(&mut self) -> Option<UiMsg> {
-        if let Some(pod_id) = self.get_podcast_id() {
-            if let Some(played) = self
-                .podcasts
-                .items
-                .map_single(pod_id, |pod| pod.is_played())
-            {
-                return Some(UiMsg::MarkAllPlayed(pod_id, !played));
-            }
-        }
-        None
+        let pod_id = self.get_podcast_id()?;
+        let played = self
+            .podcasts
+            .items
+            .map_single(pod_id, |pod| pod.is_played())?;
+        Some(UiMsg::MarkAllPlayed(pod_id, !played))
     }
     fn remove_podcast(&mut self) -> Option<UiMsg> {
-        if let Some(pod_id) = self.get_podcast_id() {
-            return Some(UiMsg::RemovePodcast(pod_id, true));
-        }
-        None
+        let pod_id = self.get_podcast_id()?;
+        Some(UiMsg::RemovePodcast(pod_id, true))
     }
     fn move_eps(&mut self, action: &UserAction) -> Option<UiMsg> {
-        if let Some(selected) = self.queue.state.selected() {
-            match action {
-                UserAction::MoveDown => {
-                    if selected + 1 < self.queue.items.len(false) {
-                        {
-                            let mut order_vec = self.queue.items.borrow_order();
-                            order_vec.swap(selected, selected + 1);
-                        }
-                        self.queue.state.select(Some(selected + 1));
-                        return Some(UiMsg::QueueModified);
+        let selected = self.queue.state.selected()?;
+
+        match action {
+            UserAction::MoveDown => {
+                if selected + 1 < self.queue.items.len(false) {
+                    {
+                        let mut order_vec = self.queue.items.borrow_order();
+                        order_vec.swap(selected, selected + 1);
                     }
+                    self.queue.state.select(Some(selected + 1));
+                    return Some(UiMsg::QueueModified);
                 }
-                UserAction::MoveUp => {
-                    if selected >= 1 {
-                        {
-                            let mut order_vec = self.queue.items.borrow_order();
-                            order_vec.swap(selected, selected - 1);
-                        }
-                        self.queue.state.select(Some(selected - 1));
-                        return Some(UiMsg::QueueModified);
-                    }
-                }
-                _ => (),
             }
+            UserAction::MoveUp => {
+                if selected >= 1 {
+                    {
+                        let mut order_vec = self.queue.items.borrow_order();
+                        order_vec.swap(selected, selected - 1);
+                    }
+                    self.queue.state.select(Some(selected - 1));
+                    return Some(UiMsg::QueueModified);
+                }
+            }
+            _ => (),
         }
 
         None
@@ -981,33 +946,32 @@ impl UiState {
         }
     }
 
-    fn play_current(&mut self, ep_id: i64) -> Option<()> {
+    fn play_current(&mut self, ep_id: i64) -> Result<()> {
         self.construct_current_episode(ep_id);
-        if let Some(ep) = self.current_episode.read().unwrap().as_ref() {
-            let ep = ep.read().unwrap();
-            if let Some(path) = &ep.path {
-                // TODO: is this the best way to achieve this?
-                // without it flickering happens
-                *self.elapsed.write().unwrap() = ep.position as u64;
-                self.tx_to_player
-                    .send(PlayerMessage::PlayFile(
-                        path.clone(),
-                        ep.position as u64,
-                        ep.duration.unwrap() as u64,
-                    ))
-                    .ok()?;
-            } else {
-                *self.elapsed.write().unwrap() = ep.position as u64;
-                self.tx_to_player
-                    .send(PlayerMessage::PlayUrl(
-                        ep.url.clone(),
-                        ep.position as u64,
-                        ep.duration.map_or_else(|| 0, |x| x) as u64,
-                    ))
-                    .ok()?;
-            }
+        let ep = self.current_episode.read().unwrap();
+        let ep = ep
+            .as_ref()
+            .ok_or(anyhow!("Failed to get current episode"))?
+            .read()
+            .unwrap();
+        if let Some(path) = &ep.path {
+            // TODO: is this the best way to achieve this?
+            // without it flickering happens
+            *self.elapsed.write().unwrap() = ep.position as u64;
+            self.tx_to_player.send(PlayerMessage::PlayFile(
+                path.clone(),
+                ep.position as u64,
+                ep.duration.unwrap() as u64,
+            ))?;
+        } else {
+            *self.elapsed.write().unwrap() = ep.position as u64;
+            self.tx_to_player.send(PlayerMessage::PlayUrl(
+                ep.url.clone(),
+                ep.position as u64,
+                ep.duration.map_or_else(|| 0, |x| x) as u64,
+            ))?;
         }
-        None
+        Ok(())
     }
     fn playback_finished(&self) -> bool {
         self.current_episode.read().unwrap().is_some()
@@ -1015,34 +979,28 @@ impl UiState {
     }
 
     fn update_position(&self) -> Option<UiMsg> {
-        if let Some(cur_ep) = self.current_episode.read().unwrap().as_ref() {
-            let position = *self.elapsed.read().unwrap() as i64;
-            let cur_ep = cur_ep.read().unwrap();
-            return Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position));
-        }
-        None
+        let cur_ep = self.current_episode.read().unwrap();
+        let cur_ep = cur_ep.as_ref()?;
+        let position = *self.elapsed.read().unwrap() as i64;
+        let cur_ep = cur_ep.read().unwrap();
+        Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position))
     }
 
     fn getcontrol(&mut self) -> Option<UiMsg> {
         let mut control_message_iter = self.rx_from_control.try_iter();
-        if let Some(message) = control_message_iter.next() {
-            match message {
-                ControlMessage::PlayPause => {
-                    return self.play_pause();
-                }
-            }
+        let message = control_message_iter.next()?;
+        match message {
+            ControlMessage::PlayPause => self.play_pause(),
         }
-        None
     }
 
     fn play_pause(&self) -> Option<UiMsg> {
         let playing = self.playing.read().unwrap();
-        let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
+        self.tx_to_player.send(PlayerMessage::PlayPause).ok()?;
         // only updates position after Pause
-        if *playing == PlaybackStatus::Playing {
-            self.update_position()
-        } else {
-            None
+        match *playing {
+            PlaybackStatus::Playing => self.update_position(),
+            _ => None,
         }
     }
 
@@ -1087,7 +1045,7 @@ impl UiState {
     fn next_from_queue(&self, queue_index: usize) -> Option<ShareableRwLock<Episode>> {
         if queue_index + 1 < self.queue.items.len(false) {
             let order = self.queue.items.borrow_order();
-            let ep_id = order.get(queue_index + 1).unwrap();
+            let ep_id = order.get(queue_index + 1)?;
             self.queue.items.get(*ep_id)
         } else {
             None

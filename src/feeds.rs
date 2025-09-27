@@ -1,19 +1,14 @@
 use anyhow::{anyhow, Result};
-use once_cell::sync::Lazy;
 use std::io::Read;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use regex::{Match, Regex};
 use rfc822_sanitizer::parse_from_rfc2822_with_fallback;
 use rss::{Channel, Item};
 
 use crate::threadpool::Threadpool;
 use crate::types::*;
-
-static RE_DURATION: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(\d+)(?::(\d+))?(?::(\d+))?").expect("Regex error"));
 
 /// Enum for communicating back to the main thread after feed data has
 /// been retrieved.
@@ -182,7 +177,9 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
 
     let mut duration = None;
     if let Some(itunes) = item.itunes_ext() {
-        duration = duration_to_int(itunes.duration()).map(|dur| dur as i64);
+        if let Some(itures_duration) = itunes.duration() {
+            duration = parse_duration(itures_duration).ok().map(|dur| dur as i64);
+        }
     }
 
     EpisodeNoId {
@@ -195,66 +192,30 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
     }
 }
 
-/// Given a string representing an episode duration, this attempts to
-/// convert to an integer representing the duration in seconds. Covers
-/// formats HH:MM:SS, MM:SS, and SS. If the duration cannot be converted
-/// (covering numerous reasons), it will return None.
-fn duration_to_int(duration: Option<&str>) -> Option<i32> {
-    match duration {
-        Some(dur) => {
-            match RE_DURATION.captures(dur) {
-                Some(cap) => {
-                    /*
-                     * Provided that the regex succeeds, we should have
-                     * 4 capture groups (with 0th being the full match).
-                     * Depending on the string format, however, some of
-                     * these may return None. We first loop through the
-                     * capture groups and push Some results to an array.
-                     * This will fail on the first non-numeric value,
-                     * so the duration is parsed only if all components
-                     * of it were successfully converted to integers.
-                     * Finally, we convert hours, minutes, and seconds
-                     * into a total duration in seconds and return.
-                     */
+fn parse_duration(s: &str) -> Result<u64> {
+    let parts: Vec<&str> = s.split(':').collect();
 
-                    let mut times = [None; 3];
-                    let mut counter = 0;
-                    // cap[0] is always full match
-                    for c in cap.iter().skip(1).flatten() {
-                        if let Ok(intval) = regex_to_int(c) {
-                            times[counter] = Some(intval);
-                            counter += 1;
-                        } else {
-                            return None;
-                        }
-                    }
-
-                    match counter {
-                        // HH:MM:SS
-                        3 => Some(
-                            times[0].unwrap() * 60 * 60
-                                + times[1].unwrap() * 60
-                                + times[2].unwrap(),
-                        ),
-                        // MM:SS
-                        2 => Some(times[0].unwrap() * 60 + times[1].unwrap()),
-                        // SS
-                        1 => times[0],
-                        _ => None,
-                    }
-                }
-                None => None,
-            }
+    // Depending on the number of parts, assign hour, minute, second
+    match parts.len() {
+        1 => {
+            // SS
+            Ok(parts[0].parse::<u64>()?)
         }
-        None => None,
+        2 => {
+            // MM:SS
+            let minutes = parts[0].parse::<u64>()?;
+            let seconds = parts[1].parse::<u64>()?;
+            Ok(minutes * 60 + seconds)
+        }
+        3 => {
+            // HH:MM:SS
+            let hours = parts[0].parse::<u64>()?;
+            let minutes = parts[1].parse::<u64>()?;
+            let seconds = parts[2].parse::<u64>()?;
+            Ok(hours * 3600 + minutes * 60 + seconds)
+        }
+        _ => Err(anyhow!("Wrong number of parts")),
     }
-}
-
-/// Helper function converting a match from a regex capture group into an
-/// integer.
-fn regex_to_int(re_match: Match) -> Result<i32, std::num::ParseIntError> {
-    let mstr = re_match.as_str();
-    mstr.parse::<i32>()
 }
 
 // TESTS -----------------------------------------------------------------
@@ -295,66 +256,66 @@ mod tests {
     #[test]
     fn nan_duration() {
         let duration = String::from("nan");
-        assert_eq!(duration_to_int(Some(&duration)), None);
+        assert!(parse_duration(&duration).is_err());
     }
 
     #[test]
     fn nonnumeric_duration() {
         let duration = String::from("some string");
-        assert_eq!(duration_to_int(Some(&duration)), None);
+        assert!(parse_duration(&duration).is_err());
     }
 
     #[test]
     fn duration_hhhmmss() {
         let duration = String::from("31:38:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(113922));
+        assert_eq!(parse_duration(&duration).ok(), Some(113922));
     }
 
     #[test]
     fn duration_hhmmss() {
         let duration = String::from("01:38:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(5922));
+        assert_eq!(parse_duration(&duration).ok(), Some(5922));
     }
 
     #[test]
     fn duration_hmmss() {
         let duration = String::from("1:38:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(5922));
+        assert_eq!(parse_duration(&duration).ok(), Some(5922));
     }
 
     #[test]
     fn duration_mmmss() {
         let duration = String::from("68:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(4122));
+        assert_eq!(parse_duration(&duration).ok(), Some(4122));
     }
 
     #[test]
     fn duration_mmss() {
         let duration = String::from("08:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(522));
+        assert_eq!(parse_duration(&duration).ok(), Some(522));
     }
 
     #[test]
     fn duration_mss() {
         let duration = String::from("8:42");
-        assert_eq!(duration_to_int(Some(&duration)), Some(522));
+        assert_eq!(parse_duration(&duration).ok(), Some(522));
     }
 
     #[test]
     fn duration_sss() {
         let duration = String::from("142");
-        assert_eq!(duration_to_int(Some(&duration)), Some(142));
+        assert_eq!(parse_duration(&duration).ok(), Some(142));
     }
 
     #[test]
     fn duration_ss() {
         let duration = String::from("08");
-        assert_eq!(duration_to_int(Some(&duration)), Some(8));
+        assert_eq!(parse_duration(&duration).ok(), Some(8));
     }
 
     #[test]
     fn duration_s() {
         let duration = String::from("8");
-        assert_eq!(duration_to_int(Some(&duration)), Some(8));
+        assert_eq!(parse_duration(&duration).ok(), Some(8));
     }
 }

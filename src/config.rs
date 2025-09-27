@@ -273,13 +273,10 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         config_toml.sync_password.unwrap_or_default()
     } else if config_toml.sync_password_eval.is_some() {
         let sync_password_eval = config_toml.sync_password_eval.unwrap_or_default();
-        let tmp_sync_password = evaluate_in_shell(&sync_password_eval);
-        if let Some(password) = tmp_sync_password {
-            password.trim().to_string()
-        } else {
-            "".to_string()
-        }
+        let password = evaluate_in_shell(&sync_password_eval)?;
+        password.trim().to_string()
     } else {
+        log::warn!("sync_password is not set, assuming empty");
         "".to_string()
     };
 

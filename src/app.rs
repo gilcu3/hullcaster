@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -76,7 +76,7 @@ impl App {
         let sync_agent = if config.enable_sync {
             let timestamp = db_inst
                 .get_param("timestamp")
-                .and_then(|s| s.parse::<i64>().ok());
+                .and_then(|s| Ok(s.parse::<i64>()?));
             let device_id = db_inst.get_param("device_id").unwrap_or({
                 let res = evaluate_in_shell("hostname")
                     .expect("Failed to get hostname")
@@ -85,7 +85,11 @@ impl App {
                 db_inst.set_param("device_id", &res)?;
                 res
             });
-            Some(GpodderController::new(config.clone(), timestamp, device_id))
+            Some(GpodderController::new(
+                config.clone(),
+                timestamp.ok(),
+                device_id,
+            ))
         } else {
             None
         };
@@ -139,43 +143,48 @@ impl App {
     /// Initiates the main loop where the controller waits for messages coming
     /// in from the UI and other threads, and processes them.
     pub fn run(&mut self) {
-        if self.config.sync_on_start {
-            self.sync(None);
+        if self.config.sync_on_start && self.sync(None).is_err() {
+            log::warn!("Syncing gpodder failed on start");
         }
 
         while let Some(message) = self.rx_to_main.iter().next() {
-            match message {
+            let result = match message {
                 Message::Ui(UiMsg::Quit) => break,
 
                 Message::Ui(UiMsg::AddFeed(url)) => self.add_podcast(url),
 
                 Message::Feed(FeedMsg::NewData(pod)) => self.add_or_sync_data(pod, None),
 
-                Message::Feed(FeedMsg::Error(feed)) => match feed.title {
-                    Some(t) => {
-                        self.sync_counter -= 1;
-                        self.update_tracker_notif();
-                        if self.sync_counter == 0 {
-                            self.pos_sync_counter();
-                        }
+                Message::Feed(FeedMsg::Error(feed)) => {
+                    match feed.title {
+                        Some(t) => {
+                            self.sync_counter -= 1;
+                            self.update_tracker_notif();
+                            if self.sync_counter == 0 {
+                                self.pos_sync_counter();
+                            }
 
-                        self.notif_to_ui(format!("Error retrieving RSS feed for {t}"), true);
+                            self.notif_to_ui(format!("Error retrieving RSS feed for {t}"), true);
+                        }
+                        None => self.notif_to_ui(
+                            "Error retrieving RSS feed for (no_title)".to_string(),
+                            true,
+                        ),
                     }
-                    None => self
-                        .notif_to_ui("Error retrieving RSS feed for (no_title)".to_string(), true),
-                },
+                    Ok(())
+                }
 
                 Message::Ui(UiMsg::Sync(pod_id)) => self.sync(Some(pod_id)),
 
                 Message::Feed(FeedMsg::SyncData((id, pod))) => self.add_or_sync_data(pod, Some(id)),
 
-                Message::Ui(UiMsg::SyncAll) => {
-                    self.sync(None);
-                }
+                Message::Ui(UiMsg::SyncAll) => self.sync(None),
 
                 Message::Ui(UiMsg::SyncGpodder) => {
                     if self.config.enable_sync {
-                        self.gpodder_sync();
+                        self.gpodder_sync()
+                    } else {
+                        Ok(())
                     }
                 }
 
@@ -184,15 +193,15 @@ impl App {
                 }
 
                 Message::Ui(UiMsg::MarkPlayed(pod_id, ep_id, played)) => {
-                    self.mark_played(pod_id, ep_id, played);
+                    self.mark_played(pod_id, ep_id, played)
                 }
 
                 Message::Ui(UiMsg::MarkAllPlayed(pod_id, played)) => {
-                    self.mark_all_played(pod_id, played);
+                    self.mark_all_played(pod_id, played)
                 }
 
                 Message::Ui(UiMsg::UpdatePosition(pod_id, ep_id, position)) => {
-                    self.update_position(pod_id, ep_id, position);
+                    self.update_position(pod_id, ep_id, position)
                 }
 
                 Message::Ui(UiMsg::Download(pod_id, ep_id)) => self.download(pod_id, Some(ep_id)),
@@ -200,23 +209,29 @@ impl App {
                 Message::Ui(UiMsg::DownloadAll(pod_id)) => self.download(pod_id, None),
 
                 // downloading can produce any one of these responses
-                Message::Dl(DownloadMsg::Complete(ep_data)) => {
-                    self.download_complete(ep_data);
-                }
-                Message::Dl(DownloadMsg::ResponseError(ep)) => self.notif_to_ui(
-                    "Error sending download request. ".to_string() + &ep.url,
-                    true,
-                ),
-                Message::Dl(DownloadMsg::FileCreateError(ep)) => {
-                    self.notif_to_ui("Error creating file. ".to_string() + &ep.title, true)
-                }
-                Message::Dl(DownloadMsg::FileWriteError(ep)) => {
-                    self.notif_to_ui("Error downloading episode. ".to_string() + &ep.title, true)
-                }
+                Message::Dl(msg) => match msg {
+                    DownloadMsg::Complete(ep_data) => self.download_complete(ep_data),
+                    DownloadMsg::ResponseError(ep) => {
+                        self.notif_to_ui(
+                            "Error sending download request. ".to_string() + &ep.url,
+                            true,
+                        );
+                        Ok(())
+                    }
+                    DownloadMsg::FileCreateError(ep) => {
+                        self.notif_to_ui("Error creating file. ".to_string() + &ep.title, true);
+                        Ok(())
+                    }
+                    DownloadMsg::FileWriteError(ep) => {
+                        self.notif_to_ui(
+                            "Error downloading episode. ".to_string() + &ep.title,
+                            true,
+                        );
+                        Ok(())
+                    }
+                },
 
-                Message::Ui(UiMsg::Delete(pod_id, ep_id)) => {
-                    self.delete_file(pod_id, ep_id);
-                }
+                Message::Ui(UiMsg::Delete(pod_id, ep_id)) => self.delete_file(pod_id, ep_id),
                 Message::Ui(UiMsg::DeleteAll(pod_id)) => self.delete_files(pod_id),
 
                 Message::Ui(UiMsg::RemovePodcast(pod_id, delete_files)) => {
@@ -227,9 +242,9 @@ impl App {
                     let new_filter;
                     let message;
                     match filter_type {
-                        // we need to handle these separately because the order
+                        // We need to handle these separately because the order
                         // that makes the most sense to me is different: played
-                        // goes from all -> neg -> pos; downloaded goes from all
+                        // goes from all -> neg -> pos. Downloaded goes from all
                         // -> pos -> neg; this is purely based on the idea that
                         // people are most likely to want to specifically find
                         // unplayed episodes, or downloaded episodes
@@ -271,19 +286,22 @@ impl App {
                     // TODO: "Use filters"
                     self.notif_to_ui(format!("Filter: {message}"), false);
                     self.update_filters(self.filters, false);
+                    Ok(())
                 }
-                Message::Ui(UiMsg::QueueModified) => {
-                    self.write_queue();
-                }
-                Message::Ui(UiMsg::Noop) => (),
+                Message::Ui(UiMsg::QueueModified) => self.write_queue(),
+                Message::Ui(UiMsg::Noop) => Ok(()),
+            };
+            match result {
+                Ok(_) => {}
+                Err(err) => log::warn!("Error in app loop: {err}"),
             }
         }
     }
 
     // sync queue back to database
-    pub fn write_queue(&mut self) -> Option<()> {
+    pub fn write_queue(&mut self) -> Result<()> {
         let queue = self.queue.borrow_order().clone();
-        self.db.set_queue(queue).ok()
+        self.db.set_queue(queue)
     }
 
     /// Sends the specified notification to the UI, which will display at the
@@ -346,7 +364,7 @@ impl App {
     }
 
     /// Add a new podcast by fetching the RSS feed data.
-    pub fn add_podcast(&self, url: String) {
+    pub fn add_podcast(&self, url: String) -> Result<()> {
         let feed = PodcastFeed::new(None, url, None);
         feeds::check_feed(
             feed,
@@ -354,10 +372,11 @@ impl App {
             &self.threadpool,
             self.tx_to_main.clone(),
         );
+        Ok(())
     }
 
     /// Synchronize RSS feed data for one or more podcasts.
-    pub fn sync(&mut self, pod_id: Option<i64>) {
+    pub fn sync(&mut self, pod_id: Option<i64>) -> Result<()> {
         // We pull out the data we need here first, so we can stop borrowing the
         // podcast list as quickly as possible. Slightly less efficient (two
         // loops instead of one), but then it won't block other tasks that need
@@ -394,10 +413,12 @@ impl App {
             )
         }
         self.update_tracker_notif();
+        Ok(())
     }
 
-    fn gpodder_sync(&mut self) {
+    fn gpodder_sync(&mut self) -> Result<()> {
         let sync_agent = self.sync_agent.as_ref().unwrap();
+        // TODO: This needs to happen in separate thread
         let subscription_changes = sync_agent.get_subscription_changes();
 
         let removed_pods = if let Ok((added, deleted)) = subscription_changes {
@@ -413,7 +434,7 @@ impl App {
             for url in added {
                 let url_resolved = resolve_redirection(&url).unwrap_or(url);
                 if !pod_map.contains_key(&url_resolved) {
-                    self.add_podcast(url_resolved);
+                    self.add_podcast(url_resolved)?;
                 }
             }
             let mut resolve_deleted = Vec::new();
@@ -492,9 +513,9 @@ impl App {
         let timestamp = &sync_agent.get_timestamp().to_string();
 
         // mutable actions on self
-        self.mark_played_db_batch(updates);
+        self.mark_played_db_batch(updates)?;
         for pod_id in removed_pods {
-            self.remove_podcast(pod_id, true);
+            self.remove_podcast(pod_id, true)?;
         }
         let _ = self.db.set_param("timestamp", timestamp);
         self.update_unplayed(true);
@@ -503,6 +524,7 @@ impl App {
             format!("Gpodder sync finished with {number_updates} updates").to_string(),
             false,
         );
+        Ok(())
     }
 
     fn pos_sync_counter(&mut self) {
@@ -527,7 +549,7 @@ impl App {
         );
 
         if self.config.enable_sync {
-            self.gpodder_sync();
+            let _ = self.gpodder_sync();
         }
     }
 
@@ -535,7 +557,8 @@ impl App {
     /// data from the RSS feed of an existing podcast. `pod_id` will be None if
     /// a new podcast is being added (i.e., the database has not given it an id
     /// yet).
-    pub fn add_or_sync_data(&mut self, pod: PodcastNoId, pod_id: Option<i64>) {
+    // TODO: improve error handling in this function
+    pub fn add_or_sync_data(&mut self, pod: PodcastNoId, pod_id: Option<i64>) -> Result<()> {
         let title = pod.title.clone();
         let db_result;
         let failure;
@@ -590,15 +613,23 @@ impl App {
             }
             Err(_err) => self.notif_to_ui(failure, true),
         }
+        Ok(())
     }
 
     /// Attempts to execute the play command on the given podcast episode.
-    pub fn play_file(&self, pod_id: i64, ep_id: i64, external: bool) {
+    pub fn play_file(&self, pod_id: i64, ep_id: i64, external: bool) -> Result<()> {
         let (ep_path, ep_url) = {
-            let pod = self.podcasts.get(pod_id).unwrap();
+            let pod = self
+                .podcasts
+                .get(pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
             let pod = pod.read().unwrap();
             let episode_map = pod.episodes.borrow_map();
-            let mut episode = episode_map.get(&ep_id).unwrap().write().unwrap();
+            let mut episode = episode_map
+                .get(&ep_id)
+                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                .write()
+                .unwrap();
             if Some(episode.position) == episode.duration {
                 episode.position = 0;
             }
@@ -608,7 +639,7 @@ impl App {
             if play_file::execute(&self.config.play_command, &ep_url).is_err() {
                 self.notif_to_ui("Error: Could not stream URL.".to_string(), true);
             } else if self.config.mark_as_played_on_play {
-                self.mark_played(pod_id, ep_id, true);
+                let _ = self.mark_played(pod_id, ep_id, true);
             }
         } else {
             match ep_path {
@@ -622,14 +653,14 @@ impl App {
                     ),
                 },
                 None => {
-                    // self.notif_to_ui("Error: Download the episode first.".to_string(), true)
                     self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id)).unwrap();
                 }
             }
         }
+        Ok(())
     }
 
-    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, i64, i64)>) -> Option<()> {
+    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, i64, i64)>) -> Result<()> {
         let mut pod_map = HashMap::new();
         for (pod_id, ep_id, position, total) in updates {
             if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
@@ -645,11 +676,22 @@ impl App {
         for pod_id in pod_map.keys() {
             let batch = {
                 let podcast_map = self.podcasts.borrow_map();
-                let podcast = podcast_map.get(pod_id)?.read().unwrap();
+                let podcast = podcast_map
+                    .get(pod_id)
+                    .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                    .read()
+                    .unwrap();
                 let mut episode_map = podcast.episodes.borrow_map();
                 let mut batch = Vec::new();
-                for (ep_id, position, total) in pod_map.get(pod_id).unwrap() {
-                    let mut episode = episode_map.get_mut(ep_id).unwrap().write().unwrap();
+                for (ep_id, position, total) in pod_map
+                    .get(pod_id)
+                    .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                {
+                    let mut episode = episode_map
+                        .get_mut(ep_id)
+                        .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                        .write()
+                        .unwrap();
                     episode.position = *position;
                     if episode.duration.is_none() {
                         episode.duration = Some(*total);
@@ -677,57 +719,45 @@ impl App {
         if changed {
             self.update_filters(self.filters, false);
         }
-        Some(())
+        Ok(())
     }
 
-    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) {
+    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) -> Result<()> {
         let mut changed = false;
         let (duration, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
-            if let Some(podcast) = podcast_map.get(&pod_id) {
-                let podcast = podcast.read().unwrap();
-                let mut episode_map = podcast.episodes.borrow_map();
-                if let Some(w_episode) = episode_map.get_mut(&ep_id) {
-                    {
-                        let mut episode = w_episode.write().unwrap();
-                        if let Some(duration) = episode.duration {
-                            if !episode.played && position == duration {
-                                changed = true;
-                                episode.played = true;
-                            }
-                        }
-                        episode.position = position;
-                    }
+            let podcast = podcast_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
+            let podcast = podcast.read().unwrap();
+            let mut episode_map = podcast.episodes.borrow_map();
 
-                    let episode = w_episode.read().unwrap();
-
-                    if episode.played && self.unplayed.contains_key(ep_id) {
-                        self.unplayed.remove(ep_id);
+            let w_episode = episode_map
+                .get_mut(&ep_id)
+                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?;
+            {
+                let mut episode = w_episode.write().unwrap();
+                if let Some(duration) = episode.duration {
+                    if !episode.played && position == duration {
                         changed = true;
-                    } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                        self.unplayed.push_arc(w_episode.clone());
-                        changed = true;
+                        episode.played = true;
                     }
-                    match self.db.set_played_status(
-                        ep_id,
-                        episode.position,
-                        episode.duration,
-                        episode.played,
-                    ) {
-                        Ok(_) => (episode.duration, episode.url.clone(), podcast.url.clone()),
-                        Err(err) => {
-                            log::warn!("Error writing to database: {err}");
-                            return;
-                        }
-                    }
-                } else {
-                    log::warn!("{ep_id} episode not found");
-                    return;
                 }
-            } else {
-                log::warn!("{pod_id} podcast not found");
-                return;
+                episode.position = position;
             }
+
+            let episode = w_episode.read().unwrap();
+
+            if episode.played && self.unplayed.contains_key(ep_id) {
+                self.unplayed.remove(ep_id);
+                changed = true;
+            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
+                self.unplayed.push_arc(w_episode.clone());
+                changed = true;
+            }
+            self.db
+                .set_played_status(ep_id, episode.position, episode.duration, episode.played)?;
+            (episode.duration, episode.url.clone(), podcast.url.clone())
         };
 
         if changed {
@@ -737,14 +767,10 @@ impl App {
 
         if self.config.enable_sync {
             if let Some(sync_agent) = &self.sync_agent {
-                match sync_agent.mark_played(&pod_url, &ep_url, position, duration) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::warn!("Failed to mark played with gpodder: {err}");
-                    }
-                }
+                sync_agent.mark_played(&pod_url, &ep_url, position, duration)?;
             }
         }
+        Ok(())
     }
 
     /// Given a podcast and episode, it updates the given episode,
@@ -754,13 +780,19 @@ impl App {
     /// if position is near duration, mark episode as played
     /// else just update position
     /// TODO: separate mark_played from set position
-    pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Option<()> {
+    pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Result<()> {
         let mut changed = false;
         let (mut duration, ep_position, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
+            let podcast = podcast_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .read()
+                .unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let w_episode = episode_map.get_mut(&ep_id)?;
+            let w_episode = episode_map
+                .get_mut(&ep_id)
+                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().unwrap();
                 if episode.played != played {
@@ -781,8 +813,7 @@ impl App {
             }
 
             self.db
-                .set_played_status(ep_id, episode.position, episode.duration, played)
-                .ok()?;
+                .set_played_status(ep_id, episode.position, episode.duration, played)?;
             (
                 episode.duration,
                 episode.position,
@@ -809,25 +840,24 @@ impl App {
                 }
             };
             if let Some(sync_agent) = &self.sync_agent {
-                match sync_agent.mark_played(&pod_url, &ep_url, position, duration) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::warn!("Error marking played in gpodder: {err}")
-                    }
-                }
+                sync_agent.mark_played(&pod_url, &ep_url, position, duration)?;
             }
         }
-        Some(())
+        Ok(())
     }
 
     /// Given a podcast, it marks all episodes for that podcast as
     /// played/unplayed, sending this info to the database and updating in
     /// self.podcasts
-    pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Option<()> {
+    pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Result<()> {
         let mut changed = false;
         let (sync_list, db_list) = {
             let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
+            let podcast = podcast_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .read()
+                .unwrap();
             let podcast_url = podcast.url.clone();
 
             let mut sync_list = Vec::new();
@@ -878,7 +908,7 @@ impl App {
             self.update_filters(self.filters, false);
         }
 
-        self.db.set_played_status_batch(db_list).ok()?;
+        self.db.set_played_status_batch(db_list)?;
 
         if self.config.enable_sync {
             if let Some(sync_agent) = &self.sync_agent {
@@ -895,19 +925,21 @@ impl App {
                 }
             }
         }
-        Some(())
+        Ok(())
     }
 
     /// Given a podcast index (and not an episode index), this will send a
     /// vector of jobs to the threadpool to download all episodes in the
     /// podcast. If given an episode index as well, it will download just that
     /// episode.
-    pub fn download(&mut self, pod_id: i64, ep_id: Option<i64>) {
+    pub fn download(&mut self, pod_id: i64, ep_id: Option<i64>) -> Result<()> {
         let pod_title;
         let mut ep_data = Vec::new();
         {
             let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map.get(&pod_id).unwrap();
+            let podcast = borrowed_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             pod_title = podcast.title.clone();
 
@@ -959,7 +991,7 @@ impl App {
             }
         }
 
-        // check against episodes currently being downloaded -- so we don't
+        // Check against episodes currently being downloaded, so we don't
         // needlessly download them again
         ep_data.retain(|ep| !self.download_tracker.contains(&ep.id));
 
@@ -990,28 +1022,27 @@ impl App {
             }
             self.update_tracker_notif();
         }
+        Ok(())
     }
 
     /// Handles logic for what to do when a download successfully completes.
-    pub fn download_complete(&mut self, ep_data: EpData) -> Option<()> {
+    pub fn download_complete(&mut self, ep_data: EpData) -> Result<()> {
         let file_path = ep_data.file_path.unwrap();
-        let res = self.db.insert_file(ep_data.id, &file_path);
-        if res.is_err() {
-            self.notif_to_ui(
-                format!(
-                    "Could not add episode file to database: {}",
-                    file_path.to_string_lossy()
-                ),
-                true,
-            );
-            return None;
-        }
+        self.db.insert_file(ep_data.id, &file_path)?;
         {
             let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map.get(&ep_data.pod_id).unwrap();
+            let pod_id = ep_data.pod_id;
+            let podcast = borrowed_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let mut episode = episode_map.get_mut(&ep_data.id)?.write().unwrap();
+            let ep_id = ep_data.id;
+            let mut episode = episode_map
+                .get_mut(&ep_id)
+                .ok_or(anyhow!("Failed to get ep_data.id: {ep_id}"))?
+                .write()
+                .unwrap();
             episode.path = Some(file_path.clone());
             if let Some(duration) = ep_data.duration {
                 episode.duration = Some(duration);
@@ -1025,7 +1056,7 @@ impl App {
         }
 
         self.update_filters(self.filters, false);
-        Some(())
+        Ok(())
     }
 
     /// Given a podcast title, creates a download directory for that podcast if
@@ -1040,52 +1071,58 @@ impl App {
     }
 
     /// Deletes a downloaded file for an episode from the user's local system.
-    pub fn delete_file(&self, pod_id: i64, ep_id: i64) -> Option<()> {
+    pub fn delete_file(&self, pod_id: i64, ep_id: i64) -> Result<()> {
         let (file_path, title) = {
             let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map.get(&pod_id).unwrap();
+            let podcast = borrowed_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
-            let mut episode = episode_map.get_mut(&ep_id)?.write().unwrap();
-            let _path = episode.path.clone()?;
+            let mut episode = episode_map
+                .get_mut(&ep_id)
+                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                .write()
+                .unwrap();
+            let old_path = episode.path.clone().ok_or(anyhow!("Episode has no path"))?;
             episode.path = None;
-            (_path, episode.title.clone())
+            (old_path, episode.title.clone())
         };
 
         match fs::remove_file(file_path) {
             Ok(_) => {
-                let res = self.db.remove_file(ep_id);
-                if res.is_err() {
-                    self.notif_to_ui(
-                        format!("Could not remove file from database: {title}"),
-                        true,
-                    );
-                    return None;
-                }
+                self.db.remove_file(ep_id)?;
                 self.update_filters(self.filters, false);
                 self.notif_to_ui(format!("Deleted \"{title}\""), false);
             }
             Err(_) => self.notif_to_ui(format!("Error deleting \"{title}\""), true),
         }
-        Some(())
+        Ok(())
     }
 
     /// Deletes all downloaded files for a given podcast from the user's local
     /// system.
-    pub fn delete_files(&self, pod_id: i64) {
+    pub fn delete_files(&self, pod_id: i64) -> Result<()> {
         let mut eps_id_to_remove = Vec::new();
         let mut eps_path_to_remove = Vec::new();
 
         {
             let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map.get(&pod_id).unwrap();
-            let podcast = podcast.read().unwrap();
+            let podcast = borrowed_map
+                .get(&pod_id)
+                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .read()
+                .unwrap();
             let mut borrowed_ep_map = podcast.episodes.borrow_map();
 
             for (_, ep) in borrowed_ep_map.iter_mut() {
                 let mut ep = ep.write().unwrap();
                 if ep.path.is_some() {
-                    eps_path_to_remove.push(ep.path.clone().unwrap());
+                    eps_path_to_remove.push(
+                        ep.path
+                            .clone()
+                            .ok_or(anyhow!("Failed to get episode path"))?,
+                    );
                     eps_id_to_remove.push(ep.id);
                     ep.path = None;
                 }
@@ -1114,12 +1151,13 @@ impl App {
         } else {
             self.notif_to_ui("Error while deleting files".to_string(), true);
         }
+        Ok(())
     }
 
     /// Removes a podcast from the list, optionally deleting local files first
-    pub fn remove_podcast(&mut self, pod_id: i64, delete_files: bool) {
+    pub fn remove_podcast(&mut self, pod_id: i64, delete_files: bool) -> Result<()> {
         if delete_files {
-            self.delete_files(pod_id);
+            let _ = self.delete_files(pod_id);
         }
 
         let pod = self.podcasts.get(pod_id);
@@ -1129,13 +1167,7 @@ impl App {
                 (pod.id, pod.url.clone())
             })
             .unwrap();
-        match self.db.remove_podcast(pod_id) {
-            Ok(_) => {}
-            Err(_) => {
-                self.notif_to_ui("Could not remove podcast from database".to_string(), true);
-                return;
-            }
-        }
+        self.db.remove_podcast(pod_id)?;
         if self.config.enable_sync && self.sync_agent.is_some() {
             if let Some(sync_agent) = &self.sync_agent {
                 match sync_agent.remove_podcast(&url) {
@@ -1159,6 +1191,7 @@ impl App {
         self.update_unplayed(true);
         self.update_queue();
         self.update_filters(self.filters, false);
+        Ok(())
     }
 
     // Updates the user-selected filters to show only played/unplayed or

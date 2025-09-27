@@ -573,7 +573,8 @@ mod tests {
         // pull changes from last week
         let timestamp = current_time().unwrap() - 7 * 24 * 60 * 60;
         if config.enable_sync {
-            let sync_agent = GpodderController::new(config.clone(), Some(timestamp), "msigil".to_string());
+            let sync_agent =
+                GpodderController::new(config.clone(), Some(timestamp), "msigil".to_string());
             assert!(sync_agent.test_gpodder_api().is_ok());
         }
     }

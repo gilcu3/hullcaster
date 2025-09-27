@@ -28,21 +28,15 @@ static RE_MULT_LINE_BREAKS: Lazy<Regex> =
 
 /// Helper function converting an (optional) Unix timestamp to a
 /// DateTime<Utc> object
-pub fn convert_date(result: Result<i64, rusqlite::Error>) -> Option<DateTime<Utc>> {
-    match result {
-        Ok(timestamp) => DateTime::from_timestamp(timestamp, 0)
-            .map(|ndt| DateTime::from_naive_utc_and_offset(ndt.naive_utc(), Utc)),
-        Err(_) => None,
-    }
+pub fn convert_date(timestamp: i64) -> Result<DateTime<Utc>> {
+    let ndt =
+        DateTime::from_timestamp(timestamp, 0).ok_or(anyhow!("Wrong timestamp: {timestamp}"))?;
+    Ok(DateTime::from_naive_utc_and_offset(ndt.naive_utc(), Utc))
 }
 
-pub fn evaluate_in_shell(value: &str) -> Option<String> {
-    let res = Command::new("sh").arg("-c").arg(value).output();
-    if let Ok(res) = res {
-        Some(String::from_utf8_lossy(&res.stdout).to_string())
-    } else {
-        None
-    }
+pub fn evaluate_in_shell(value: &str) -> Result<String> {
+    let res = Command::new("sh").arg("-c").arg(value).output()?;
+    Ok(String::from_utf8_lossy(&res.stdout).to_string())
 }
 
 pub fn execute_request_post(
@@ -112,36 +106,37 @@ pub fn execute_request_get(
     Ok(request.into_body().read_to_string()?)
 }
 
-pub fn audio_duration(audio_bytes: Vec<u8>) -> Option<i64> {
+pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
     let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
-    let probed = get_probe()
-        .format(
-            &Hint::new(),
-            mss,
-            &FormatOptions::default(),
-            &Default::default(),
-        )
-        .ok()?;
+    let probed = get_probe().format(
+        &Hint::new(),
+        mss,
+        &FormatOptions::default(),
+        &Default::default(),
+    )?;
     let mut duration = 0;
     for track in probed.format.tracks() {
         if track.codec_params.codec != CODEC_TYPE_NULL {
             let tt = track
                 .codec_params
-                .time_base?
-                .calc_time(track.codec_params.n_frames?);
+                .time_base
+                .ok_or(anyhow!("time_base is None"))?
+                .calc_time(
+                    track
+                        .codec_params
+                        .n_frames
+                        .ok_or(anyhow!("n_frames is None"))?,
+                );
             duration += tt.seconds;
         }
     }
-    Some(duration as i64)
+    Ok(duration as i64)
 }
 
-pub fn audio_duration_file(file_path: PathBuf) -> Option<i64> {
-    if let Ok(bytes) = fs::read(file_path) {
-        audio_duration(bytes)
-    } else {
-        None
-    }
+pub fn audio_duration_file(file_path: PathBuf) -> Result<i64> {
+    let bytes = fs::read(file_path)?;
+    audio_duration(bytes)
 }
 
 /// Some helper functions for dealing with Unicode strings.
@@ -194,13 +189,13 @@ pub fn clean_html(text: &str) -> String {
 }
 
 // Probably should be done better, without downloading the page
-pub fn resolve_redirection(url: &str) -> Option<String> {
+pub fn resolve_redirection(url: &str) -> Result<String> {
     let agent = ureq::agent();
 
-    let response = agent.get(url).call().ok()?;
+    let response = agent.get(url).call()?;
 
     let final_url = response.get_uri().to_string();
-    Some(final_url)
+    Ok(final_url)
 }
 
 pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
