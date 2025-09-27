@@ -47,7 +47,7 @@ pub fn evaluate_in_shell(value: &str) -> Option<String> {
 
 pub fn execute_request_post(
     agent: &Agent, url: String, body: String, encoded_credentials: &String,
-) -> Option<String> {
+) -> Result<String> {
     let mut max_retries = 3;
 
     let request = loop {
@@ -58,7 +58,6 @@ pub fn execute_request_post(
 
         match response {
             Ok(resp) => {
-                //println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
             Err(Error::StatusCode(code)) => {
@@ -66,27 +65,23 @@ pub fn execute_request_post(
                 println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
-                    break Err(());
+                    break Err(anyhow!("Error code: {code}"));
                 }
             }
             Err(_) => {
                 max_retries -= 1;
                 if max_retries == 0 {
-                    break Err(());
+                    break Err(anyhow!("Max retries exceeded"));
                 }
             }
         }
-    };
-    if let Ok(req) = request {
-        req.into_body().read_to_string().ok()
-    } else {
-        None
-    }
+    }?;
+    Ok(request.into_body().read_to_string()?)
 }
 
 pub fn execute_request_get(
     agent: &Agent, url: String, params: Vec<(&str, &str)>, encoded_credentials: &String,
-) -> Option<String> {
+) -> Result<String> {
     let mut max_retries = 3;
 
     let request = loop {
@@ -98,29 +93,23 @@ pub fn execute_request_get(
 
         match response {
             Ok(resp) => {
-                // println!("Ok code: {:?}", resp);
                 break Ok(resp);
             }
             Err(Error::StatusCode(code)) => {
-                println!("Error code: {code}");
                 max_retries -= 1;
                 if max_retries == 0 {
-                    break Err(());
+                    break Err(anyhow!("Error code: {code}"));
                 }
             }
             Err(_) => {
                 max_retries -= 1;
                 if max_retries == 0 {
-                    break Err(());
+                    break Err(anyhow!("Max retries exceeded"));
                 }
             }
         }
-    };
-    if let Ok(req) = request {
-        req.into_body().read_to_string().ok()
-    } else {
-        None
-    }
+    }?;
+    Ok(request.into_body().read_to_string()?)
 }
 
 pub fn audio_duration(audio_bytes: Vec<u8>) -> Option<i64> {

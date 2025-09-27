@@ -1,9 +1,8 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use base64::Engine;
 use serde::de::Visitor;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::{Deserialize, Deserializer};
-use serde_json::Value;
 use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,12 +68,8 @@ pub enum Action {
     delete,
 }
 
-fn current_time() -> i64 {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    timestamp as i64
+fn current_time() -> Result<i64> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64)
 }
 
 fn deserialize_date<'de, D>(deserializer: D) -> Result<i64, D::Error>
@@ -155,7 +150,7 @@ pub struct GpodderController {
 impl GpodderController {
     pub fn new(
         config: Arc<Config>, timestamp: Option<i64>, device_id: String,
-    ) -> Option<GpodderController> {
+    ) -> GpodderController {
         let agent_builder = ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(10)))
             .timeout_global(Some(Duration::from_secs(30)));
@@ -164,7 +159,7 @@ impl GpodderController {
         let credentials = format!("{}:{}", config.sync_username, config.sync_password);
         let encoded_credentials = base64::engine::general_purpose::STANDARD.encode(credentials);
 
-        Some(GpodderController {
+        GpodderController {
             config,
             agent,
             actions_timestamp: timestamp.into(),
@@ -172,7 +167,7 @@ impl GpodderController {
             device_id,
             logged_in: false.into(),
             encoded_credentials,
-        })
+        }
     }
 
     pub fn get_timestamp(&self) -> i64 {
@@ -182,7 +177,7 @@ impl GpodderController {
         )
     }
 
-    pub fn init(&self) {
+    pub fn init(&self) -> Result<()> {
         let res = self.get_devices();
         let mut exists = false;
         for dev in res.unwrap() {
@@ -199,15 +194,19 @@ impl GpodderController {
             }
         }
         if !exists {
-            self.register_device();
+            self.register_device()
+        } else {
+            Ok(())
         }
     }
 
     pub fn mark_played(
         &self, podcast_url: &str, episode_url: &str, position: i64, duration: Option<i64>,
-    ) -> Option<String> {
-        duration?;
-        self.require_login();
+    ) -> Result<String> {
+        duration.ok_or(anyhow!(
+            "Impossible to mark played position without duration"
+        ))?;
+        self.require_login()?;
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
@@ -216,122 +215,109 @@ impl GpodderController {
             podcast: podcast_url.to_string(),
             episode: episode_url.to_string(),
             action: Action::play,
-            timestamp: current_time(),
+            timestamp: current_time()?,
             started: Some(0),
             position: Some(position),
             total: duration,
         };
         let actions = [action];
-        let msg = serde_json::to_string(&actions).unwrap();
+        let msg = serde_json::to_string(&actions)?;
 
-        let res = execute_request_post(
+        let result = execute_request_post(
             &self.agent,
             _url_mark_played,
             msg,
             &self.encoded_credentials,
-        );
-        if res.is_some() {
-            log::info!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
-        }
-        res
+        )?;
+        log::info!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
+        Ok(result)
     }
 
-    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, i64, Option<i64>)>) -> Option<String> {
-        self.require_login();
+    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, i64, Option<i64>)>) -> Result<String> {
+        self.require_login()?;
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
         );
         let actions: Vec<EpisodeAction> = eps
             .iter()
-            .map(
-                |(podcast_url, episode_url, position, duration)| EpisodeAction {
+            .filter_map(|(podcast_url, episode_url, position, duration)| {
+                Some(EpisodeAction {
                     podcast: podcast_url.to_string(),
                     episode: episode_url.to_string(),
                     action: Action::play,
-                    timestamp: current_time(),
+                    timestamp: current_time().ok()?,
                     started: Some(0),
                     position: Some(*position),
                     total: *duration,
-                },
-            )
+                })
+            })
             .collect();
-        let msg = serde_json::to_string(&actions).unwrap();
+        let msg = serde_json::to_string(&actions)?;
 
-        let res = execute_request_post(
+        let result = execute_request_post(
             &self.agent,
             _url_mark_played,
             msg,
             &self.encoded_credentials,
-        );
-        if res.is_some() {
-            log::info!("Marked played: {} actions", actions.len());
-        }
-        res
+        )?;
+        log::info!("Marked played: {} actions", actions.len());
+        Ok(result)
     }
 
-    pub fn get_episode_action_changes(&self) -> Option<Vec<EpisodeAction>> {
-        self.require_login();
+    pub fn get_episode_action_changes(&self) -> Result<Vec<EpisodeAction>> {
+        self.require_login()?;
         let url_episode_action_changes = format!(
             "{}/api/2/episodes/{}.json",
             self.config.sync_server, self.config.sync_username
         );
         let since = self.actions_timestamp.get();
-        let res = execute_request_get(
+        let json_string = execute_request_get(
             &self.agent,
             url_episode_action_changes,
             vec![("since", since.to_string().as_str())],
             &self.encoded_credentials,
-        );
-        res.as_ref()?;
-        let json_string = res.unwrap();
-        let actions_r: serde_json::Result<Value> = serde_json::from_str(json_string.as_str());
-        if let Ok(actions) = actions_r {
-            let timestamp = actions["timestamp"].as_i64().unwrap();
-            let episode_actions = actions["actions"].as_array().unwrap();
-            let mut actions: Vec<EpisodeAction> = Vec::new();
-            for action in episode_actions {
-                let daction = serde_json::from_value::<EpisodeAction>(action.clone());
-                actions.push(daction.unwrap());
-            }
-            self.actions_timestamp.set(timestamp + 1);
-            Some(actions)
-        } else {
-            None
+        )?;
+        let actions: serde_json::Value = serde_json::from_str(json_string.as_str())?;
+        let timestamp = actions["timestamp"]
+            .as_i64()
+            .ok_or(anyhow::anyhow!("Parsing timestamp failed"))?;
+        let episode_actions = actions["actions"].as_array().unwrap();
+        let mut actions: Vec<EpisodeAction> = Vec::new();
+        for action in episode_actions {
+            let daction = serde_json::from_value::<EpisodeAction>(action.clone());
+            actions.push(daction.unwrap());
         }
+        self.actions_timestamp.set(timestamp + 1);
+        Ok(actions)
     }
 
-    fn require_login(&self) -> bool {
+    fn require_login(&self) -> Result<()> {
         if !self.logged_in.get() {
-            if self.login() {
-                self.logged_in.set(true);
-                self.init();
-                true
-            } else {
-                false
-            }
-        } else {
-            true
+            self.login()?;
+            self.logged_in.set(true);
+            self.init()?;
         }
+        Ok(())
     }
 
-    fn login(&self) -> bool {
+    fn login(&self) -> Result<()> {
         let url_login = format!(
             "{}/api/2/auth/{}/login.json",
             self.config.sync_server, self.config.sync_username
         );
-        let res = execute_request_post(
+        execute_request_post(
             &self.agent,
             url_login,
             String::new(),
             &self.encoded_credentials,
-        );
-        res.is_some()
+        )?;
+        Ok(())
     }
 
     // This is probably not implemented in micro-gpodder
     #[allow(dead_code)]
-    fn logout(&self) {
+    fn logout(&self) -> Result<()> {
         let url_login = format!(
             "{}/api/2/auth/{}/logout.json",
             self.config.sync_server, self.config.sync_username
@@ -341,13 +327,14 @@ impl GpodderController {
             url_login,
             String::new(),
             &self.encoded_credentials,
-        );
+        )?;
+        Ok(())
     }
 
-    pub fn get_subscription_changes(&self) -> Option<(Vec<String>, Vec<String>)> {
+    pub fn get_subscription_changes(&self) -> Result<(Vec<String>, Vec<String>)> {
         if self.subscriptions_timestamp.get() == 0 {
             let added = self.get_all_subscriptions()?;
-            return Some((added, Vec::new()));
+            return Ok((added, Vec::new()));
         }
         let url_subscription_changes = format!(
             "{}/api/2/subscriptions/{}/{}.json",
@@ -370,14 +357,13 @@ impl GpodderController {
                 log::info!("podcast removed {sub}");
             }
             self.subscriptions_timestamp.set(changes.timestamp + 1);
-            Some((changes.add, changes.remove))
+            Ok((changes.add, changes.remove))
         } else {
-            log::info!("Error parsing subscription changes");
-            None
+            Err(anyhow!("Error parsing subscription changes"))
         }
     }
 
-    pub fn upload_subscription_changes(&self, changes: (Vec<String>, Vec<String>)) -> Option<()> {
+    pub fn upload_subscription_changes(&self, changes: (Vec<&String>, Vec<&String>)) -> Result<()> {
         let url_upload_subscriptions = format!(
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
@@ -400,22 +386,21 @@ impl GpodderController {
                 log::info!("url changed {} {}", sub[0], sub[1]);
             }
             self.subscriptions_timestamp.set(changes.timestamp + 1);
-            Some(())
+            Ok(())
         } else {
-            log::info!("Error parsing url subscription changes");
-            None
+            Err(anyhow!("Error parsing url subscription changes"))
         }
     }
 
-    pub fn add_podcast(&self, url: String) -> Option<()> {
+    pub fn add_podcast(&self, url: &String) -> Result<()> {
         self.upload_subscription_changes((vec![url], vec![]))
     }
 
-    pub fn remove_podcast(&self, url: String) -> Option<()> {
+    pub fn remove_podcast(&self, url: &String) -> Result<()> {
         self.upload_subscription_changes((vec![], vec![url]))
     }
 
-    fn get_all_subscriptions(&self) -> Option<Vec<String>> {
+    fn get_all_subscriptions(&self) -> Result<Vec<String>> {
         let url_subscription_changes = format!(
             "{}/subscriptions/{}.json",
             self.config.sync_server, self.config.sync_username
@@ -429,26 +414,23 @@ impl GpodderController {
         let parsed: serde_json::Result<Vec<Podcast>> = serde_json::from_str(json_string.as_str());
 
         if let Ok(subscriptions) = parsed {
-            Some(subscriptions.iter().map(|f| f.feed.clone()).collect())
+            Ok(subscriptions.iter().map(|f| f.feed.clone()).collect())
         } else {
-            log::info!("Error parsing subscriptions");
-            None
+            Err(anyhow!("Error parsing subscriptions"))
         }
     }
 
-    fn get_devices(&self) -> Option<Vec<Device>> {
+    fn get_devices(&self) -> Result<Vec<Device>> {
         let url_devices = format!(
             "{}/api/2/devices/{}.json",
             self.config.sync_server, self.config.sync_username
         );
-        let res = execute_request_get(&self.agent, url_devices, vec![], &self.encoded_credentials);
-        res.as_ref()?;
-        let json_string = res.unwrap();
-        let parsed: serde_json::Result<Vec<Device>> = serde_json::from_str(json_string.as_str());
-        parsed.ok()
+        let json_string =
+            execute_request_get(&self.agent, url_devices, vec![], &self.encoded_credentials)?;
+        Ok(serde_json::from_str(json_string.as_str())?)
     }
 
-    fn register_device(&self) -> bool {
+    fn register_device(&self) -> Result<()> {
         let url_register = format!(
             "{}/api/2/devices/{}/{}.json",
             self.config.sync_server, self.config.sync_username, self.device_id
@@ -458,10 +440,9 @@ impl GpodderController {
             "type": "laptop"
         })
         .to_string();
-        let res =
-            execute_request_post(&self.agent, url_register, device, &self.encoded_credentials);
+        execute_request_post(&self.agent, url_register, device, &self.encoded_credentials)?;
         log::info!("Registered device {}", self.device_id);
-        res.is_some()
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -512,10 +493,10 @@ impl GpodderController {
     }
 
     #[cfg(test)]
-    pub fn testing(&self) -> Option<()> {
+    pub fn test_gpodder_api(&self) -> Result<()> {
         let res = self.get_devices();
         let mut exists = false;
-        for dev in res.unwrap() {
+        for dev in res? {
             println!("{dev:?}");
             if dev.id == self.device_id {
                 exists = true;
@@ -523,7 +504,7 @@ impl GpodderController {
             }
         }
         if !exists {
-            self.register_device();
+            self.register_device()?;
         } else {
             println!("Device already exists");
         }
@@ -534,7 +515,7 @@ impl GpodderController {
         // get_device_updates();
 
         let actions = self.get_episode_action_changes();
-        for a in actions.unwrap() {
+        for a in actions? {
             match a.action {
                 Action::play => {
                     println!(
@@ -573,7 +554,7 @@ impl GpodderController {
             println!("Subscription: {sub}");
         }
 
-        Some(())
+        Ok(())
     }
 }
 
@@ -590,14 +571,10 @@ mod tests {
         let mut db_path = config_path;
         db_path.pop();
         // pull changes from last week
-        let timestamp = current_time() - 7 * 24 * 60 * 60;
-        let sync_agent = if config.enable_sync {
-            GpodderController::new(config.clone(), Some(timestamp), "msigil".to_string())
-        } else {
-            None
-        };
-        if sync_agent.is_some() {
-            assert!(sync_agent.unwrap().testing().is_some());
+        let timestamp = current_time().unwrap() - 7 * 24 * 60 * 60;
+        if config.enable_sync {
+            let sync_agent = GpodderController::new(config.clone(), Some(timestamp), "msigil".to_string());
+            assert!(sync_agent.test_gpodder_api().is_ok());
         }
     }
 }

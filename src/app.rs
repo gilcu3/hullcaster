@@ -1,5 +1,4 @@
 use anyhow::Result;
-use log::info;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -31,7 +30,7 @@ pub enum MainMessage {
     TearDown,
 }
 
-/// Main application controller, holding all of the main application state and
+/// Main application controller, holding the main application state and
 /// mechanisms for communicating with the rest of the app.
 pub struct App {
     config: Arc<Config>,
@@ -68,8 +67,8 @@ impl App {
         // set up threadpool
         let threadpool = Threadpool::new(config.simultaneous_downloads);
 
-        // create vector of podcasts, where references are checked at runtime;
-        // this is necessary because we want main.rs to hold the "ground truth"
+        // Create vector of podcasts, where references are checked at runtime.
+        // This is necessary because we want main.rs to hold the "ground truth"
         // list of podcasts, and it must be mutable, but UI needs to check this
         // list and update the screen when necessary
         let podcast_list = LockVec::new(db_inst.get_podcasts()?);
@@ -86,7 +85,7 @@ impl App {
                 db_inst.set_param("device_id", &res)?;
                 res
             });
-            GpodderController::new(config.clone(), timestamp, device_id)
+            Some(GpodderController::new(config.clone(), timestamp, device_id))
         } else {
             None
         };
@@ -96,7 +95,7 @@ impl App {
             let all_eps_map = podcast_list.get_episodes_map();
             let res = stored_queue
                 .iter()
-                .map(|v| all_eps_map.get(v).unwrap().clone())
+                .filter_map(|v| all_eps_map.get(v).cloned())
                 .collect();
             res
         });
@@ -366,19 +365,23 @@ impl App {
         let mut pod_data = Vec::new();
         match pod_id {
             // just grab one podcast
-            Some(id) => pod_data.push(
-                self.podcasts
-                    .map_single(id, |pod| {
-                        PodcastFeed::new(Some(pod.id), pod.url.clone(), Some(pod.title.clone()))
-                    })
-                    .unwrap(),
-            ),
+            Some(id) => {
+                let podcast = self.podcasts.map_single(id, |pod| {
+                    PodcastFeed::new(Some(pod.id), pod.url.clone(), Some(pod.title.clone()))
+                });
+
+                if let Some(podcast) = podcast {
+                    pod_data.push(podcast)
+                } else {
+                    log::warn!("Podcast with id {id} not found");
+                }
+            }
             // get all of 'em!
             None => {
                 pod_data = self.podcasts.map(
                     |pod| PodcastFeed::new(Some(pod.id), pod.url.clone(), Some(pod.title.clone())),
                     false,
-                )
+                );
             }
         }
         for feed in pod_data.into_iter() {
@@ -397,13 +400,13 @@ impl App {
         let sync_agent = self.sync_agent.as_ref().unwrap();
         let subscription_changes = sync_agent.get_subscription_changes();
 
-        let removed_pods = if let Some((added, deleted)) = subscription_changes {
+        let removed_pods = if let Ok((added, deleted)) = subscription_changes {
             let pod_map = self
                 .podcasts
                 .borrow_map()
                 .iter()
                 .map(|(id, pod)| {
-                    let rpod = pod.read().unwrap();
+                    let rpod = pod.read().expect("Failed to acquire read lock");
                     (rpod.url.clone(), *id)
                 })
                 .collect::<HashMap<String, i64>>();
@@ -544,8 +547,12 @@ impl App {
             let title = pod.title.clone();
             let url = pod.url.clone();
             db_result = self.db.insert_podcast(pod);
-            if self.config.enable_sync && self.sync_agent.is_some() {
-                self.sync_agent.as_ref().unwrap().add_podcast(url);
+            if self.config.enable_sync {
+                if let Some(sync_agent) = &self.sync_agent {
+                    if sync_agent.add_podcast(&url).is_err() {
+                        log::error!("Failed to add podcast with url {url}");
+                    }
+                }
             }
             failure = format!("Error adding podcast {title} to database.");
         }
@@ -673,36 +680,54 @@ impl App {
         Some(())
     }
 
-    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) -> Option<()> {
+    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) {
         let mut changed = false;
         let (duration, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map.get(&pod_id)?.read().unwrap();
-            let mut episode_map = podcast.episodes.borrow_map();
-            let w_episode = episode_map.get_mut(&ep_id)?;
-            {
-                let mut episode = w_episode.write().unwrap();
-                if let Some(duration) = episode.duration {
-                    if !episode.played && position == duration {
-                        changed = true;
-                        episode.played = true;
+            if let Some(podcast) = podcast_map.get(&pod_id) {
+                let podcast = podcast.read().unwrap();
+                let mut episode_map = podcast.episodes.borrow_map();
+                if let Some(w_episode) = episode_map.get_mut(&ep_id) {
+                    {
+                        let mut episode = w_episode.write().unwrap();
+                        if let Some(duration) = episode.duration {
+                            if !episode.played && position == duration {
+                                changed = true;
+                                episode.played = true;
+                            }
+                        }
+                        episode.position = position;
                     }
-                }
-                episode.position = position;
-            }
-            let episode = w_episode.read().unwrap();
 
-            if episode.played && self.unplayed.contains_key(ep_id) {
-                self.unplayed.remove(ep_id);
-                changed = true;
-            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                self.unplayed.push_arc(w_episode.clone());
-                changed = true;
+                    let episode = w_episode.read().unwrap();
+
+                    if episode.played && self.unplayed.contains_key(ep_id) {
+                        self.unplayed.remove(ep_id);
+                        changed = true;
+                    } else if !episode.played && !self.unplayed.contains_key(ep_id) {
+                        self.unplayed.push_arc(w_episode.clone());
+                        changed = true;
+                    }
+                    match self.db.set_played_status(
+                        ep_id,
+                        episode.position,
+                        episode.duration,
+                        episode.played,
+                    ) {
+                        Ok(_) => (episode.duration, episode.url.clone(), podcast.url.clone()),
+                        Err(err) => {
+                            log::warn!("Error writing to database: {err}");
+                            return;
+                        }
+                    }
+                } else {
+                    log::warn!("{ep_id} episode not found");
+                    return;
+                }
+            } else {
+                log::warn!("{pod_id} podcast not found");
+                return;
             }
-            self.db
-                .set_played_status(ep_id, episode.position, episode.duration, episode.played)
-                .ok()?;
-            (episode.duration, episode.url.clone(), podcast.url.clone())
         };
 
         if changed {
@@ -711,18 +736,21 @@ impl App {
         }
 
         if self.config.enable_sync {
-            self.sync_agent
-                .as_ref()
-                .unwrap()
-                .mark_played(&pod_url, &ep_url, position, duration);
+            if let Some(sync_agent) = &self.sync_agent {
+                match sync_agent.mark_played(&pod_url, &ep_url, position, duration) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::warn!("Failed to mark played with gpodder: {err}");
+                    }
+                }
+            }
         }
-        Some(())
     }
 
     /// Given a podcast and episode, it updates the given episode,
     /// sending this info to the database, updating in self.podcasts and syncing
-    /// with gpodder
-    /// if played is true, do not modify the current position of episode
+    /// with gpodder.
+    /// If played is true, do not modify the current position of episode
     /// if position is near duration, mark episode as played
     /// else just update position
     /// TODO: separate mark_played from set position
@@ -771,7 +799,7 @@ impl App {
         if self.config.enable_sync {
             if duration.is_none() {
                 duration = Some(MAX_DURATION);
-                info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
+                log::info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
             }
             let position = {
                 if played {
@@ -780,10 +808,14 @@ impl App {
                     ep_position
                 }
             };
-            self.sync_agent
-                .as_ref()
-                .unwrap()
-                .mark_played(&pod_url, &ep_url, position, duration);
+            if let Some(sync_agent) = &self.sync_agent {
+                match sync_agent.mark_played(&pod_url, &ep_url, position, duration) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::warn!("Error marking played in gpodder: {err}")
+                    }
+                }
+            }
         }
         Some(())
     }
@@ -849,12 +881,19 @@ impl App {
         self.db.set_played_status_batch(db_list).ok()?;
 
         if self.config.enable_sync {
-            self.sync_agent.as_ref().unwrap().mark_played_batch(
-                sync_list
-                    .iter()
-                    .map(|(pod, ep, pos, dur)| (pod.as_str(), ep.as_str(), *pos, *dur))
-                    .collect(),
-            );
+            if let Some(sync_agent) = &self.sync_agent {
+                match sync_agent.mark_played_batch(
+                    sync_list
+                        .iter()
+                        .map(|(pod, ep, pos, dur)| (pod.as_str(), ep.as_str(), *pos, *dur))
+                        .collect(),
+                ) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::error!("Error marking as played in gpodder: {err}");
+                    }
+                }
+            }
         }
         Some(())
     }
@@ -1090,20 +1129,32 @@ impl App {
                 (pod.id, pod.url.clone())
             })
             .unwrap();
-        let res = self.db.remove_podcast(pod_id);
-        if self.config.enable_sync && self.sync_agent.is_some() {
-            self.sync_agent.as_ref().unwrap().remove_podcast(url);
+        match self.db.remove_podcast(pod_id) {
+            Ok(_) => {}
+            Err(_) => {
+                self.notif_to_ui("Could not remove podcast from database".to_string(), true);
+                return;
+            }
         }
-        if res.is_err() {
-            self.notif_to_ui("Could not remove podcast from database".to_string(), true);
-            return;
+        if self.config.enable_sync && self.sync_agent.is_some() {
+            if let Some(sync_agent) = &self.sync_agent {
+                match sync_agent.remove_podcast(&url) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        log::warn!("Error removing podcast gpodder: {err}");
+                    }
+                }
+            }
         }
         {
-            self.podcasts.replace_all(
-                self.db
-                    .get_podcasts()
-                    .expect("Error retrieving info from database."),
-            );
+            match self.db.get_podcasts() {
+                Ok(podcasts) => {
+                    self.podcasts.replace_all(podcasts);
+                }
+                Err(err) => {
+                    log::warn!("Error retrieving info from database: {err}")
+                }
+            }
         }
         self.update_unplayed(true);
         self.update_queue();
