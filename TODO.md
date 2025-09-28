@@ -17,7 +17,7 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Clear details panel when nothing is selected
 - [x] Make queue persistent
 - [x] Fix crash when playing from queue
-- [ ] Create lockfile to prevent several instances of hullcaster
+- [x] Create lockfile to prevent several instances of hullcaster
 - [x] Add option to play next from queue automatically, makes sense only after internal player is implemented
 - [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
 - [x] Avoid repeated elements in queue
@@ -32,7 +32,7 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Show in the UI when an episode is currently downloaded
 - [ ] Add tests for the new UI
 - [x] Add config parameter `confirm_on_exit`.
-- [ ] Make synchronization in a new thread, cope with bad network conditions
+- [x] Make gpodder synchronization async, cope with bad network conditions
 - [x] Support streaming play
 - [x] Fix gpodder sync not working when episode link needs redirects
 - [ ] Fix initial setup issues when using gpodder
