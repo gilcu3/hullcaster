@@ -5,6 +5,7 @@ pub fn execute_request_post(
     agent: &Agent, url: String, body: String, encoded_credentials: &String, max_retries: usize,
 ) -> Result<String> {
     let mut max_retries = max_retries;
+    log::debug!("execute_request_get: {url} {body:?}");
 
     let request = loop {
         let response = agent
@@ -40,6 +41,7 @@ pub fn execute_request_get(
     max_retries: usize,
 ) -> Result<String> {
     let mut max_retries = max_retries;
+    log::debug!("execute_request_get: {url} {params:?}");
 
     let request = loop {
         let response = agent

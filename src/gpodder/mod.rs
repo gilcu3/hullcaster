@@ -1,12 +1,17 @@
 use anyhow::{anyhow, Result};
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{error::Error, sync::mpsc::Receiver, thread};
 use ureq::Agent;
 
-use self::net::{execute_request_get, execute_request_post};
-use self::types::{Device, EpisodeAction, Podcast, PodcastChanges, State, UploadPodcastChanges};
+use crate::config::TICK_RATE;
+use crate::types::Message;
 
-pub use self::types::{Action, Config};
+use self::net::{execute_request_get, execute_request_post};
+use self::types::{Device, Podcast, PodcastChanges, State, UploadPodcastChanges};
+
+pub use self::types::{Action, Config, EpisodeAction, GpodderMsg, GpodderRequest};
 mod net;
 mod types;
 
@@ -22,7 +27,7 @@ pub struct GpodderController {
 }
 
 impl GpodderController {
-    pub fn new(config: Config, timestamp: Option<i64>) -> GpodderController {
+    fn new(config: Config, timestamp: Option<i64>) -> GpodderController {
         let agent_builder = ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(10)))
             .timeout_global(Some(Duration::from_secs(30)));
@@ -38,6 +43,70 @@ impl GpodderController {
             agent,
             state,
         }
+    }
+
+    #[tokio::main]
+    pub async fn spawn_async(
+        rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
+        timestamp: Option<i64>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut message_iter = rx_from_app.try_iter();
+        let sync_agent = GpodderController::new(config, timestamp);
+        loop {
+            if let Some(message) = message_iter.next() {
+                match message {
+                    GpodderRequest::GetSubscriptionChanges => {
+                        let subscription_changes =
+                            sync_agent.get_subscription_changes().unwrap_or_else(|err| {
+                                log::error!("Failed to get subscription changes: {err}");
+                                (Vec::new(), Vec::new())
+                            });
+                        let episode_actions = sync_agent
+                            .get_episode_action_changes()
+                            .unwrap_or_else(|err| {
+                                log::error!("Failed to get episode action changes: {err}");
+                                Vec::new()
+                            });
+                        let timestamp = sync_agent.get_timestamp();
+                        tx_to_app
+                            .send(Message::Gpodder(GpodderMsg::SubscriptionChanges(
+                                subscription_changes,
+                                episode_actions,
+                                timestamp,
+                            )))
+                            .expect("Could not send message to app");
+                    }
+                    GpodderRequest::AddPodcast(url) => {
+                        if sync_agent.add_podcast(&url).is_err() {
+                            log::error!("Failed to add podcast with url {url}");
+                        }
+                    }
+                    GpodderRequest::RemovePodcast(url) => {
+                        if sync_agent.remove_podcast(&url).is_err() {
+                            log::error!("Failed to remove podcast with url {url}");
+                        }
+                    }
+                    GpodderRequest::MarkPlayed(pod_url, ep_url, position, duration) => {
+                        if sync_agent
+                            .mark_played(&pod_url, &ep_url, position, duration)
+                            .is_err()
+                        {
+                            log::error!(
+                                "Failed to mark episode as played {ep_url} {position} {duration}"
+                            );
+                        }
+                    }
+                    GpodderRequest::MarkPlayedBatch(episodes) => {
+                        if sync_agent.mark_played_batch(episodes).is_err() {
+                            log::error!("Failed to mark episodes as played");
+                        }
+                    }
+                    GpodderRequest::Quit => break,
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
+        }
+        Ok(())
     }
 
     pub fn get_timestamp(&self) -> i64 {
@@ -71,11 +140,8 @@ impl GpodderController {
     }
 
     pub fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, position: i64, duration: Option<i64>,
+        &self, podcast_url: &str, episode_url: &str, position: i64, duration: i64,
     ) -> Result<String> {
-        duration.ok_or(anyhow!(
-            "Impossible to mark played position without duration"
-        ))?;
         self.require_login()?;
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -88,7 +154,7 @@ impl GpodderController {
             timestamp: current_time()?,
             started: Some(0),
             position: Some(position),
-            total: duration,
+            total: Some(duration),
         };
         let actions = [action];
         let msg = serde_json::to_string(&actions)?;
@@ -104,7 +170,7 @@ impl GpodderController {
         Ok(result)
     }
 
-    pub fn mark_played_batch(&self, eps: Vec<(&str, &str, i64, Option<i64>)>) -> Result<String> {
+    pub fn mark_played_batch(&self, eps: Vec<(String, String, i64, i64)>) -> Result<String> {
         self.require_login()?;
         let _url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -114,13 +180,13 @@ impl GpodderController {
             .iter()
             .filter_map(|(podcast_url, episode_url, position, duration)| {
                 Some(EpisodeAction {
-                    podcast: podcast_url.to_string(),
-                    episode: episode_url.to_string(),
+                    podcast: podcast_url.into(),
+                    episode: episode_url.into(),
                     action: Action::Play,
                     timestamp: current_time().ok()?,
                     started: Some(0),
                     position: Some(*position),
-                    total: *duration,
+                    total: Some(*duration),
                 })
             })
             .collect();
@@ -155,11 +221,13 @@ impl GpodderController {
         let timestamp = actions["timestamp"]
             .as_i64()
             .ok_or(anyhow::anyhow!("Parsing timestamp failed"))?;
-        let episode_actions = actions["actions"].as_array().unwrap();
+        let episode_actions = actions["actions"]
+            .as_array()
+            .ok_or(anyhow!("Failed to get actions"))?;
         let mut actions: Vec<EpisodeAction> = Vec::new();
         for action in episode_actions {
-            let daction = serde_json::from_value::<EpisodeAction>(action.clone());
-            actions.push(daction.unwrap());
+            let action = serde_json::from_value::<EpisodeAction>(action.clone())?;
+            actions.push(action);
         }
         self.state.actions_timestamp.set(timestamp + 1);
         Ok(actions)
@@ -455,6 +523,15 @@ impl GpodderController {
 
         Ok(())
     }
+}
+
+pub fn init_gpodder(
+    rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
+    timestamp: Option<i64>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let _ = GpodderController::spawn_async(rx_from_app, tx_to_app, config, timestamp);
+    })
 }
 
 #[cfg(test)]

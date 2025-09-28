@@ -7,12 +7,13 @@ use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
+use crate::gpodder::{init_gpodder, EpisodeAction, GpodderMsg};
 use crate::{
     config::{Config, MAX_DURATION},
     db::{Database, SyncResult},
     downloads::{self, DownloadMsg, EpData},
     feeds::{self, FeedMsg, PodcastFeed},
-    gpodder::{Action, GpodderController},
+    gpodder::{Action, GpodderRequest},
     play_file,
     threadpool::Threadpool,
     types::{
@@ -39,7 +40,6 @@ pub struct App {
     config: Arc<Config>,
     db: Database,
     threadpool: Threadpool,
-    sync_agent: Option<GpodderController>,
     podcasts: LockVec<Podcast>,
     queue: LockVec<Episode>,
     unplayed: LockVec<Episode>,
@@ -52,6 +52,7 @@ pub struct App {
     pub tx_to_ui: mpsc::Sender<MainMessage>,
     pub tx_to_main: mpsc::Sender<Message>,
     pub rx_to_main: mpsc::Receiver<Message>,
+    pub tx_to_gpodder: mpsc::Sender<GpodderRequest>,
 }
 
 impl App {
@@ -76,19 +77,25 @@ impl App {
         // list and update the screen when necessary
         let podcast_list = LockVec::new(db_inst.get_podcasts()?);
 
-        let sync_agent = if config.enable_sync {
+        let (tx_to_gpodder, rx_from_app) = mpsc::channel();
+
+        if config.enable_sync {
             let timestamp = db_inst
                 .get_param("timestamp")
                 .and_then(|s| Ok(s.parse::<i64>()?));
-            let device_id = db_inst.get_param("device_id").unwrap_or({
+            let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
                 let res = evaluate_in_shell("hostname")
                     .expect("Failed to get hostname")
                     .trim()
                     .to_string();
-                db_inst.set_param("device_id", &res)?;
+                db_inst
+                    .set_param("device_id", &res)
+                    .expect("Failed to store device_id in db");
                 res
             });
-            Some(GpodderController::new(
+            init_gpodder(
+                rx_from_app,
+                tx_to_main.clone(),
                 crate::gpodder::Config::new(
                     config.max_retries,
                     config.sync_server.clone(),
@@ -97,9 +104,7 @@ impl App {
                     config.sync_password.clone(),
                 ),
                 timestamp.ok(),
-            ))
-        } else {
-            None
+            );
         };
 
         let stored_queue = db_inst.get_queue()?;
@@ -132,7 +137,6 @@ impl App {
             config,
             db: db_inst,
             threadpool,
-            sync_agent,
             podcasts: podcast_list,
             queue: queue_items,
             unplayed: unplayed_items,
@@ -145,6 +149,7 @@ impl App {
             tx_to_ui,
             tx_to_main,
             rx_to_main,
+            tx_to_gpodder,
         })
     }
 
@@ -188,13 +193,7 @@ impl App {
 
                 Message::Ui(UiMsg::SyncAll) => self.sync(None),
 
-                Message::Ui(UiMsg::SyncGpodder) => {
-                    if self.config.enable_sync {
-                        self.gpodder_sync()
-                    } else {
-                        Ok(())
-                    }
-                }
+                Message::Ui(UiMsg::SyncGpodder) => self.gpodder_sync_pre(),
 
                 Message::Ui(UiMsg::Play(pod_id, ep_id, external)) => {
                     self.play_file(pod_id, ep_id, external)
@@ -298,6 +297,11 @@ impl App {
                 }
                 Message::Ui(UiMsg::QueueModified) => self.write_queue(),
                 Message::Ui(UiMsg::Noop) => Ok(()),
+                Message::Gpodder(GpodderMsg::SubscriptionChanges(
+                    subscription_changes,
+                    episode_actions,
+                    timestamp,
+                )) => self.gpodder_sync_pos(subscription_changes, episode_actions, timestamp),
             };
             match result {
                 Ok(_) => {}
@@ -424,12 +428,22 @@ impl App {
         Ok(())
     }
 
-    fn gpodder_sync(&mut self) -> Result<()> {
-        let sync_agent = self.sync_agent.as_ref().unwrap();
-        // TODO: This needs to happen in separate thread
-        let subscription_changes = sync_agent.get_subscription_changes();
+    fn gpodder_sync_pre(&mut self) -> Result<()> {
+        if self.config.enable_sync {
+            self.tx_to_gpodder
+                .send(GpodderRequest::GetSubscriptionChanges)?;
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
 
-        let removed_pods = if let Ok((added, deleted)) = subscription_changes {
+    fn gpodder_sync_pos(
+        &mut self, subscription_changes: (Vec<String>, Vec<String>),
+        episode_actions: Vec<EpisodeAction>, timestamp: i64,
+    ) -> Result<()> {
+        let removed_pods = {
+            let (added, deleted) = subscription_changes;
             let pod_map = self
                 .podcasts
                 .borrow_map()
@@ -457,11 +471,7 @@ impl App {
                 }
             }
             removed_pods
-        } else {
-            Vec::new()
         };
-
-        let actions = sync_agent.get_episode_action_changes();
 
         let pod_data = self
             .podcasts
@@ -484,7 +494,7 @@ impl App {
 
         let mut last_actions = HashMap::new();
 
-        for a in actions.unwrap() {
+        for a in episode_actions {
             match a.action {
                 Action::Play => {
                     log::info!(
@@ -516,14 +526,13 @@ impl App {
             updates.push((pod_id, ep_id, position, total));
         }
         let number_updates = updates.len();
-        let timestamp = &sync_agent.get_timestamp().to_string();
 
         // mutable actions on self
         self.mark_played_db_batch(updates)?;
         for pod_id in removed_pods {
             self.remove_podcast(pod_id, true)?;
         }
-        let _ = self.db.set_param("timestamp", timestamp);
+        let _ = self.db.set_param("timestamp", &timestamp.to_string());
         self.update_unplayed(true);
         self.update_filters(self.filters, false);
         self.notif_to_ui(
@@ -554,9 +563,7 @@ impl App {
             false,
         );
 
-        if self.config.enable_sync {
-            let _ = self.gpodder_sync();
-        }
+        let _ = self.gpodder_sync_pre();
     }
 
     /// Handles the application logic for adding a new podcast, or synchronizing
@@ -577,11 +584,7 @@ impl App {
             let url = pod.url.clone();
             db_result = self.db.insert_podcast(pod);
             if self.config.enable_sync {
-                if let Some(sync_agent) = &self.sync_agent {
-                    if sync_agent.add_podcast(&url).is_err() {
-                        log::error!("Failed to add podcast with url {url}");
-                    }
-                }
+                self.tx_to_gpodder.send(GpodderRequest::AddPodcast(url))?;
             }
             failure = format!("Error adding podcast {title} to database.");
         }
@@ -772,9 +775,13 @@ impl App {
         }
 
         if self.config.enable_sync {
-            if let Some(sync_agent) = &self.sync_agent {
-                sync_agent.mark_played(&pod_url, &ep_url, position, duration)?;
-            }
+            let duration = duration.unwrap_or_else( ||{
+                log::info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
+                MAX_DURATION
+            });
+            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
+                pod_url, ep_url, position, duration,
+            ))?;
         }
         Ok(())
     }
@@ -788,7 +795,7 @@ impl App {
     /// TODO: separate mark_played from set position
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Result<()> {
         let mut changed = false;
-        let (mut duration, ep_position, ep_url, pod_url) = {
+        let (duration, ep_position, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map
                 .get(&pod_id)
@@ -834,20 +841,20 @@ impl App {
         }
 
         if self.config.enable_sync {
-            if duration.is_none() {
-                duration = Some(MAX_DURATION);
+            let duration = duration.unwrap_or_else(||{
                 log::info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
-            }
+                MAX_DURATION
+            });
             let position = {
                 if played {
-                    duration.unwrap()
+                    duration
                 } else {
                     ep_position
                 }
             };
-            if let Some(sync_agent) = &self.sync_agent {
-                sync_agent.mark_played(&pod_url, &ep_url, position, duration)?;
-            }
+            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
+                pod_url, ep_url, position, duration,
+            ))?;
         }
         Ok(())
     }
@@ -888,16 +895,13 @@ impl App {
                     changed = true;
                 }
                 if self.config.enable_sync {
-                    let duration = if episode.duration.is_some() {
-                        episode.duration
-                    } else {
-                        Some(MAX_DURATION)
-                    };
-                    let position = if played {
-                        duration.unwrap()
-                    } else {
-                        episode.position
-                    };
+                    let duration = episode.duration.unwrap_or_else(|| {
+                        log::info!(
+                            "Setting duration to infinity, else cannot mark as played on gpodder"
+                        );
+                        MAX_DURATION
+                    });
+                    let position = if played { duration } else { episode.position };
                     sync_list.push((
                         podcast_url.to_owned(),
                         episode.url.to_owned(),
@@ -917,19 +921,12 @@ impl App {
         self.db.set_played_status_batch(db_list)?;
 
         if self.config.enable_sync {
-            if let Some(sync_agent) = &self.sync_agent {
-                match sync_agent.mark_played_batch(
-                    sync_list
-                        .iter()
-                        .map(|(pod, ep, pos, dur)| (pod.as_str(), ep.as_str(), *pos, *dur))
-                        .collect(),
-                ) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::error!("Error marking as played in gpodder: {err}");
-                    }
-                }
-            }
+            let episodes = sync_list
+                .iter()
+                .map(|(pod, ep, pos, dur)| (pod.clone(), ep.clone(), *pos, *dur))
+                .collect();
+            self.tx_to_gpodder
+                .send(GpodderRequest::MarkPlayedBatch(episodes))?;
         }
         Ok(())
     }
@@ -1174,15 +1171,9 @@ impl App {
             })
             .unwrap();
         self.db.remove_podcast(pod_id)?;
-        if self.config.enable_sync && self.sync_agent.is_some() {
-            if let Some(sync_agent) = &self.sync_agent {
-                match sync_agent.remove_podcast(&url) {
-                    Ok(()) => {}
-                    Err(err) => {
-                        log::warn!("Error removing podcast gpodder: {err}");
-                    }
-                }
-            }
+        if self.config.enable_sync {
+            self.tx_to_gpodder
+                .send(GpodderRequest::RemovePodcast(url))?;
         }
         {
             match self.db.get_podcasts() {
@@ -1239,7 +1230,12 @@ impl App {
     }
 
     pub fn finalize(&mut self) {
-        self.tx_to_ui.send(MainMessage::TearDown).unwrap();
+        self.tx_to_ui
+            .send(MainMessage::TearDown)
+            .expect("Failed to send MainMessage::TearDown message");
+        self.tx_to_gpodder
+            .send(GpodderRequest::Quit)
+            .expect("Failed to send GpodderRequest::Quit message");
         if let Some(thread) = self.ui_thread.take() {
             thread.join().unwrap(); // Wait for UI thread to finish tearing down
         }

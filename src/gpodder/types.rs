@@ -3,6 +3,21 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use std::{cell::Cell, fmt};
 
+#[derive(Debug)]
+pub enum GpodderRequest {
+    GetSubscriptionChanges,
+    AddPodcast(String),
+    RemovePodcast(String),
+    MarkPlayed(String, String, i64, i64),
+    MarkPlayedBatch(Vec<(String, String, i64, i64)>),
+    Quit,
+}
+
+#[derive(Debug)]
+pub enum GpodderMsg {
+    SubscriptionChanges((Vec<String>, Vec<String>), Vec<EpisodeAction>, i64),
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub max_retries: usize,
@@ -38,8 +53,7 @@ pub struct PodcastChanges {
     pub add: Vec<String>,
     pub remove: Vec<String>,
     pub timestamp: i64,
-    // I don't know where this came from
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub update_urls: Option<Vec<String>>,
 }
 
@@ -61,6 +75,7 @@ pub struct UploadPodcastChanges {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
 pub enum Action {
     New,
     Download,
@@ -97,7 +112,8 @@ where
         where
             E: serde::de::Error,
         {
-            let dt = DateTime::parse_from_rfc3339(value).unwrap();
+            let dt = DateTime::parse_from_rfc3339(value)
+                .map_err(|err| E::custom(format!("failed to parse date: {err}")))?;
             Ok(dt.timestamp())
         }
     }

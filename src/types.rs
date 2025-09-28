@@ -8,6 +8,7 @@ use nohash_hasher::BuildNoHashHasher;
 
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
+use crate::gpodder::GpodderMsg;
 use crate::ui::UiMsg;
 use crate::utils::{format_duration, StringUtils};
 
@@ -585,4 +586,5 @@ pub enum Message {
     Ui(UiMsg),
     Feed(FeedMsg),
     Dl(DownloadMsg),
+    Gpodder(GpodderMsg),
 }
