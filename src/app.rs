@@ -7,17 +7,20 @@ use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
-use crate::config::{Config, MAX_DURATION};
-use crate::db::{Database, SyncResult};
-use crate::downloads::{self, DownloadMsg, EpData};
-use crate::feeds::{self, FeedMsg, PodcastFeed};
-use crate::gpodder::{Action, GpodderController};
-use crate::play_file;
-use crate::threadpool::Threadpool;
-use crate::types::*;
-use crate::ui::{UiMsg, UiState};
-use crate::utils::{
-    current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection,
+use crate::{
+    config::{Config, MAX_DURATION},
+    db::{Database, SyncResult},
+    downloads::{self, DownloadMsg, EpData},
+    feeds::{self, FeedMsg, PodcastFeed},
+    gpodder::{Action, GpodderController},
+    play_file,
+    threadpool::Threadpool,
+    types::{
+        Episode, FilterStatus, FilterType, Filters, LockVec, Menuable, Message, Podcast,
+        PodcastNoId,
+    },
+    ui::{UiMsg, UiState},
+    utils::{current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection},
 };
 
 /// Enum used for communicating with other threads.
@@ -478,7 +481,7 @@ impl App {
 
         for a in actions.unwrap() {
             match a.action {
-                Action::play => {
+                Action::Play => {
                     log::info!(
                         "EpisodeAction received - podcast: {} episode: {} position: {} total: {}",
                         a.podcast,
@@ -499,9 +502,7 @@ impl App {
                     let ep_id = *ep_id_opt.unwrap();
                     last_actions.insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
                 }
-                Action::download => {}
-                Action::delete => {}
-                Action::new => {}
+                Action::Delete | Action::Download | Action::New => {}
             }
         }
         let mut updates = Vec::new();

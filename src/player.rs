@@ -105,14 +105,6 @@ impl Player {
         Ok(())
     }
 
-    pub fn spawn(
-        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
-        playing: Arc<RwLock<PlaybackStatus>>,
-    ) -> thread::JoinHandle<()> {
-        thread::spawn(move || {
-            let _ = Player::spawn_async(rx_from_ui, elapsed, playing);
-        })
-    }
     fn play_file(&mut self, path: &PathBuf) {
         let file = std::fs::File::open(path).unwrap();
         let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
@@ -196,4 +188,13 @@ impl Player {
         }
         *self.elapsed.write().unwrap() = elapsed.as_secs();
     }
+}
+
+pub fn init_player(
+    rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
+    playing: Arc<RwLock<PlaybackStatus>>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let _ = Player::spawn_async(rx_from_ui, elapsed, playing);
+    })
 }

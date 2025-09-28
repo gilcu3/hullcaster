@@ -20,31 +20,23 @@ use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
 use crate::{
-    media_control::{init_controls, ControlMessage},
-    player::PlaybackStatus,
-};
-pub use types::UiMsg;
-
-pub mod colors;
-mod notification;
-mod types;
-
-use crate::{
     app::MainMessage,
-    config::SEEK_LENGTH,
-    player::{Player, PlayerMessage},
-    types::{FilterType, LockVec, Menuable, Message, ShareableRwLock},
-    utils::{clean_html, format_duration},
-};
-use crate::{
     config::Config,
+    config::{SCROLL_AMOUNT, SEEK_LENGTH, TICK_RATE},
     keymap::{Keybindings, UserAction},
-    types::{Episode, Podcast},
+    media_control::{init_controls, ControlMessage},
+    player::{init_player, PlaybackStatus, PlayerMessage},
+    types::{Episode, FilterType, LockVec, Menuable, Message, Podcast, ShareableRwLock},
+    utils::{clean_html, format_duration},
 };
 
 use self::colors::AppColors;
 use self::notification::NotificationManager;
-use crate::config::{SCROLL_AMOUNT, TICK_RATE};
+
+pub use types::UiMsg;
+pub mod colors;
+mod notification;
+mod types;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Panel {
@@ -217,7 +209,7 @@ impl UiState {
         let elapsed = Arc::new(RwLock::new(0));
         let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
         // TODO: handle threads properly
-        Player::spawn(rx_from_ui, elapsed.clone(), playing.clone());
+        init_player(rx_from_ui, elapsed.clone(), playing.clone());
 
         let (tx_to_control, rx_from_control) = mpsc::channel();
         let current_episode = Arc::new(RwLock::new(None));

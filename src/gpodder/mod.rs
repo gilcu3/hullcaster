@@ -1,139 +1,20 @@
 use anyhow::{anyhow, Result};
 use base64::Engine;
-use serde::de::Visitor;
-use serde::ser::{Serialize, SerializeStruct, Serializer};
-use serde::{Deserialize, Deserializer};
 use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ureq::Agent;
 
-use chrono::{DateTime, TimeZone, Utc};
-use std::fmt;
-
 use crate::config::Config;
+use crate::gpodder::types::{Device, EpisodeAction, Podcast, PodcastChanges, UploadPodcastChanges};
 use crate::utils::{execute_request_get, execute_request_post};
 
-#[allow(non_camel_case_types)]
-#[derive(Deserialize, Debug)]
-struct Device {
-    id: String,
-    caption: String,
-    #[serde(rename = "type")]
-    typed: String,
-    subscriptions: u32,
-    // this are not specified in gpodder API
-    #[allow(dead_code)]
-    user: Option<i32>,
-    #[allow(dead_code)]
-    deviceid: Option<String>,
-}
-
-#[allow(non_camel_case_types)]
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct PodcastChanges {
-    add: Vec<String>,
-    remove: Vec<String>,
-    timestamp: i64,
-    // I dont know where this came from
-    update_urls: Option<Vec<String>>,
-}
-
-#[allow(non_camel_case_types)]
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct Podcast {
-    feed: String,
-    title: Option<String>,
-    website: Option<String>,
-    description: Option<String>,
-}
-
-#[allow(non_camel_case_types)]
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct UploadPodcastChanges {
-    update_urls: Vec<Vec<String>>,
-    timestamp: i64,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Deserialize, Debug)]
-pub enum Action {
-    new,
-    download,
-    play,
-    delete,
-}
+mod types;
+pub use crate::gpodder::types::Action;
 
 fn current_time() -> Result<i64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64)
-}
-
-fn deserialize_date<'de, D>(deserializer: D) -> Result<i64, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct GpodderDate;
-
-    impl Visitor<'_> for GpodderDate {
-        type Value = i64;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a date string in the format YYYY-MM-DD")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            let dt = DateTime::parse_from_rfc3339(value).unwrap();
-            Ok(dt.timestamp())
-        }
-    }
-
-    deserializer.deserialize_str(GpodderDate)
-}
-
-#[derive(Deserialize, Debug)]
-pub struct EpisodeAction {
-    pub podcast: String,
-    pub episode: String,
-    pub action: Action,
-    #[serde(deserialize_with = "deserialize_date")]
-    pub timestamp: i64,
-    pub started: Option<i64>,
-    pub position: Option<i64>,
-    pub total: Option<i64>,
-}
-
-impl Serialize for EpisodeAction {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("EpisodeAction", 6)?;
-        state.serialize_field("podcast", &self.podcast)?;
-        state.serialize_field("episode", &self.episode)?;
-        let action = match self.action {
-            Action::new => "new",
-            Action::download => "download",
-            Action::play => "play",
-            Action::delete => "delete",
-        };
-        state.serialize_field("action", action)?;
-        let datetime = Utc.timestamp_opt(self.timestamp, 0);
-        let datetime_str = datetime
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        state.serialize_field("timestamp", datetime_str.as_str())?;
-        state.serialize_field("started", &self.started)?;
-        state.serialize_field("position", &self.position)?;
-        state.serialize_field("total", &self.total)?;
-        state.end()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -177,7 +58,7 @@ impl GpodderController {
         )
     }
 
-    pub fn init(&self) -> Result<()> {
+    fn init(&self) -> Result<()> {
         let res = self.get_devices();
         let mut exists = false;
         for dev in res.unwrap() {
@@ -185,7 +66,7 @@ impl GpodderController {
                 log::info!(
                     "Using device: id = {}, type = {}, subscriptions = {}, caption = {}",
                     dev.id,
-                    dev.typed,
+                    dev._type,
                     dev.subscriptions,
                     dev.caption
                 );
@@ -214,7 +95,7 @@ impl GpodderController {
         let action = EpisodeAction {
             podcast: podcast_url.to_string(),
             episode: episode_url.to_string(),
-            action: Action::play,
+            action: Action::Play,
             timestamp: current_time()?,
             started: Some(0),
             position: Some(position),
@@ -245,7 +126,7 @@ impl GpodderController {
                 Some(EpisodeAction {
                     podcast: podcast_url.to_string(),
                     episode: episode_url.to_string(),
-                    action: Action::play,
+                    action: Action::Play,
                     timestamp: current_time().ok()?,
                     started: Some(0),
                     position: Some(*position),
@@ -517,7 +398,7 @@ impl GpodderController {
         let actions = self.get_episode_action_changes();
         for a in actions? {
             match a.action {
-                Action::play => {
+                Action::Play => {
                     println!(
                         "Play: {} - {} -> {} {} {}",
                         a.podcast,
@@ -527,13 +408,13 @@ impl GpodderController {
                         a.started.unwrap()
                     );
                 }
-                Action::download => {
+                Action::Download => {
                     println!("Download: {} - {}", a.podcast, a.episode);
                 }
-                Action::delete => {
+                Action::Delete => {
                     println!("Delete: {} - {}", a.podcast, a.episode);
                 }
-                Action::new => {
+                Action::New => {
                     println!("New: {} - {}", a.podcast, a.episode);
                 }
             }
