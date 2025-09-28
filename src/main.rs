@@ -8,6 +8,7 @@ use std::{env, thread};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
+use fs2::FileExt;
 use gag::Gag;
 use utils::parse_create_dir;
 
@@ -123,6 +124,11 @@ fn main() -> Result<()> {
         });
     let config = Arc::new(Config::new(&config_path)?);
 
+    let lock_file = init_lock_file().unwrap_or_else(|err|{
+        eprintln!("Failed to open lockfile: {err:?}.\nIf there is no other running instance of hullcaster, delete the lock file");
+        std::process::exit(1);
+    });
+
     if setup_logs().is_err() {
         eprintln!("Could not set up logging.");
     }
@@ -153,6 +159,8 @@ fn main() -> Result<()> {
                 log::info!("Starting app");
                 app.run(); // main loop
                 app.finalize();
+                fs2::FileExt::unlock(&lock_file)
+                    .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
                 log::info!("Closing app");
                 std::process::exit(0);
             });
@@ -196,15 +204,17 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
     }
 }
 
-// this should be improved to use default dirs-next crate
-fn setup_logs() -> Result<()> {
-    let default_log_path = dirs::home_dir().map(|h| h.join(".local/state/hullcaster"));
-    let env_log_path = match env::var("XDG_STATE_HOME") {
+fn get_app_state_dir() -> Result<PathBuf> {
+    let default_path = dirs::home_dir().map(|h| h.join(".local/state/hullcaster"));
+    let env_path = match env::var("XDG_STATE_HOME") {
         Ok(val) => Some(val + "/hullcaster"),
         Err(_) => None,
     };
+    parse_create_dir(env_path.as_deref(), default_path)
+}
 
-    let log_path = parse_create_dir(env_log_path.as_deref(), default_log_path)?;
+fn setup_logs() -> Result<()> {
+    let log_path = get_app_state_dir()?;
     let file_path = log_path.join("log");
     let log_file = OpenOptions::new()
         .append(true)
@@ -235,6 +245,21 @@ fn setup_logs() -> Result<()> {
     )])
     .unwrap();
     Ok(())
+}
+
+fn init_lock_file() -> Result<File> {
+    let path = get_app_state_dir()?;
+    let file_path = path.join("hullcaster.lock");
+
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(file_path.clone())
+        .context(format!("{file_path:?}"))?;
+    file.try_lock_exclusive()
+        .context(format!("{file_path:?}"))?;
+    Ok(file)
 }
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
