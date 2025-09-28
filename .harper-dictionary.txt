@@ -1,0 +1,6 @@
+TODO
+gpodder
+hashmap
+hullcaster
+opodsync
+sqlite
