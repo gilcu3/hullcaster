@@ -56,7 +56,7 @@ impl App {
     /// up the connection to the database, download manager, and UI thread, and
     /// reads the list of podcasts from the database.
     pub fn new(config: Arc<Config>, db_path: &Path) -> Result<App> {
-        // create transmitters and receivers for passing messages between
+        // Create transmitters and receivers for passing messages between
         // threads
         let (tx_to_ui, rx_from_main) = mpsc::channel();
         let (tx_to_main, rx_to_main) = mpsc::channel::<Message>();
