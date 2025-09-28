@@ -89,9 +89,14 @@ impl App {
                 res
             });
             Some(GpodderController::new(
-                config.clone(),
+                crate::gpodder::Config::new(
+                    config.max_retries,
+                    config.sync_server.clone(),
+                    device_id,
+                    config.sync_username.clone(),
+                    config.sync_password.clone(),
+                ),
                 timestamp.ok(),
-                device_id,
             ))
         } else {
             None
@@ -1236,7 +1241,7 @@ impl App {
     pub fn finalize(&mut self) {
         self.tx_to_ui.send(MainMessage::TearDown).unwrap();
         if let Some(thread) = self.ui_thread.take() {
-            thread.join().unwrap(); // wait for UI thread to finish teardown
+            thread.join().unwrap(); // Wait for UI thread to finish tearing down
         }
     }
 

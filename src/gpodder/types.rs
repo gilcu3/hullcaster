@@ -1,7 +1,23 @@
-use std::fmt;
-
+use base64::Engine;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
+use std::{cell::Cell, fmt};
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub max_retries: usize,
+    pub server: String,
+    pub device: String,
+    pub username: String,
+    pub credentials: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct State {
+    pub actions_timestamp: Cell<i64>,
+    pub subscriptions_timestamp: Cell<i64>,
+    pub logged_in: Cell<bool>,
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Device {
@@ -52,6 +68,18 @@ pub enum Action {
     Delete,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct EpisodeAction {
+    pub podcast: String,
+    pub episode: String,
+    pub action: Action,
+    #[serde(deserialize_with = "deserialize_date")]
+    pub timestamp: i64,
+    pub started: Option<i64>,
+    pub position: Option<i64>,
+    pub total: Option<i64>,
+}
+
 fn deserialize_date<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
     D: Deserializer<'de>,
@@ -75,18 +103,6 @@ where
     }
 
     deserializer.deserialize_str(GpodderDate)
-}
-
-#[derive(Deserialize, Debug)]
-pub struct EpisodeAction {
-    pub podcast: String,
-    pub episode: String,
-    pub action: Action,
-    #[serde(deserialize_with = "deserialize_date")]
-    pub timestamp: i64,
-    pub started: Option<i64>,
-    pub position: Option<i64>,
-    pub total: Option<i64>,
 }
 
 impl Serialize for EpisodeAction {
@@ -113,5 +129,21 @@ impl Serialize for EpisodeAction {
         state.serialize_field("position", &self.position)?;
         state.serialize_field("total", &self.total)?;
         state.end()
+    }
+}
+
+impl Config {
+    pub(crate) fn new(
+        max_retries: usize, server: String, device: String, username: String, password: String,
+    ) -> Self {
+        let credentials =
+            base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
+        Self {
+            max_retries,
+            server,
+            device,
+            username,
+            credentials,
+        }
     }
 }

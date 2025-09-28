@@ -53,7 +53,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// *Sync subcommand:*
 /// Connects to the sqlite database, then initiates a full sync of all
 /// podcasts. No UI is created for this, as the intention is to be used
-/// in a programmatic way (e.g., setting up a cron job to sync
+/// in a programmatic way (e.g., setting up a cronjob to sync
 /// regularly.)
 ///
 /// *Import subcommand:*

@@ -14,7 +14,7 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
-use ureq::{Agent, Error, ResponseExt};
+use ureq::ResponseExt;
 
 use crate::types::*;
 
@@ -37,73 +37,6 @@ pub fn convert_date(timestamp: i64) -> Result<DateTime<Utc>> {
 pub fn evaluate_in_shell(value: &str) -> Result<String> {
     let res = Command::new("sh").arg("-c").arg(value).output()?;
     Ok(String::from_utf8_lossy(&res.stdout).to_string())
-}
-
-pub fn execute_request_post(
-    agent: &Agent, url: String, body: String, encoded_credentials: &String,
-) -> Result<String> {
-    let mut max_retries = 3;
-
-    let request = loop {
-        let response = agent
-            .post(&url)
-            .header("Authorization", &format!("Basic {encoded_credentials}"))
-            .send(&body);
-
-        match response {
-            Ok(resp) => {
-                break Ok(resp);
-            }
-            Err(Error::StatusCode(code)) => {
-                // Handle HTTP error statuses (e.g., 404, 500)
-                println!("Error code: {code}");
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Error code: {code}"));
-                }
-            }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Max retries exceeded"));
-                }
-            }
-        }
-    }?;
-    Ok(request.into_body().read_to_string()?)
-}
-
-pub fn execute_request_get(
-    agent: &Agent, url: String, params: Vec<(&str, &str)>, encoded_credentials: &String,
-) -> Result<String> {
-    let mut max_retries = 3;
-
-    let request = loop {
-        let response = agent
-            .get(&url)
-            .header("Authorization", &format!("Basic {encoded_credentials}"))
-            .query_pairs(params.clone())
-            .call();
-
-        match response {
-            Ok(resp) => {
-                break Ok(resp);
-            }
-            Err(Error::StatusCode(code)) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Error code: {code}"));
-                }
-            }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Max retries exceeded"));
-                }
-            }
-        }
-    }?;
-    Ok(request.into_body().read_to_string()?)
 }
 
 pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
