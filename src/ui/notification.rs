@@ -1,7 +1,5 @@
-use std::time::{Duration, Instant};
-
-use log::info;
 use ratatui::{layout::Rect, style::Stylize, text::Line, Frame};
+use std::time::{Duration, Instant};
 
 use super::colors::AppColors;
 
@@ -93,7 +91,7 @@ impl NotificationManager {
     /// notification is already being displayed, this method will
     /// overwrite that message.
     pub fn persistent_notif(&mut self, message: String, error: bool) {
-        info!("{message}");
+        log::debug!("{message}");
         let notif = Notification::new(message, error, None);
         self.persistent_msg = Some(notif.clone());
         if self.msg_stack.is_empty() {

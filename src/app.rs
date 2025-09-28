@@ -497,7 +497,7 @@ impl App {
         for a in episode_actions {
             match a.action {
                 Action::Play => {
-                    log::info!(
+                    log::debug!(
                         "EpisodeAction received - podcast: {} episode: {} position: {} total: {}",
                         a.podcast,
                         a.episode,
@@ -776,7 +776,7 @@ impl App {
 
         if self.config.enable_sync {
             let duration = duration.unwrap_or_else( ||{
-                log::info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
+                log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
                 MAX_DURATION
             });
             self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
@@ -842,7 +842,7 @@ impl App {
 
         if self.config.enable_sync {
             let duration = duration.unwrap_or_else(||{
-                log::info!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
+                log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
                 MAX_DURATION
             });
             let position = {
@@ -896,7 +896,7 @@ impl App {
                 }
                 if self.config.enable_sync {
                     let duration = episode.duration.unwrap_or_else(|| {
-                        log::info!(
+                        log::warn!(
                             "Setting duration to infinity, else cannot mark as played on gpodder"
                         );
                         MAX_DURATION

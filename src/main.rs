@@ -9,7 +9,6 @@ use std::{env, thread};
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
 use gag::Gag;
-use log::info;
 use utils::parse_create_dir;
 
 mod app;
@@ -126,8 +125,6 @@ fn main() -> Result<()> {
 
     if setup_logs().is_err() {
         eprintln!("Could not set up logging.");
-    } else {
-        info!("Logging set up.");
     }
 
     let mut db_path = config_path;
@@ -153,8 +150,10 @@ fn main() -> Result<()> {
             let mut app = App::new(config, &db_path)?;
 
             let main_thread = thread::spawn(move || {
+                log::info!("Starting app");
                 app.run(); // main loop
                 app.finalize();
+                log::info!("Closing app");
                 std::process::exit(0);
             });
 

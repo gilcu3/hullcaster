@@ -121,7 +121,7 @@ impl GpodderController {
         let mut exists = false;
         for dev in res.unwrap() {
             if dev.id == self.config.device {
-                log::info!(
+                log::debug!(
                     "Using device: id = {}, type = {}, subscriptions = {}, caption = {}",
                     dev.id,
                     dev._type,
@@ -166,7 +166,7 @@ impl GpodderController {
             &self.config.credentials,
             self.config.max_retries,
         )?;
-        log::info!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
+        log::debug!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
         Ok(result)
     }
 
@@ -199,7 +199,7 @@ impl GpodderController {
             &self.config.credentials,
             self.config.max_retries,
         )?;
-        log::info!("Marked played: {} actions", actions.len());
+        log::debug!("Marked played: {} actions", actions.len());
         Ok(result)
     }
 
