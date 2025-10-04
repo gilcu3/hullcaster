@@ -192,6 +192,8 @@ impl UiState {
                 let _ = terminal.draw(|frame| ui.draw(frame));
             }
             ratatui::restore();
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            std::process::exit(0);
         })
     }
     pub fn new(

@@ -253,8 +253,6 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         fs2::FileExt::unlock(&lock_file)
             .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
         log::info!("Closing app");
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        std::process::exit(0);
     }));
 
     // the winit's event loop must be run in the main thread
