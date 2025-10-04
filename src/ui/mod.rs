@@ -23,8 +23,8 @@ use crate::{
     config::Config,
     config::{SCROLL_AMOUNT, SEEK_LENGTH, TICK_RATE},
     keymap::{Keybindings, UserAction},
-    media_control::{init_controls, ControlMessage},
-    player::{init_player, PlaybackStatus, PlayerMessage},
+    media_control::ControlMessage,
+    player::{PlaybackStatus, PlayerMessage},
     types::{Episode, FilterType, LockVec, Menuable, Message, Podcast, ShareableRwLock},
     utils::{clean_html, format_duration},
 };
@@ -106,13 +106,27 @@ pub struct UiState {
 }
 
 impl UiState {
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
-        tx_to_main: mpsc::Sender<Message>,
+        tx_to_main: mpsc::Sender<Message>, tx_to_player: mpsc::Sender<PlayerMessage>,
+        rx_from_control: mpsc::Receiver<ControlMessage>,
+        current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
+        elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
-            let mut ui = UiState::new(config, items, queue_items, unplayed_items);
+            let mut ui = UiState::new(
+                config,
+                items,
+                queue_items,
+                unplayed_items,
+                tx_to_player,
+                rx_from_control,
+                current_episode,
+                elapsed,
+                playing,
+            );
             let mut terminal = ratatui::init();
             let mut main_message_iter = rx_from_main.try_iter();
             loop {
@@ -196,25 +210,20 @@ impl UiState {
             std::process::exit(0);
         })
     }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
-        unplayed_items: LockVec<Episode>,
+        unplayed_items: LockVec<Episode>, tx_to_player: mpsc::Sender<PlayerMessage>,
+        rx_from_control: mpsc::Receiver<ControlMessage>,
+        current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
+        elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
     ) -> UiState {
         let active_popup = if items.is_empty() {
             Some(Popup::Welcome)
         } else {
             None
         };
-
-        let (tx_to_player, rx_from_ui) = mpsc::channel();
-        let elapsed = Arc::new(RwLock::new(0));
-        let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
-        // TODO: handle threads properly
-        init_player(rx_from_ui, elapsed.clone(), playing.clone());
-
-        let (tx_to_control, rx_from_control) = mpsc::channel();
-        let current_episode = Arc::new(RwLock::new(None));
-        init_controls(tx_to_control, current_episode.clone(), playing.clone());
 
         Self {
             keymap: config.keybindings.clone(),
@@ -555,7 +564,6 @@ impl UiState {
                             Popup::ConfirmQuit => match input.code {
                                 KeyCode::Char('y') => {
                                     self.active_popup = None;
-                                    let _ = self.tx_to_player.send(PlayerMessage::Quit);
                                     return vec![UiMsg::Quit];
                                 }
                                 KeyCode::Char('n') => {
@@ -802,7 +810,6 @@ impl UiState {
                 }
             }
         }
-        std::thread::sleep(Duration::from_millis(TICK_RATE));
         vec![UiMsg::Noop]
     }
 

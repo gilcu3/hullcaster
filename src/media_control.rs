@@ -1,5 +1,5 @@
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
-use std::{sync::mpsc::Sender, thread, time::Duration};
+use std::sync::mpsc::Sender;
 
 use crate::{
     config::TICK_RATE,
@@ -23,9 +23,9 @@ fn update_control_metadata(title: &str, controls: &mut MediaControls) {
 pub fn init_controls(
     tx_to_ui: Sender<ControlMessage>,
     current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
-    playing: ShareableRwLock<PlaybackStatus>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
+    playing: ShareableRwLock<PlaybackStatus>, mut rx_from_main: tokio::sync::oneshot::Receiver<()>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn({
         let config = PlatformConfig {
             dbus_name: "hullcaster",
             display_name: "Hullcaster",
@@ -44,33 +44,38 @@ pub fn init_controls(
                 _ => {}
             })
             .unwrap();
-        //
-        let refresh_duration = Duration::from_millis(TICK_RATE);
-        loop {
-            if last_status != *playing.read().unwrap() {
-                last_status = *playing.read().unwrap();
-                match last_status {
-                    PlaybackStatus::Playing => {
-                        let _ = controls.set_playback(MediaPlayback::Playing { progress: None });
-                    }
-                    PlaybackStatus::Paused => {
-                        let _ = controls.set_playback(MediaPlayback::Paused { progress: None });
-                    }
-                    PlaybackStatus::Finished | PlaybackStatus::Ready => {
-                        let _ = controls.set_playback(MediaPlayback::Stopped);
+
+        async move {
+            loop {
+                if last_status != *playing.read().unwrap() {
+                    last_status = *playing.read().unwrap();
+                    match last_status {
+                        PlaybackStatus::Playing => {
+                            let _ =
+                                controls.set_playback(MediaPlayback::Playing { progress: None });
+                        }
+                        PlaybackStatus::Paused => {
+                            let _ = controls.set_playback(MediaPlayback::Paused { progress: None });
+                        }
+                        PlaybackStatus::Finished | PlaybackStatus::Ready => {
+                            let _ = controls.set_playback(MediaPlayback::Stopped);
+                        }
                     }
                 }
-            }
 
-            if let Some(ep) = current_episode.read().unwrap().as_ref() {
-                let ep = ep.read().unwrap();
-                if ep.id != last_episode_id {
-                    update_control_metadata(&ep.title, &mut controls);
-                    last_episode_id = ep.id;
+                if let Some(ep) = current_episode.read().unwrap().as_ref() {
+                    let ep = ep.read().unwrap();
+                    if ep.id != last_episode_id {
+                        update_control_metadata(&ep.title, &mut controls);
+                        last_episode_id = ep.id;
+                    }
+                }
+                if rx_from_main.try_recv().is_ok() {
+                    break;
+                } else {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(TICK_RATE)).await;
                 }
             }
-
-            std::thread::sleep(refresh_duration);
         }
     })
 }

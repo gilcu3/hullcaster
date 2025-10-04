@@ -3,8 +3,8 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::{mpsc, RwLock};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
@@ -28,11 +28,13 @@ mod types;
 mod ui;
 mod utils;
 
-use crate::app::App;
+use crate::app::{App, MainMessage};
 use crate::config::Config;
 use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
+use crate::media_control::init_controls;
+use crate::player::{init_player, PlaybackStatus, PlayerMessage};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::UiState;
@@ -206,6 +208,21 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         }));
     };
 
+    let (tx_to_player, rx_from_ui) = mpsc::channel();
+    let elapsed = Arc::new(RwLock::new(0));
+    let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
+    init_player(rx_from_ui, elapsed.clone(), playing.clone());
+
+    let (tx_to_control, rx_from_control) = mpsc::channel();
+    let current_episode = Arc::new(RwLock::new(None));
+    let (tx_to_controls, rx_controls_from_main) = tokio::sync::oneshot::channel::<()>();
+    tasks.push(init_controls(
+        tx_to_control,
+        current_episode.clone(),
+        playing.clone(),
+        rx_controls_from_main,
+    ));
+
     // Create vector of podcasts, where references are checked at runtime.
     // This is necessary because we want main.rs to hold the "ground truth"
     // list of podcasts, and it must be mutable, but UI needs to check this
@@ -232,6 +249,11 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         unplayed_items.clone(),
         rx_from_main,
         tx_to_main.clone(),
+        tx_to_player.clone(),
+        rx_from_control,
+        current_episode,
+        elapsed,
+        playing,
     ));
 
     let mut app = App::new(
@@ -239,8 +261,8 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         db_inst,
         tx_to_main,
         rx_to_main,
-        tx_to_gpodder,
-        tx_to_ui,
+        tx_to_gpodder.clone(),
+        tx_to_ui.clone(),
         podcast_list,
         queue_items,
         unplayed_items,
@@ -249,9 +271,24 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     blocking_tasks.push(tokio::task::spawn_blocking(move || {
         log::info!("Starting app");
         app.run();
-        app.finalize();
+
+        // Send closing signals
+        tx_to_ui
+            .send(MainMessage::TearDown)
+            .expect("Failed to send MainMessage::TearDown message");
+        tx_to_gpodder
+            .send(GpodderRequest::Quit)
+            .expect("Failed to send GpodderRequest::Quit message");
+        tx_to_player
+            .send(PlayerMessage::Quit)
+            .expect("Failed to send PlayerMessage::Quit message");
+        tx_to_controls
+            .send(())
+            .expect("Failed to send message to quit media controls");
+
         fs2::FileExt::unlock(&lock_file)
             .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
+
         log::info!("Closing app");
     }));
 

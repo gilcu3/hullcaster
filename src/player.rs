@@ -1,9 +1,7 @@
 use std::{
-    error::Error,
     io::BufReader,
     path::PathBuf,
     sync::{mpsc::Receiver, Arc, RwLock},
-    thread,
     time::{Duration, Instant},
 };
 
@@ -61,12 +59,11 @@ impl Player {
     pub async fn spawn_async(
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut message_iter = rx_from_ui.try_iter();
+    ) {
         let mut player = Player::new(elapsed, playing);
         let mut last_time = Instant::now();
         loop {
-            if let Some(message) = message_iter.next() {
+            if let Ok(message) = rx_from_ui.try_recv() {
                 match message {
                     PlayerMessage::PlayPause => {
                         if !player.sink.empty() {
@@ -77,17 +74,20 @@ impl Player {
                         player.duration = duration;
                         *player.elapsed.write().unwrap() = position;
                         *player.playing.write().unwrap() = PlaybackStatus::Playing;
-                        player.play_file(&path);
+                        player.play_file(&path).await;
                     }
                     PlayerMessage::PlayUrl(url, position, duration) => {
                         player.duration = duration;
                         *player.elapsed.write().unwrap() = position;
                         *player.playing.write().unwrap() = PlaybackStatus::Playing;
-                        let _ = player.play_url(&url).await;
+                        player
+                            .play_url(&url)
+                            .await
+                            .unwrap_or_else(|err| log::error!("Error playing url: {err}"));
                     }
                     PlayerMessage::Seek(shift, direction) => {
                         if !player.sink.empty() {
-                            player.seek(shift, direction)
+                            player.seek(shift, direction).await
                         }
                     }
                     PlayerMessage::Quit => break,
@@ -103,10 +103,9 @@ impl Player {
                 }
             }
         }
-        Ok(())
     }
 
-    fn play_file(&mut self, path: &PathBuf) {
+    async fn play_file(&mut self, path: &PathBuf) {
         let file = std::fs::File::open(path).unwrap();
         let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
         if !self.sink.empty() {
@@ -117,7 +116,7 @@ impl Player {
         let position = *self.elapsed.read().unwrap();
         let _ = self.sink.try_seek(Duration::from_secs(position));
         self.sink.play();
-        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
     }
 
@@ -138,7 +137,7 @@ impl Player {
         let position = *self.elapsed.read().unwrap();
         let _ = self.sink.try_seek(Duration::from_secs(position));
         self.sink.play();
-        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
         Ok(())
     }
@@ -152,7 +151,7 @@ impl Player {
         }
     }
 
-    fn seek(&mut self, shift: Duration, direction: bool) {
+    async fn seek(&mut self, shift: Duration, direction: bool) {
         let pos = self.sink.get_pos();
         self.sink.pause();
         self.sink.set_volume(0.0);
@@ -171,7 +170,7 @@ impl Player {
             }
         });
         self.sink.play();
-        std::thread::sleep(std::time::Duration::from_millis(FADING_TIME));
+        tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
         self.set_elapsed();
     }
@@ -194,8 +193,6 @@ impl Player {
 pub fn init_player(
     rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        let _ = Player::spawn_async(rx_from_ui, elapsed, playing);
-    })
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn_blocking(move || Player::spawn_async(rx_from_ui, elapsed, playing))
 }

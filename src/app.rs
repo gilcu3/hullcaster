@@ -1164,15 +1164,6 @@ impl App {
         }
     }
 
-    pub fn finalize(self) {
-        self.tx_to_ui
-            .send(MainMessage::TearDown)
-            .expect("Failed to send MainMessage::TearDown message");
-        self.tx_to_gpodder
-            .send(GpodderRequest::Quit)
-            .expect("Failed to send GpodderRequest::Quit message");
-    }
-
     fn update_queue(&self) {
         let order = self.queue.borrow_order();
         let mut quemap = self.queue.borrow_map();
