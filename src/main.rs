@@ -1,10 +1,10 @@
+use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::{env, thread};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
@@ -138,6 +138,9 @@ fn main() -> Result<()> {
         return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
     }
 
+    // fix https://github.com/RustAudio/cpal/issues/671
+    let _printerr_gag = Gag::stderr().unwrap();
+
     match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
         Some(("sync", sub_args)) => sync_podcasts(&db_path, config, sub_args),
@@ -149,39 +152,38 @@ fn main() -> Result<()> {
         Some(("export", sub_args)) => export(&db_path, sub_args),
 
         // MAIN COMMAND -------------------------------------------------
-        _ => {
-            // fix https://github.com/RustAudio/cpal/issues/671
-            let _printerr_gag = Gag::stderr().unwrap();
-
-            let mut app = App::new(config, &db_path)?;
-
-            let main_thread = thread::spawn(move || {
-                log::info!("Starting app");
-                app.run(); // main loop
-                app.finalize();
-                fs2::FileExt::unlock(&lock_file)
-                    .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
-                log::info!("Closing app");
-                std::process::exit(0);
-            });
-
-            // the winit's event loop must be run in the main thread
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            {
-                // Start an event loop that listens to OS window events.
-                //
-                // MacOS and Windows require an open window to be able to listen to media
-                // control events. The below code will create an invisible window on startup
-                // to listen to such events.
-
-                let event_loop = winit::event_loop::EventLoop::new()?;
-                #[allow(deprecated)]
-                event_loop.run(move |_, _| {})?;
-            }
-            main_thread.join().unwrap();
-            Ok(())
-        }
+        _ => start_app(config, &db_path, lock_file),
     }
+}
+
+#[tokio::main]
+async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Result<()> {
+    let mut app = App::new(config, db_path)?;
+
+    tokio::task::spawn_blocking(move || {
+        log::info!("Starting app");
+        app.run();
+        app.finalize();
+        fs2::FileExt::unlock(&lock_file)
+            .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
+        log::info!("Closing app");
+        std::process::exit(0);
+    });
+
+    // the winit's event loop must be run in the main thread
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        // Start an event loop that listens to OS window events.
+        //
+        // MacOS and Windows require an open window to be able to listen to media
+        // control events. The below code will create an invisible window on startup
+        // to listen to such events.
+
+        let event_loop = winit::event_loop::EventLoop::new()?;
+        #[allow(deprecated)]
+        event_loop.run(move |_, _| {})?;
+    }
+    Ok(())
 }
 
 /// Gets the path to the config file if one is specified in the command-
