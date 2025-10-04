@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
+use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{error::Error, sync::mpsc::Receiver, thread};
 use ureq::Agent;
 
 use crate::config::TICK_RATE;
@@ -45,15 +45,13 @@ impl GpodderController {
         }
     }
 
-    #[tokio::main]
     pub async fn spawn_async(
         rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
         timestamp: Option<i64>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut message_iter = rx_from_app.try_iter();
+    ) {
         let sync_agent = GpodderController::new(config, timestamp);
         loop {
-            if let Some(message) = message_iter.next() {
+            if let Ok(message) = rx_from_app.try_recv() {
                 match message {
                     GpodderRequest::GetSubscriptionChanges => {
                         let subscription_changes =
@@ -106,7 +104,6 @@ impl GpodderController {
             }
             tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
         }
-        Ok(())
     }
 
     pub fn get_timestamp(&self) -> i64 {
@@ -523,15 +520,6 @@ impl GpodderController {
 
         Ok(())
     }
-}
-
-pub fn init_gpodder(
-    rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
-    timestamp: Option<i64>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        let _ = GpodderController::spawn_async(rx_from_app, tx_to_app, config, timestamp);
-    })
 }
 
 #[cfg(test)]

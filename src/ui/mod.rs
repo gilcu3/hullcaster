@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::{
     sync::{mpsc, Arc, RwLock},
-    thread,
     time::Duration,
 };
 
@@ -111,8 +110,8 @@ impl UiState {
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
         tx_to_main: mpsc::Sender<Message>,
-    ) -> thread::JoinHandle<()> {
-        thread::spawn(move || {
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::task::spawn_blocking(move || {
             let mut ui = UiState::new(config, items, queue_items, unplayed_items);
             let mut terminal = ratatui::init();
             let mut main_message_iter = rx_from_main.try_iter();

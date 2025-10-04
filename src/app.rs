@@ -2,12 +2,12 @@ use anyhow::{anyhow, Result};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 
 use sanitize_filename::{sanitize_with_options, Options};
 
-use crate::gpodder::{init_gpodder, EpisodeAction, GpodderMsg};
+use crate::gpodder::{EpisodeAction, GpodderMsg};
 use crate::{
     config::{Config, MAX_DURATION},
     db::{Database, SyncResult},
@@ -20,11 +20,11 @@ use crate::{
         Episode, FilterStatus, FilterType, Filters, LockVec, Menuable, Message, Podcast,
         PodcastNoId,
     },
-    ui::{UiMsg, UiState},
-    utils::{current_time_ms, evaluate_in_shell, get_unplayed_episodes, resolve_redirection},
+    ui::UiMsg,
+    utils::{current_time_ms, get_unplayed_episodes, resolve_redirection},
 };
 
-/// Enum used for communicating with other threads.
+/// Enum used for communicating with other tasks.
 #[derive(Debug)]
 pub enum MainMessage {
     SpawnNotif(String, u64, bool),
@@ -48,7 +48,6 @@ pub struct App {
     sync_tracker: Vec<SyncResult>,
     download_tracker: HashSet<i64>,
     last_filter_time_ms: Cell<u128>,
-    pub ui_thread: Option<std::thread::JoinHandle<()>>,
     pub tx_to_ui: mpsc::Sender<MainMessage>,
     pub tx_to_main: mpsc::Sender<Message>,
     pub rx_to_main: mpsc::Receiver<Message>,
@@ -59,81 +58,17 @@ impl App {
     /// Instantiates the main controller (used during app startup), which sets
     /// up the connection to the database, download manager, and UI thread, and
     /// reads the list of podcasts from the database.
-    pub fn new(config: Arc<Config>, db_path: &Path) -> Result<App> {
-        // Create transmitters and receivers for passing messages between
-        // threads
-        let (tx_to_ui, rx_from_main) = mpsc::channel();
-        let (tx_to_main, rx_to_main) = mpsc::channel::<Message>();
-
-        // get connection to the database
-        let db_inst = Database::connect(db_path)?;
-
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        config: Arc<Config>, db_inst: Database, tx_to_main: mpsc::Sender<Message>,
+        rx_to_main: mpsc::Receiver<Message>, tx_to_gpodder: mpsc::Sender<GpodderRequest>,
+        tx_to_ui: mpsc::Sender<MainMessage>, podcast_list: LockVec<Podcast>,
+        queue_items: LockVec<Episode>, unplayed_items: LockVec<Episode>,
+    ) -> Result<App> {
         // set up threadpool
         let threadpool = Threadpool::new(config.simultaneous_downloads);
 
-        // Create vector of podcasts, where references are checked at runtime.
-        // This is necessary because we want main.rs to hold the "ground truth"
-        // list of podcasts, and it must be mutable, but UI needs to check this
-        // list and update the screen when necessary
-        let podcast_list = LockVec::new(db_inst.get_podcasts()?);
-
-        let (tx_to_gpodder, rx_from_app) = mpsc::channel();
-
-        if config.enable_sync {
-            let timestamp = db_inst
-                .get_param("timestamp")
-                .and_then(|s| Ok(s.parse::<i64>()?));
-            let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
-                let res = evaluate_in_shell("hostname")
-                    .expect("Failed to get hostname")
-                    .trim()
-                    .to_string();
-                db_inst
-                    .set_param("device_id", &res)
-                    .expect("Failed to store device_id in db");
-                res
-            });
-            init_gpodder(
-                rx_from_app,
-                tx_to_main.clone(),
-                crate::gpodder::Config::new(
-                    config.max_retries,
-                    config.sync_server.clone(),
-                    device_id,
-                    config.sync_username.clone(),
-                    config.sync_password.clone(),
-                ),
-                timestamp.ok(),
-            );
-        };
-
-        let stored_queue = db_inst.get_queue()?;
-        let queue_items = LockVec::new_arc({
-            let all_eps_map = podcast_list.get_episodes_map();
-            let res = stored_queue
-                .iter()
-                .filter_map(|v| all_eps_map.get(v).cloned())
-                .collect();
-            res
-        });
-
-        let unplayed_items = LockVec::new_arc(get_unplayed_episodes(&podcast_list));
-        unplayed_items.sort();
-        unplayed_items.reverse();
-
-        // set up UI in new thread
-        let tx_ui_to_main = mpsc::Sender::clone(&tx_to_main);
-
-        let ui_thread = UiState::spawn(
-            config.clone(),
-            podcast_list.clone(),
-            queue_items.clone(),
-            unplayed_items.clone(),
-            rx_from_main,
-            tx_ui_to_main,
-        );
-
-        Ok(App {
+        let app = App {
             config,
             db: db_inst,
             threadpool,
@@ -141,7 +76,6 @@ impl App {
             queue: queue_items,
             unplayed: unplayed_items,
             filters: Filters::default(),
-            ui_thread: Some(ui_thread),
             sync_counter: 0,
             sync_tracker: Vec::new(),
             download_tracker: HashSet::new(),
@@ -150,7 +84,8 @@ impl App {
             tx_to_main,
             rx_to_main,
             tx_to_gpodder,
-        })
+        };
+        Ok(app)
     }
 
     /// Initiates the main loop where the controller waits for messages coming
@@ -1229,16 +1164,13 @@ impl App {
         }
     }
 
-    pub fn finalize(&mut self) {
+    pub fn finalize(self) {
         self.tx_to_ui
             .send(MainMessage::TearDown)
             .expect("Failed to send MainMessage::TearDown message");
         self.tx_to_gpodder
             .send(GpodderRequest::Quit)
             .expect("Failed to send GpodderRequest::Quit message");
-        if let Some(thread) = self.ui_thread.take() {
-            thread.join().unwrap(); // Wait for UI thread to finish tearing down
-        }
     }
 
     fn update_queue(&self) {

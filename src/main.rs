@@ -32,8 +32,11 @@ use crate::app::App;
 use crate::config::Config;
 use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
+use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::threadpool::Threadpool;
 use crate::types::*;
+use crate::ui::UiState;
+use crate::utils::{evaluate_in_shell, get_unplayed_episodes};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -158,17 +161,101 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Result<()> {
-    let mut app = App::new(config, db_path)?;
+    // get connection to the database
+    let db_inst = Database::connect(db_path)?;
 
-    tokio::task::spawn_blocking(move || {
+    let (tx_to_ui, rx_from_main) = mpsc::channel();
+    let (tx_to_main, rx_to_main) = mpsc::channel::<Message>();
+    let (tx_to_gpodder, rx_from_app) = mpsc::channel::<GpodderRequest>();
+
+    let mut tasks = Vec::new();
+    let mut blocking_tasks = Vec::new();
+
+    if config.enable_sync {
+        let timestamp = db_inst
+            .get_param("timestamp")
+            .and_then(|s| Ok(s.parse::<i64>()?));
+        let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
+            let res = evaluate_in_shell("hostname")
+                .expect("Failed to get hostname")
+                .trim()
+                .to_string();
+            db_inst
+                .set_param("device_id", &res)
+                .expect("Failed to store device_id in db");
+            res
+        });
+        tasks.push(tokio::task::spawn({
+            let tx_to_main = tx_to_main.clone();
+            let gpodder_config = crate::gpodder::Config::new(
+                config.max_retries,
+                config.sync_server.clone(),
+                device_id,
+                config.sync_username.clone(),
+                config.sync_password.clone(),
+            );
+            async move {
+                GpodderController::spawn_async(
+                    rx_from_app,
+                    tx_to_main,
+                    gpodder_config,
+                    timestamp.ok(),
+                )
+                .await
+            }
+        }));
+    };
+
+    // Create vector of podcasts, where references are checked at runtime.
+    // This is necessary because we want main.rs to hold the "ground truth"
+    // list of podcasts, and it must be mutable, but UI needs to check this
+    // list and update the screen when necessary
+    let podcast_list = LockVec::new(db_inst.get_podcasts()?);
+
+    let stored_queue = db_inst.get_queue()?;
+    let queue_items = LockVec::new_arc({
+        let all_eps_map = podcast_list.get_episodes_map();
+        stored_queue
+            .iter()
+            .filter_map(|v| all_eps_map.get(v).cloned())
+            .collect()
+    });
+
+    let unplayed_items = LockVec::new_arc(get_unplayed_episodes(&podcast_list));
+    unplayed_items.sort();
+    unplayed_items.reverse();
+
+    blocking_tasks.push(UiState::spawn(
+        config.clone(),
+        podcast_list.clone(),
+        queue_items.clone(),
+        unplayed_items.clone(),
+        rx_from_main,
+        tx_to_main.clone(),
+    ));
+
+    let mut app = App::new(
+        config,
+        db_inst,
+        tx_to_main,
+        rx_to_main,
+        tx_to_gpodder,
+        tx_to_ui,
+        podcast_list,
+        queue_items,
+        unplayed_items,
+    )?;
+
+    blocking_tasks.push(tokio::task::spawn_blocking(move || {
         log::info!("Starting app");
         app.run();
         app.finalize();
         fs2::FileExt::unlock(&lock_file)
             .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
         log::info!("Closing app");
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         std::process::exit(0);
-    });
+    }));
 
     // the winit's event loop must be run in the main thread
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -183,6 +270,15 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         #[allow(deprecated)]
         event_loop.run(move |_, _| {})?;
     }
+
+    for task in tasks {
+        task.await?;
+    }
+
+    for task in blocking_tasks {
+        task.await?;
+    }
+
     Ok(())
 }
 
