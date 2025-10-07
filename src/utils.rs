@@ -14,7 +14,6 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
-use ureq::ResponseExt;
 
 use crate::types::*;
 
@@ -116,18 +115,20 @@ pub fn clean_html(text: &str) -> String {
     };
 
     // remove anything more than two line breaks (i.e., one blank line)
-    let no_line_breaks = RE_MULT_LINE_BREAKS.replace_all(&decoded, "\n\n");
-
-    no_line_breaks.to_string()
+    RE_MULT_LINE_BREAKS
+        .replace_all(&decoded, "\n\n")
+        .to_string()
 }
 
-// Probably should be done better, without downloading the page
+pub async fn resolve_redirection_async(url: &str) -> Result<String> {
+    let response = reqwest::get(url).await?;
+    let final_url = response.url().to_string();
+    Ok(final_url)
+}
+
 pub fn resolve_redirection(url: &str) -> Result<String> {
-    let agent = ureq::agent();
-
-    let response = agent.get(url).call()?;
-
-    let final_url = response.get_uri().to_string();
+    let response = reqwest::blocking::get(url)?;
+    let final_url = response.url().to_string();
     Ok(final_url)
 }
 

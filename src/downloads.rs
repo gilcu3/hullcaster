@@ -13,6 +13,7 @@ use crate::utils::audio_duration_file;
 /// Enum used for communicating back to the main controller upon
 /// successful or unsuccessful downloading of a file. i32 value
 /// represents the episode ID, and PathBuf the location of the new file.
+// TODO: this type needs to be more idiomatic
 #[derive(Debug)]
 pub enum DownloadMsg {
     Complete(EpData),
@@ -56,29 +57,23 @@ pub fn download_list(
 /// Downloads a file to a local filepath, returning DownloadMsg variant
 /// indicating success or failure.
 fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
-    let agent_builder = ureq::Agent::config_builder()
-        .timeout_connect(Some(Duration::from_secs(10)))
-        .timeout_global(Some(Duration::from_secs(120)));
-    let agent: ureq::Agent = agent_builder.build().into();
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .expect("Could not build reqwest::Client");
 
-    let request = loop {
-        let response = agent.get(&ep_data.url).call();
-        match response {
-            Ok(resp) => break Ok(resp),
+    let mut response = loop {
+        match client.get(&ep_data.url).send() {
+            Ok(resp) => break resp,
             Err(_) => {
                 max_retries -= 1;
                 if max_retries == 0 {
-                    break Err(());
+                    return DownloadMsg::ResponseError(ep_data);
                 }
             }
         }
     };
-
-    if request.is_err() {
-        return DownloadMsg::ResponseError(ep_data);
-    };
-
-    let response = request.unwrap();
 
     // figure out the file type
     // assume .mp3 unless we figure out otherwise
@@ -116,14 +111,11 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
 
     ep_data.file_path = Some(file_path.clone());
 
-    let mut body = response.into_body();
-    let mut reader = body.as_reader();
-    match std::io::copy(&mut reader, &mut dst.unwrap()) {
-        Ok(_) => {
-            ep_data.duration = audio_duration_file(file_path).ok();
-            DownloadMsg::Complete(ep_data)
-        }
-        Err(_) => DownloadMsg::FileWriteError(ep_data),
+    if response.copy_to(&mut dst.unwrap()).is_ok() {
+        ep_data.duration = audio_duration_file(file_path).ok();
+        DownloadMsg::Complete(ep_data)
+    } else {
+        DownloadMsg::FileWriteError(ep_data)
     }
 }
 

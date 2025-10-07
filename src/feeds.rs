@@ -59,15 +59,23 @@ pub fn check_feed(
 /// Given a URL, this attempts to pull the data about a podcast and its
 /// episodes from an RSS feed.
 fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
-    let agent_builder = ureq::Agent::config_builder()
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_global(Some(Duration::from_secs(20)));
-    let agent: ureq::Agent = agent_builder.build().into();
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(20))
+        .build()?;
 
-    let request: Result<http::Response<ureq::Body>> = loop {
-        let response = agent.get(&url).call();
-        match response {
-            Ok(resp) => break Ok(resp),
+    let mut response = loop {
+        match client.get(&url).send() {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    break Ok(resp);
+                } else {
+                    max_retries -= 1;
+                    if max_retries == 0 {
+                        break Err(anyhow!("Failed to fetch feed: Status {}", resp.status()));
+                    }
+                }
+            }
             Err(_) => {
                 max_retries -= 1;
                 if max_retries == 0 {
@@ -75,20 +83,13 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
                 }
             }
         }
-    };
+    }?;
 
-    match request {
-        Ok(resp) => {
-            let mut body = resp.into_body();
-            let mut reader = body.as_reader();
-            let mut resp_data = Vec::new();
-            reader.read_to_end(&mut resp_data)?;
+    let mut resp_data = Vec::new();
+    response.read_to_end(&mut resp_data)?;
 
-            let channel = Channel::read_from(&resp_data[..])?;
-            Ok(parse_feed_data(channel, &url))
-        }
-        Err(err) => Err(err),
-    }
+    let channel = Channel::read_from(&resp_data[..])?;
+    Ok(parse_feed_data(channel, &url))
 }
 
 /// Given a Channel with the RSS feed data, this parses the data about a

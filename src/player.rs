@@ -16,7 +16,7 @@ use stream_download::{
 
 use crate::{
     config::{FADING_TIME, TICK_RATE},
-    utils::resolve_redirection,
+    utils::resolve_redirection_async,
 };
 
 pub enum PlayerMessage {
@@ -114,14 +114,20 @@ impl Player {
         self.sink.set_volume(0.0);
         self.sink.append(source);
         let position = *self.elapsed.read().unwrap();
-        let _ = self.sink.try_seek(Duration::from_secs(position));
+        if position > 0 {
+            if let Err(err) = self.sink.try_seek(Duration::from_secs(position)) {
+                log::warn!("Failed to seek: {err}")
+            }
+        };
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
     }
 
     async fn play_url(&mut self, url: &str) -> Result<()> {
-        let url = resolve_redirection(url).unwrap_or(url.to_string());
+        let url = resolve_redirection_async(url)
+            .await
+            .unwrap_or(url.to_string());
         let stream = HttpStream::<Client>::create(url.parse()?).await?;
         let reader =
             StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
@@ -135,7 +141,11 @@ impl Player {
         self.sink.append(source);
 
         let position = *self.elapsed.read().unwrap();
-        let _ = self.sink.try_seek(Duration::from_secs(position));
+        if position > 0 {
+            if let Err(err) = self.sink.try_seek(Duration::from_secs(position)) {
+                log::warn!("Failed to seek: {err}")
+            }
+        };
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
@@ -155,7 +165,7 @@ impl Player {
         let pos = self.sink.get_pos();
         self.sink.pause();
         self.sink.set_volume(0.0);
-        let _ = self.sink.try_seek({
+        if let Err(err) = self.sink.try_seek({
             if direction {
                 let max_pos = Duration::from_secs(self.duration);
                 if pos + shift >= max_pos {
@@ -168,7 +178,9 @@ impl Player {
             } else {
                 Duration::ZERO
             }
-        });
+        }) {
+            log::warn!("Failed to seek: {err}")
+        };
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);

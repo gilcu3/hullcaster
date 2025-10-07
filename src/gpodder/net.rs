@@ -1,28 +1,30 @@
 use anyhow::{anyhow, Result};
-use ureq::Agent;
 
-pub fn execute_request_post(
-    agent: &Agent, url: String, body: String, encoded_credentials: &String, max_retries: usize,
+pub async fn execute_request_post(
+    client: &reqwest::Client, url: String, body: String, encoded_credentials: &String,
+    max_retries: usize,
 ) -> Result<String> {
     let mut max_retries = max_retries;
     log::debug!("execute_request_get: {url} {body:?}");
 
-    let request = loop {
-        let response = agent
+    let response = loop {
+        let response = client
             .post(&url)
             .header("Authorization", &format!("Basic {encoded_credentials}"))
-            .send(&body);
+            .body(body.clone())
+            .send()
+            .await;
 
         match response {
             Ok(resp) => {
-                break Ok(resp);
-            }
-            Err(ureq::Error::StatusCode(code)) => {
-                // Handle HTTP error statuses (e.g., 404, 500)
-                println!("Error code: {code}");
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Error code: {code}"));
+                if resp.status().is_success() {
+                    break Ok(resp);
+                } else {
+                    max_retries -= 1;
+                    if max_retries == 0 {
+                        let status_code = resp.status();
+                        break Err(anyhow!("Error code: {status_code}"));
+                    }
                 }
             }
             Err(_) => {
@@ -33,31 +35,34 @@ pub fn execute_request_post(
             }
         }
     }?;
-    Ok(request.into_body().read_to_string()?)
+    Ok(response.text().await?.to_string())
 }
 
-pub fn execute_request_get(
-    agent: &Agent, url: String, params: Vec<(&str, &str)>, encoded_credentials: &String,
+pub async fn execute_request_get(
+    client: &reqwest::Client, url: String, params: Vec<(&str, &str)>, encoded_credentials: &String,
     max_retries: usize,
 ) -> Result<String> {
     let mut max_retries = max_retries;
     log::debug!("execute_request_get: {url} {params:?}");
 
-    let request = loop {
-        let response = agent
+    let response = loop {
+        let response = client
             .get(&url)
             .header("Authorization", &format!("Basic {encoded_credentials}"))
-            .query_pairs(params.clone())
-            .call();
+            .query(&params)
+            .send()
+            .await;
 
         match response {
             Ok(resp) => {
-                break Ok(resp);
-            }
-            Err(ureq::Error::StatusCode(code)) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Error code: {code}"));
+                if resp.status().is_success() {
+                    break Ok(resp);
+                } else {
+                    max_retries -= 1;
+                    if max_retries == 0 {
+                        let status_code = resp.status();
+                        break Err(anyhow!("Error code: {status_code}"));
+                    }
                 }
             }
             Err(_) => {
@@ -68,5 +73,5 @@ pub fn execute_request_get(
             }
         }
     }?;
-    Ok(request.into_body().read_to_string()?)
+    Ok(response.text().await?.to_string())
 }

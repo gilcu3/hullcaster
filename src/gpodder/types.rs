@@ -1,7 +1,7 @@
 use base64::Engine;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
-use std::{cell::Cell, fmt};
+use std::{fmt, sync::RwLock};
 
 #[derive(Debug)]
 pub enum GpodderRequest {
@@ -27,11 +27,11 @@ pub struct Config {
     pub credentials: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct State {
-    pub actions_timestamp: Cell<i64>,
-    pub subscriptions_timestamp: Cell<i64>,
-    pub logged_in: Cell<bool>,
+    pub actions_timestamp: RwLock<i64>,
+    pub subscriptions_timestamp: RwLock<i64>,
+    pub logged_in: RwLock<bool>,
 }
 
 #[derive(Deserialize, Debug)]
