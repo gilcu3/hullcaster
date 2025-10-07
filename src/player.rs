@@ -1,5 +1,4 @@
 use std::{
-    io::BufReader,
     path::PathBuf,
     sync::{mpsc::Receiver, Arc, RwLock},
     time::{Duration, Instant},
@@ -74,7 +73,10 @@ impl Player {
                         player.duration = duration;
                         *player.elapsed.write().unwrap() = position;
                         *player.playing.write().unwrap() = PlaybackStatus::Playing;
-                        player.play_file(&path).await;
+                        player
+                            .play_file(&path)
+                            .await
+                            .unwrap_or_else(|err| log::error!("Error playing file: {err}"));
                     }
                     PlayerMessage::PlayUrl(url, position, duration) => {
                         player.duration = duration;
@@ -105,9 +107,12 @@ impl Player {
         }
     }
 
-    async fn play_file(&mut self, path: &PathBuf) {
+    async fn play_file(&mut self, path: &PathBuf) -> Result<()> {
         let file = std::fs::File::open(path).unwrap();
-        let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
+        let source = rodio::Decoder::builder()
+            .with_seekable(true)
+            .with_data(file)
+            .build()?;
         if !self.sink.empty() {
             self.sink.stop();
         }
@@ -122,6 +127,7 @@ impl Player {
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
+        Ok(())
     }
 
     async fn play_url(&mut self, url: &str) -> Result<()> {
@@ -132,7 +138,10 @@ impl Player {
         let reader =
             StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
                 .await?;
-        let source = rodio::Decoder::new(reader)?;
+        let source = rodio::Decoder::builder()
+            .with_seekable(true)
+            .with_data(reader)
+            .build()?;
         if !self.sink.empty() {
             self.sink.stop();
         }

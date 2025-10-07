@@ -40,5 +40,5 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [ ] Revise player implementation, make it truly async
 - [x] Revise media_control implementation, make it async
 - [ ] Revise gpodder implementation, make it truly async
-- [ ] Fix seek backwards
+- [x] Fix seek backwards
 - [ ] Add support for changing audio speed
