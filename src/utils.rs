@@ -17,6 +17,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::types::*;
 
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
 static RE_BR_TAGS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
 
@@ -121,13 +123,19 @@ pub fn clean_html(text: &str) -> String {
 }
 
 pub async fn resolve_redirection_async(url: &str) -> Result<String> {
-    let response = reqwest::get(url).await?;
+    let client = reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .build()?;
+    let response = client.get(url).send().await?;
     let final_url = response.url().to_string();
     Ok(final_url)
 }
 
 pub fn resolve_redirection(url: &str) -> Result<String> {
-    let response = reqwest::blocking::get(url)?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .build()?;
+    let response = client.get(url).send()?;
     let final_url = response.url().to_string();
     Ok(final_url)
 }
