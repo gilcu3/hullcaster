@@ -1,4 +1,5 @@
 .direnv/
+.envrc
 /target
 **/*.rs.bk
 *.db
