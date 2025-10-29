@@ -1,4 +1,4 @@
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 // Much of the threadpool implementation here was taken directly from
@@ -78,16 +78,18 @@ impl Worker {
     /// Creates a new Worker, which waits for Jobs to be passed by the
     /// Threadpool.
     fn new(receiver: Arc<Mutex<mpsc::Receiver<JobMessage>>>) -> Worker {
-        let thread = thread::spawn(move || loop {
-            let message = receiver
-                .lock()
-                .expect("Threadpool error")
-                .recv()
-                .expect("Thread messaging error");
+        let thread = thread::spawn(move || {
+            loop {
+                let message = receiver
+                    .lock()
+                    .expect("Threadpool error")
+                    .recv()
+                    .expect("Thread messaging error");
 
-            match message {
-                JobMessage::NewJob(job) => job(),
-                JobMessage::Terminate => break,
+                match message {
+                    JobMessage::NewJob(job) => job(),
+                    JobMessage::Terminate => break,
+                }
             }
         });
 

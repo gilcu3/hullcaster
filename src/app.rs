@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
-use sanitize_filename::{sanitize_with_options, Options};
+use sanitize_filename::{Options, sanitize_with_options};
 
 use crate::gpodder::{EpisodeAction, GpodderMsg};
 use crate::{
@@ -288,7 +288,8 @@ impl App {
 
         if sync_len > 0 && dl_len > 0 {
             let notif = format!(
-                "Syncing {sync_len} podcast{sync_plural}, downloading {dl_len} episode{dl_plural}...");
+                "Syncing {sync_len} podcast{sync_plural}, downloading {dl_len} episode{dl_plural}..."
+            );
             self.persistent_notif_to_ui(notif, false);
         } else if sync_len > 0 {
             let notif = format!("Syncing {sync_len} podcast{sync_plural}...");
@@ -780,13 +781,7 @@ impl App {
                 log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
                 MAX_DURATION
             });
-            let position = {
-                if played {
-                    duration
-                } else {
-                    ep_position
-                }
-            };
+            let position = { if played { duration } else { ep_position } };
             self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
                 pod_url, ep_url, position, duration,
             ))?;

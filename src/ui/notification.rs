@@ -1,4 +1,4 @@
-use ratatui::{layout::Rect, style::Stylize, text::Line, Frame};
+use ratatui::{Frame, layout::Rect, style::Stylize, text::Line};
 use std::time::{Duration, Instant};
 
 use super::colors::AppColors;

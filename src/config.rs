@@ -138,9 +138,9 @@ impl Config {
 
         let config_toml = match File::open(path) {
             Ok(mut file) => {
-                file.read_to_string(&mut config_string).with_context(|| {
-                    "Could not read config.toml. Please ensure file is readable."
-                })?;
+                file.read_to_string(&mut config_string).with_context(
+                    || "Could not read config.toml. Please ensure file is readable.",
+                )?;
                 toml::from_str(&config_string)
                     .with_context(|| "Could not parse config.toml. Please check file syntax.")?
             }

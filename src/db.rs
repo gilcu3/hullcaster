@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use semver::Version;
 
 use crate::types::*;

@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use sanitize_filename::{sanitize_with_options, Options};
+use sanitize_filename::{Options, sanitize_with_options};
 
 use crate::threadpool::Threadpool;
 use crate::types::Message;

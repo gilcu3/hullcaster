@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::io::Read;
 use std::sync::mpsc;
 use std::time::Duration;

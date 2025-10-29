@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -171,14 +171,16 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
                     "Could not parse environment variable {} in config.toml. Reason: {}",
                     err.var_name,
                     err.cause
-                ))
+                ));
             }
         },
         None => {
             if let Some(path) = default {
                 path
             } else {
-                return Err(anyhow!("Could not identify a default directory for your OS. Please specify paths manually in config.toml."));
+                return Err(anyhow!(
+                    "Could not identify a default directory for your OS. Please specify paths manually in config.toml."
+                ));
             }
         }
     };

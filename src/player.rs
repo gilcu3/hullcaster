@@ -1,6 +1,6 @@
 use std::{
     path::PathBuf,
-    sync::{mpsc::Receiver, Arc, RwLock},
+    sync::{Arc, RwLock, mpsc::Receiver},
     time::{Duration, Instant},
 };
 
@@ -8,9 +8,9 @@ use anyhow::Result;
 use rodio::{OutputStream, Sink};
 use stream_download::source::SourceStream;
 use stream_download::{
-    http::{reqwest::Client, HttpStream},
-    storage::temp::TempStorageProvider,
     Settings, StreamDownload,
+    http::{HttpStream, reqwest::Client},
+    storage::temp::TempStorageProvider,
 };
 
 use crate::{

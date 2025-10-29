@@ -1,6 +1,6 @@
 use base64::Engine;
 use chrono::{DateTime, TimeZone, Utc};
-use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeStruct};
 use std::{fmt, sync::RwLock};
 
 #[derive(Debug)]

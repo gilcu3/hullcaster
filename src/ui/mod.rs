@@ -1,22 +1,22 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::{
-    sync::{mpsc, Arc, RwLock},
+    sync::{Arc, RwLock, mpsc},
     time::Duration,
 };
 
 use chrono::{DateTime, Utc};
 use notification::render_notification_line;
 use ratatui::{
+    Frame,
     crossterm::event::{self, Event, KeyCode},
     layout::{Alignment, Constraint, Flex, Layout},
     prelude::Rect,
     style::{Style, Stylize},
     text::Line,
     widgets::{Block, Clear, Gauge, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
 };
-use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
+use tui_input::backend::crossterm::EventHandler;
 
 use crate::{
     app::MainMessage,
@@ -1196,7 +1196,10 @@ fn render_welcome_popup(
         key_strs.push(keymap.keys_for_action(action).unwrap()[0].clone());
     }
 
-    let line1 = format!("Your podcast list is currently empty. Press \"{}\" to add a new podcast feed, \"{}\" to quit, or see all available commands by typing \"{}\" to get help.", key_strs[0], key_strs[1], key_strs[2]);
+    let line1 = format!(
+        "Your podcast list is currently empty. Press \"{}\" to add a new podcast feed, \"{}\" to quit, or see all available commands by typing \"{}\" to get help.",
+        key_strs[0], key_strs[1], key_strs[2]
+    );
     let line2 = "More details of how to customize hullcaster can be found on the Github repo readme: https://github.com/gilcu3/hullcaster";
     let paragraph = Paragraph::new(vec![
         Line::from(""),
@@ -1267,13 +1270,7 @@ fn render_details_popup(
 
         if let Some(exp) = &details.explicit {
             v.push(Line::from(
-                "Explicit: ".to_string() + {
-                    if *exp {
-                        "yes"
-                    } else {
-                        "no"
-                    }
-                },
+                "Explicit: ".to_string() + { if *exp { "yes" } else { "no" } },
             ));
             v.push(Line::from(""));
         }

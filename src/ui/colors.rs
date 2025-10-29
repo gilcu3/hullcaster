@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use once_cell::sync::Lazy;
 use ratatui::style::Color;

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::process::{Command, Stdio};
 
 /// Execute an external shell command to play an episode file and/or URL.

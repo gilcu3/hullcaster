@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
-use opml::{Body, Head, Outline, OPML};
+use opml::{Body, Head, OPML, Outline};
 
 use crate::feeds::PodcastFeed;
 use crate::types::*;

@@ -4,9 +4,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
-use std::sync::{mpsc, RwLock};
+use std::sync::{RwLock, mpsc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Arg, ArgAction, Command};
 use fs2::FileExt;
 use gag::Gag;
@@ -34,7 +34,7 @@ use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
-use crate::player::{init_player, PlaybackStatus, PlayerMessage};
+use crate::player::{PlaybackStatus, PlayerMessage, init_player};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::UiState;
@@ -140,7 +140,9 @@ fn main() -> Result<()> {
 
     let mut db_path = config_path;
     if !db_path.pop() {
-        return Err(anyhow!("Could not correctly parse the config file location. Please specify a valid path to the config file."));
+        return Err(anyhow!(
+            "Could not correctly parse the config file location. Please specify a valid path to the config file."
+        ));
     }
 
     // fix https://github.com/RustAudio/cpal/issues/671
@@ -481,9 +483,9 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
         }
     };
 
-    let mut podcast_list = opml::import(xml).with_context(|| {
-        "Could not properly parse OPML file -- file may be formatted improperly or corrupted."
-    })?;
+    let mut podcast_list = opml::import(xml).with_context(
+        || "Could not properly parse OPML file -- file may be formatted improperly or corrupted.",
+    )?;
 
     if podcast_list.is_empty() {
         if !args.contains_id("quiet") {

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 pub async fn execute_request_post(
     client: &reqwest::Client, url: String, body: String, encoded_credentials: &String,

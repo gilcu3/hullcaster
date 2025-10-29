@@ -10,7 +10,7 @@ use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
 use crate::gpodder::GpodderMsg;
 use crate::ui::UiMsg;
-use crate::utils::{format_duration, StringUtils};
+use crate::utils::{StringUtils, format_duration};
 
 /// Struct holding data about an individual podcast feed. This includes a
 /// (possibly empty) vector of episodes.
