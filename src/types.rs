@@ -479,6 +479,11 @@ impl<T: Menuable> LockVec<T> {
     pub fn is_empty(&self) -> bool {
         return self.borrow_order().is_empty();
     }
+
+    pub fn get_id_by_index(&self, index: usize) -> Option<i64> {
+        let borrowed = self.borrow_order();
+        borrowed.get(index).copied()
+    }
 }
 
 impl<T: Menuable> Clone for LockVec<T> {

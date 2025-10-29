@@ -20,8 +20,7 @@ use tui_input::Input;
 
 use crate::{
     app::MainMessage,
-    config::Config,
-    config::{SCROLL_AMOUNT, SEEK_LENGTH, TICK_RATE},
+    config::{Config, SCROLL_AMOUNT, SEEK_LENGTH, TICK_RATE},
     keymap::{Keybindings, UserAction},
     media_control::ControlMessage,
     player::{PlaybackStatus, PlayerMessage},
@@ -55,17 +54,11 @@ enum Popup {
     ConfirmQuit,
 }
 #[derive(Debug)]
-struct PodcastList {
+struct MenuList<T: Menuable> {
     title: String,
-    items: LockVec<Podcast>,
+    items: LockVec<T>,
     state: ListState,
-}
-
-#[derive(Debug)]
-struct EpisodeList {
-    title: String,
-    items: LockVec<Episode>,
-    state: ListState,
+    selected_item_id: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -86,10 +79,10 @@ pub struct UiState {
     keymap: Keybindings,
     colors: AppColors,
     confirm_quit: bool,
-    podcasts: PodcastList,
-    episodes: EpisodeList,
-    unplayed: EpisodeList,
-    queue: EpisodeList,
+    podcasts: MenuList<Podcast>,
+    episodes: MenuList<Episode>,
+    unplayed: MenuList<Episode>,
+    queue: MenuList<Episode>,
     active_panel: Panel,
     left_panel: Panel,
     active_popup: Option<Popup>,
@@ -103,6 +96,27 @@ pub struct UiState {
     elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
     pub rx_from_control: mpsc::Receiver<ControlMessage>,
+}
+
+impl<T: Menuable> MenuList<T> {
+    fn sync_selected_with_state(&mut self) {
+        self.selected_item_id = match self.state.selected() {
+            Some(index) => self.items.get_id_by_index(index),
+            None => None,
+        };
+    }
+    fn sync_state_with_selected(&mut self) -> bool {
+        match self.selected_item_id {
+            None => false,
+            Some(id) => {
+                let Some(index) = self.items.get_index(id) else {
+                    return false;
+                };
+                self.state.select(Some(index));
+                true
+            }
+        }
+    }
 }
 
 impl UiState {
@@ -213,13 +227,13 @@ impl UiState {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
+        config: Arc<Config>, podcast_items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, tx_to_player: mpsc::Sender<PlayerMessage>,
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
     ) -> UiState {
-        let active_popup = if items.is_empty() {
+        let active_popup = if podcast_items.is_empty() {
             Some(Popup::Welcome)
         } else {
             None
@@ -229,25 +243,29 @@ impl UiState {
             keymap: config.keybindings.clone(),
             colors: config.colors.clone(),
             confirm_quit: config.confirm_quit,
-            podcasts: PodcastList {
+            podcasts: MenuList::<Podcast> {
                 title: "Podcasts".to_string(),
-                items,
+                items: podcast_items.clone(),
                 state: ListState::default().with_selected(Some(0)),
+                selected_item_id: podcast_items.get_id_by_index(0),
             },
-            unplayed: EpisodeList {
+            unplayed: MenuList::<Episode> {
                 title: "Unplayed".to_string(),
-                items: unplayed_items,
+                items: unplayed_items.clone(),
                 state: ListState::default().with_selected(Some(0)),
+                selected_item_id: unplayed_items.get_id_by_index(0),
             },
-            episodes: EpisodeList {
+            episodes: MenuList::<Episode> {
                 title: "Episodes".to_string(),
                 items: LockVec::new(vec![]),
                 state: ListState::default(),
+                selected_item_id: None,
             },
-            queue: EpisodeList {
+            queue: MenuList::<Episode> {
                 title: "Queue".to_string(),
-                items: queue_items,
+                items: queue_items.clone(),
                 state: ListState::default().with_selected(Some(0)),
+                selected_item_id: queue_items.get_id_by_index(0),
             },
             active_panel: Panel::Podcasts,
             left_panel: Panel::Podcasts,
@@ -288,21 +306,21 @@ impl UiState {
             &self.colors,
         );
         match self.left_panel {
-            Panel::Podcasts => render_podcast_area(
+            Panel::Podcasts => render_menuable_area(
                 frame,
                 select_area,
                 &mut self.podcasts,
                 &self.colors,
                 self.active_panel == Panel::Podcasts,
             ),
-            Panel::Episodes => render_episode_area(
+            Panel::Episodes => render_menuable_area(
                 frame,
                 select_area,
                 &mut self.episodes,
                 &self.colors,
                 self.active_panel == Panel::Episodes,
             ),
-            Panel::Unplayed => render_episode_area(
+            Panel::Unplayed => render_menuable_area(
                 frame,
                 select_area,
                 &mut self.unplayed,
@@ -311,7 +329,7 @@ impl UiState {
             ),
             Panel::Queue => {}
         }
-        render_episode_area(
+        render_menuable_area(
             frame,
             queue_area,
             &mut self.queue,
@@ -446,6 +464,13 @@ impl UiState {
                 UserAction::GoBot => current_state.select_last(),
 
                 _ => (),
+            }
+
+            match self.active_panel {
+                Panel::Podcasts => self.podcasts.sync_selected_with_state(),
+                Panel::Unplayed => self.unplayed.sync_selected_with_state(),
+                Panel::Episodes => self.episodes.sync_selected_with_state(),
+                Panel::Queue => self.queue.sync_selected_with_state(),
             }
         }
     }
@@ -856,6 +881,7 @@ impl UiState {
                         order_vec.swap(selected, selected + 1);
                     }
                     self.queue.state.select(Some(selected + 1));
+                    self.queue.sync_selected_with_state();
                     return Some(UiMsg::QueueModified);
                 }
             }
@@ -866,6 +892,7 @@ impl UiState {
                         order_vec.swap(selected, selected - 1);
                     }
                     self.queue.state.select(Some(selected - 1));
+                    self.queue.sync_selected_with_state();
                     return Some(UiMsg::QueueModified);
                 }
             }
@@ -1319,11 +1346,11 @@ fn compute_popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     area
 }
 
-fn render_podcast_area(
-    frame: &mut Frame, area: Rect, podcasts: &mut PodcastList, colors: &AppColors, active: bool,
+fn render_menuable_area<T: Menuable>(
+    frame: &mut Frame, area: Rect, menu: &mut MenuList<T>, colors: &AppColors, active: bool,
 ) {
     let block = Block::bordered().title({
-        let line = Line::from(format!(" {} ", podcasts.title));
+        let line = Line::from(format!(" {} ", menu.title));
         if active {
             line.style(colors.highlighted)
         } else {
@@ -1331,7 +1358,7 @@ fn render_podcast_area(
         }
     });
     let text_width = block.inner(area).width as usize;
-    let items: Vec<ListItem> = podcasts.items.map(
+    let items: Vec<ListItem> = menu.items.map(
         |x| ListItem::from(x.get_title(text_width)).style(colors.normal),
         false,
     );
@@ -1347,46 +1374,88 @@ fn render_podcast_area(
             }
         })
         .highlight_spacing(HighlightSpacing::Always);
-    if !list.is_empty() && podcasts.state.selected().is_none() {
-        podcasts.state.select_first();
+    if !list.is_empty() && !menu.sync_state_with_selected() && menu.state.selected().is_none() {
+        menu.state.select_first();
+        menu.sync_selected_with_state();
     }
 
-    frame.render_stateful_widget(list, area, &mut podcasts.state);
+    frame.render_stateful_widget(list, area, &mut menu.state);
 }
 
-fn render_episode_area(
-    frame: &mut Frame, area: Rect, episodes: &mut EpisodeList, colors: &AppColors, active: bool,
-) {
-    let block = Block::bordered().title({
-        let line = Line::from(format!(" {} ", episodes.title));
-        if active {
-            line.style(colors.highlighted)
-        } else {
-            line.style(colors.normal)
-        }
-    });
-    let text_width = block.inner(area).width as usize;
+// fn render_podcast_area(
+//     frame: &mut Frame, area: Rect, podcasts: &mut MenuList<Podcast>, colors: &AppColors,
+//     active: bool,
+// ) {
+//     let block = Block::bordered().title({
+//         let line = Line::from(format!(" {} ", podcasts.title));
+//         if active {
+//             line.style(colors.highlighted)
+//         } else {
+//             line.style(colors.normal)
+//         }
+//     });
+//     let text_width = block.inner(area).width as usize;
+//     let items: Vec<ListItem> = podcasts.items.map(
+//         |x| ListItem::from(x.get_title(text_width)).style(colors.normal),
+//         false,
+//     );
 
-    let items: Vec<ListItem> = episodes.items.map(
-        |x| ListItem::from(Line::from(x.get_title(text_width)).style(colors.normal)),
-        false,
-    );
-    let list = List::new(items)
-        .block(block)
-        .style(colors.normal)
-        .highlight_style({
-            if active {
-                colors.highlighted
-            } else {
-                colors.normal
-            }
-        })
-        .highlight_spacing(HighlightSpacing::Always);
-    if !list.is_empty() && episodes.state.selected().is_none() {
-        episodes.state.select_first();
-    }
-    frame.render_stateful_widget(list, area, &mut episodes.state);
-}
+//     let list = List::new(items)
+//         .block(block)
+//         .style(colors.normal)
+//         .highlight_style({
+//             if active {
+//                 colors.highlighted
+//             } else {
+//                 colors.normal
+//             }
+//         })
+//         .highlight_spacing(HighlightSpacing::Always);
+//     if !list.is_empty() && podcasts.state.selected().is_none() {
+//         podcasts.state.select_first();
+//     }
+
+//     frame.render_stateful_widget(list, area, &mut podcasts.state);
+// }
+
+// fn render_episode_area(
+//     frame: &mut Frame, area: Rect, episodes: &mut MenuList<Episode>, colors: &AppColors,
+//     active: bool,
+// ) {
+//     let block = Block::bordered().title({
+//         let line = Line::from(format!(" {} ", episodes.title));
+//         if active {
+//             line.style(colors.highlighted)
+//         } else {
+//             line.style(colors.normal)
+//         }
+//     });
+//     let text_width = block.inner(area).width as usize;
+
+//     let items: Vec<ListItem> = episodes.items.map(
+//         |x| ListItem::from(Line::from(x.get_title(text_width)).style(colors.normal)),
+//         false,
+//     );
+//     let list = List::new(items)
+//         .block(block)
+//         .style(colors.normal)
+//         .highlight_style({
+//             if active {
+//                 colors.highlighted
+//             } else {
+//                 colors.normal
+//             }
+//         })
+//         .highlight_spacing(HighlightSpacing::Always);
+//     if !list.is_empty()
+//         && !episodes.sync_state_with_selected()
+//         && episodes.state.selected().is_none()
+//     {
+//         episodes.state.select_first();
+//         episodes.sync_selected_with_state();
+//     }
+//     frame.render_stateful_widget(list, area, &mut episodes.state);
+// }
 
 fn render_play_area(
     frame: &mut Frame, area: Rect, ep: &ShareableRwLock<Option<ShareableRwLock<Episode>>>,
