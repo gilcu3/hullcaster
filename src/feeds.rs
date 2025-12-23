@@ -9,6 +9,7 @@ use rss::{Channel, Item};
 
 use crate::threadpool::Threadpool;
 use crate::types::*;
+use crate::utils::APP_USER_AGENT;
 
 /// Enum for communicating back to the main thread after feed data has
 /// been retrieved.
@@ -62,6 +63,7 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
+        .user_agent(APP_USER_AGENT)
         .build()?;
 
     let mut response = loop {
