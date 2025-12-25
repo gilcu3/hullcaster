@@ -15,7 +15,7 @@ pub struct Threadpool {
 
 impl Threadpool {
     /// Creates a new Threadpool of a given size.
-    pub fn new(n_threads: usize) -> Threadpool {
+    pub fn new(n_threads: usize) -> Self {
         let (sender, receiver) = mpsc::channel();
         let receiver_lock = Arc::new(Mutex::new(receiver));
 
@@ -25,7 +25,7 @@ impl Threadpool {
             workers.push(Worker::new(Arc::clone(&receiver_lock)));
         }
 
-        Threadpool { workers, sender }
+        Self { workers, sender }
     }
 
     /// Adds a new job to the threadpool, passing closure to first
@@ -77,7 +77,7 @@ struct Worker {
 impl Worker {
     /// Creates a new Worker, which waits for Jobs to be passed by the
     /// Threadpool.
-    fn new(receiver: Arc<Mutex<mpsc::Receiver<JobMessage>>>) -> Worker {
+    fn new(receiver: Arc<Mutex<mpsc::Receiver<JobMessage>>>) -> Self {
         let thread = thread::spawn(move || {
             loop {
                 let message = receiver
@@ -93,7 +93,7 @@ impl Worker {
             }
         });
 
-        Worker {
+        Self {
             thread: Some(thread),
         }
     }

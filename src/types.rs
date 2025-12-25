@@ -15,7 +15,6 @@ use crate::utils::{StringUtils, format_duration};
 /// Struct holding data about an individual podcast feed. This includes a
 /// (possibly empty) vector of episodes.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Podcast {
     pub id: i64,
     pub title: String,
@@ -261,7 +260,7 @@ where
 
 impl<T: Menuable> LockVec<T> {
     /// Create a new LockVec.
-    pub fn new(data: Vec<T>) -> LockVec<T> {
+    pub fn new(data: Vec<T>) -> Self {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
         for i in data.into_iter() {
@@ -270,14 +269,14 @@ impl<T: Menuable> LockVec<T> {
             order.push(id);
         }
 
-        LockVec {
+        Self {
             data: Arc::new(Mutex::new(hm)),
             order: Arc::new(Mutex::new(order.clone())),
             filtered_order: Arc::new(Mutex::new(order)),
         }
     }
 
-    pub fn new_arc(data: Vec<Arc<RwLock<T>>>) -> LockVec<T> {
+    pub fn new_arc(data: Vec<Arc<RwLock<T>>>) -> Self {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
         for i in data.into_iter() {
@@ -286,7 +285,7 @@ impl<T: Menuable> LockVec<T> {
             order.push(id);
         }
 
-        LockVec {
+        Self {
             data: Arc::new(Mutex::new(hm)),
             order: Arc::new(Mutex::new(order.clone())),
             filtered_order: Arc::new(Mutex::new(order)),
@@ -439,10 +438,9 @@ impl<T: Menuable> LockVec<T> {
         F: FnOnce(&T) -> B,
     {
         let order = self.borrow_order();
-        match order.get(index) {
-            Some(id) => self.map_single(*id, f),
-            None => None,
-        }
+        order
+            .get(index)
+            .map_or_else(|| None, |id| self.map_single(*id, f))
     }
 
     /// Maps a closure to every element in the LockVec, in the same way
@@ -490,7 +488,7 @@ impl<T: Menuable> LockVec<T> {
 
 impl<T: Menuable> Clone for LockVec<T> {
     fn clone(&self) -> Self {
-        LockVec {
+        Self {
             data: Arc::clone(&self.data),
             order: Arc::clone(&self.order),
             filtered_order: Arc::clone(&self.filtered_order),
@@ -520,11 +518,8 @@ impl LockVec<Episode> {
             .borrow_map()
             .iter()
             .map(|(id, ep)| {
-                if let Some(t) = ep.read().unwrap().pubdate {
-                    (t, *id)
-                } else {
-                    (dt, *id)
-                }
+                let value = ep.read().unwrap().pubdate;
+                value.map_or((dt, *id), |t| (t, *id))
             })
             .collect::<Vec<(DateTime<Utc>, i64)>>();
         epvec.sort();

@@ -26,7 +26,7 @@ pub enum PlayerMessage {
     Quit,
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum PlaybackStatus {
     Ready,
     Playing,
@@ -59,7 +59,7 @@ impl Player {
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
     ) {
-        let mut player = Player::new(elapsed, playing);
+        let mut player = Self::new(elapsed, playing);
         let mut last_time = Instant::now();
         loop {
             if let Ok(message) = rx_from_ui.try_recv() {
@@ -107,7 +107,7 @@ impl Player {
         }
     }
 
-    async fn play_file(&mut self, path: &PathBuf) -> Result<()> {
+    async fn play_file(&self, path: &PathBuf) -> Result<()> {
         let file = std::fs::File::open(path).unwrap();
         let source = rodio::Decoder::builder()
             .with_seekable(true)
@@ -130,10 +130,10 @@ impl Player {
         Ok(())
     }
 
-    async fn play_url(&mut self, url: &str) -> Result<()> {
+    async fn play_url(&self, url: &str) -> Result<()> {
         let url = resolve_redirection_async(url)
             .await
-            .unwrap_or(url.to_string());
+            .unwrap_or_else(|_| url.to_string());
         let stream = HttpStream::<Client>::create(url.parse()?).await?;
         let reader =
             StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
@@ -170,7 +170,7 @@ impl Player {
         }
     }
 
-    async fn seek(&mut self, shift: Duration, direction: bool) {
+    async fn seek(&self, shift: Duration, direction: bool) {
         let pos = self.sink.get_pos();
         self.sink.pause();
         self.sink.set_volume(0.0);
@@ -196,7 +196,7 @@ impl Player {
         self.set_elapsed();
     }
 
-    fn set_elapsed(&mut self) {
+    fn set_elapsed(&self) {
         let elapsed = self.sink.get_pos();
         if self.sink.empty() {
             *self.playing.write().unwrap() = PlaybackStatus::Finished;

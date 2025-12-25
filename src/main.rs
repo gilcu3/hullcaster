@@ -353,10 +353,7 @@ fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
 
 fn get_app_state_dir() -> Result<PathBuf> {
     let default_path = dirs::home_dir().map(|h| h.join(".local/state/hullcaster"));
-    let env_path = match env::var("XDG_STATE_HOME") {
-        Ok(val) => Some(val + "/hullcaster"),
-        Err(_) => None,
-    };
+    let env_path = env::var("XDG_STATE_HOME").map_or(None, |val| Some(val + "/hullcaster"));
     parse_create_dir(env_path.as_deref(), default_path)
 }
 

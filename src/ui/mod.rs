@@ -130,7 +130,7 @@ impl UiState {
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
-            let mut ui = UiState::new(
+            let mut ui = Self::new(
                 config,
                 items,
                 queue_items,
@@ -231,7 +231,7 @@ impl UiState {
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
-    ) -> UiState {
+    ) -> Self {
         let active_popup = if podcast_items.is_empty() {
             Some(Popup::Welcome)
         } else {
@@ -513,7 +513,7 @@ impl UiState {
         }
     }
 
-    fn select_panel(&mut self, panel: Panel) {
+    const fn select_panel(&mut self, panel: Panel) {
         match panel {
             Panel::Podcasts => {
                 self.active_panel = Panel::Podcasts;
@@ -622,7 +622,7 @@ impl UiState {
                     }
 
                     Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
-                        if let Panel::Queue = self.active_panel
+                        if self.active_panel == Panel::Queue
                             && let Some(ui_msg) = self.move_eps(&a)
                         {
                             return vec![ui_msg];
@@ -635,7 +635,7 @@ impl UiState {
                     }
 
                     Some(UserAction::Sync) => {
-                        if let Panel::Podcasts = self.active_panel
+                        if self.active_panel == Panel::Podcasts
                             && let Some(pod_id) = self.get_podcast_id()
                         {
                             return vec![UiMsg::Sync(pod_id)];
@@ -716,7 +716,7 @@ impl UiState {
                         _ => {}
                     },
                     Some(UserAction::MarkAllPlayed) => {
-                        if let Panel::Episodes = self.active_panel
+                        if self.active_panel == Panel::Episodes
                             && let Some(ui_msg) = self.mark_all_played()
                         {
                             return vec![ui_msg];
@@ -734,7 +734,7 @@ impl UiState {
                         _ => {}
                     },
                     Some(UserAction::DownloadAll) => {
-                        if let Panel::Podcasts = self.active_panel
+                        if self.active_panel == Panel::Podcasts
                             && let Some(pod_id) = self.get_podcast_id()
                         {
                             return vec![UiMsg::DownloadAll(pod_id)];
@@ -752,7 +752,7 @@ impl UiState {
                         Panel::Podcasts => {}
                     },
                     Some(UserAction::DeleteAll) => {
-                        if let Panel::Podcasts = self.active_panel
+                        if self.active_panel == Panel::Podcasts
                             && let Some(pod_id) = self.get_podcast_id()
                         {
                             return vec![UiMsg::DeleteAll(pod_id)];
@@ -837,7 +837,7 @@ impl UiState {
         vec![UiMsg::Noop]
     }
 
-    fn mark_played(&mut self) -> Option<UiMsg> {
+    fn mark_played(&self) -> Option<UiMsg> {
         let pod_id = self.get_podcast_id()?;
         let ep_id = self.get_episode_id()?;
         match self.active_panel {
@@ -857,7 +857,7 @@ impl UiState {
         }
     }
 
-    pub fn mark_all_played(&mut self) -> Option<UiMsg> {
+    pub fn mark_all_played(&self) -> Option<UiMsg> {
         let pod_id = self.get_podcast_id()?;
         let played = self
             .podcasts
@@ -865,7 +865,7 @@ impl UiState {
             .map_single(pod_id, |pod| pod.is_played())?;
         Some(UiMsg::MarkAllPlayed(pod_id, !played))
     }
-    fn remove_podcast(&mut self) -> Option<UiMsg> {
+    fn remove_podcast(&self) -> Option<UiMsg> {
         let pod_id = self.get_podcast_id()?;
         Some(UiMsg::RemovePodcast(pod_id, true))
     }
@@ -977,25 +977,26 @@ impl UiState {
         let ep = self.current_episode.read().unwrap();
         let ep = ep
             .as_ref()
-            .ok_or(anyhow!("Failed to get current episode"))?
+            .ok_or_else(|| anyhow!("Failed to get current episode"))?
             .read()
             .unwrap();
-        if let Some(path) = &ep.path {
-            // TODO: is this the best way to achieve this?
-            // without it flickering happens
-            *self.elapsed.write().unwrap() = ep.position as u64;
-            self.tx_to_player.send(PlayerMessage::PlayFile(
-                path.clone(),
-                ep.position as u64,
-                ep.duration.unwrap() as u64,
-            ))?;
-        } else {
-            *self.elapsed.write().unwrap() = ep.position as u64;
-            self.tx_to_player.send(PlayerMessage::PlayUrl(
-                ep.url.clone(),
-                ep.position as u64,
-                ep.duration.unwrap_or(0) as u64,
-            ))?;
+        match &ep.path {
+            Some(path) => {
+                *self.elapsed.write().unwrap() = ep.position as u64;
+                self.tx_to_player.send(PlayerMessage::PlayFile(
+                    path.clone(),
+                    ep.position as u64,
+                    ep.duration.unwrap() as u64,
+                ))?;
+            }
+            _ => {
+                *self.elapsed.write().unwrap() = ep.position as u64;
+                self.tx_to_player.send(PlayerMessage::PlayUrl(
+                    ep.url.clone(),
+                    ep.position as u64,
+                    ep.duration.unwrap_or(0) as u64,
+                ))?;
+            }
         }
         Ok(())
     }
@@ -1012,7 +1013,7 @@ impl UiState {
         Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position))
     }
 
-    fn getcontrol(&mut self) -> Option<UiMsg> {
+    fn getcontrol(&self) -> Option<UiMsg> {
         let mut control_message_iter = self.rx_from_control.try_iter();
         let message = control_message_iter.next()?;
         match message {
@@ -1040,8 +1041,12 @@ impl UiState {
     }
 
     fn play_episode(&self, pod_id: i64, ep_id: i64) -> Vec<UiMsg> {
-        let (same, playing, cur_ep_id, cur_pod_id) =
-            if let Some(cur_ep) = self.current_episode.read().unwrap().as_ref() {
+        let (same, playing, cur_ep_id, cur_pod_id) = self
+            .current_episode
+            .read()
+            .unwrap()
+            .as_ref()
+            .map_or((false, false, 0, 0), |cur_ep| {
                 let cur_ep = cur_ep.read().unwrap();
                 (
                     cur_ep.id == ep_id && cur_ep.pod_id == pod_id,
@@ -1049,9 +1054,7 @@ impl UiState {
                     cur_ep.id,
                     cur_ep.pod_id,
                 )
-            } else {
-                (false, false, 0, 0)
-            };
+            });
         if !same {
             if playing {
                 let position = *self.elapsed.read().unwrap() as i64;
@@ -1463,22 +1466,21 @@ fn render_play_area(
     let mut ratio = 0.0;
     let mut title = "".to_string();
     let mut podcast_title = "".to_string();
-    let mut label = "".to_string();
-
-    if let Some(ep) = ep.read().unwrap().as_ref() {
-        let ep = ep.read().unwrap();
-        if let Some(total) = ep.duration {
-            ratio = (elapsed as f64 / total as f64).min(1.0);
-        }
-        let total_label = format_duration(ep.duration.map(|x| x as u64));
-        title = ep.title.clone();
-        podcast_title = if let Some(pod_title) = pod_title {
-            pod_title.clone()
-        } else {
-            "".into()
-        };
-        label = format!("{}/{}", format_duration(Some(elapsed)), total_label);
-    }
+    let label = ep.read().unwrap().as_ref().map_or_else(
+        || "".to_string(),
+        |ep| {
+            let ep = ep.read().unwrap();
+            if let Some(total) = ep.duration {
+                ratio = (elapsed as f64 / total as f64).min(1.0);
+            }
+            let total_label = format_duration(ep.duration.map(|x| x as u64));
+            title = ep.title.clone();
+            podcast_title = pod_title
+                .as_ref()
+                .map_or_else(|| "".into(), |pod_title| pod_title.clone());
+            format!("{}/{}", format_duration(Some(elapsed)), total_label)
+        },
+    );
     let progress = Gauge::default()
         .gauge_style(Style::new().green().on_black())
         .label(label)

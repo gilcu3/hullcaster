@@ -64,11 +64,11 @@ impl App {
         rx_to_main: mpsc::Receiver<Message>, tx_to_gpodder: mpsc::Sender<GpodderRequest>,
         tx_to_ui: mpsc::Sender<MainMessage>, podcast_list: LockVec<Podcast>,
         queue_items: LockVec<Episode>, unplayed_items: LockVec<Episode>,
-    ) -> Result<App> {
+    ) -> Result<Self> {
         // set up threadpool
         let threadpool = Threadpool::new(config.simultaneous_downloads);
 
-        let app = App {
+        let app = Self {
             config,
             db: db_inst,
             threadpool,
@@ -364,14 +364,12 @@ impl App {
         Ok(())
     }
 
-    fn gpodder_sync_pre(&mut self) -> Result<()> {
+    fn gpodder_sync_pre(&self) -> Result<()> {
         if self.config.enable_sync {
             self.tx_to_gpodder
                 .send(GpodderRequest::GetSubscriptionChanges)?;
-            Ok(())
-        } else {
-            Ok(())
         }
+        Ok(())
     }
 
     fn gpodder_sync_pos(
@@ -472,7 +470,7 @@ impl App {
         self.update_unplayed(true);
         self.update_filters(self.filters, false);
         self.notif_to_ui(
-            format!("Gpodder sync finished with {number_updates} updates").to_string(),
+            format!("Gpodder sync finished with {number_updates} updates"),
             false,
         );
         Ok(())
@@ -512,17 +510,20 @@ impl App {
         let db_result;
         let failure;
 
-        if let Some(id) = pod_id {
-            db_result = self.db.update_podcast(id, pod);
-            failure = format!("Error synchronizing {title}.");
-        } else {
-            let title = pod.title.clone();
-            let url = pod.url.clone();
-            db_result = self.db.insert_podcast(pod);
-            if self.config.enable_sync {
-                self.tx_to_gpodder.send(GpodderRequest::AddPodcast(url))?;
+        match pod_id {
+            Some(id) => {
+                db_result = self.db.update_podcast(id, pod);
+                failure = format!("Error synchronizing {title}.");
             }
-            failure = format!("Error adding podcast {title} to database.");
+            None => {
+                let title = pod.title.clone();
+                let url = pod.url.clone();
+                db_result = self.db.insert_podcast(pod);
+                if self.config.enable_sync {
+                    self.tx_to_gpodder.send(GpodderRequest::AddPodcast(url))?;
+                }
+                failure = format!("Error adding podcast {title} to database.");
+            }
         }
         match db_result {
             Ok(result) => {
@@ -567,12 +568,12 @@ impl App {
             let pod = self
                 .podcasts
                 .get(pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let pod = pod.read().unwrap();
-            let episode_map = pod.episodes.borrow_map();
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
+            let episodes = &pod.read().unwrap().episodes;
+            let episode_map = episodes.borrow_map();
             let mut episode = episode_map
                 .get(&ep_id)
-                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                 .write()
                 .unwrap();
             if Some(episode.position) == episode.duration {
@@ -621,31 +622,31 @@ impl App {
         for pod_id in pod_map.keys() {
             let batch = {
                 let podcast_map = self.podcasts.borrow_map();
-                let podcast = podcast_map
+                let episodes = &podcast_map
                     .get(pod_id)
-                    .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                    .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                     .read()
-                    .unwrap();
-                let mut episode_map = podcast.episodes.borrow_map();
+                    .unwrap()
+                    .episodes;
+                let mut episode_map = episodes.borrow_map();
                 let mut batch = Vec::new();
                 for (ep_id, position, total) in pod_map
                     .get(pod_id)
-                    .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                    .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 {
                     let mut episode = episode_map
                         .get_mut(ep_id)
-                        .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                        .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                         .write()
                         .unwrap();
                     episode.position = *position;
                     if episode.duration.is_none() {
                         episode.duration = Some(*total);
                     }
-                    let played = if let Some(duration) = episode.duration {
-                        (duration - position).abs() <= 1
-                    } else {
-                        episode.played
-                    };
+                    let played = episode.duration.map_or_else(
+                        || episode.played,
+                        |duration| (duration - position).abs() <= 1,
+                    );
                     if episode.played != played {
                         changed = true;
                         episode.played = played;
@@ -673,13 +674,13 @@ impl App {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
 
             let w_episode = episode_map
                 .get_mut(&ep_id)
-                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().unwrap();
                 if let Some(duration) = episode.duration
@@ -736,13 +737,13 @@ impl App {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
                 .unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
             let w_episode = episode_map
                 .get_mut(&ep_id)
-                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().unwrap();
                 if episode.played != played {
@@ -799,7 +800,7 @@ impl App {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
                 .unwrap();
             let podcast_url = podcast.url.clone();
@@ -873,7 +874,7 @@ impl App {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             pod_title = podcast.title.clone();
 
@@ -968,16 +969,16 @@ impl App {
             let pod_id = ep_data.pod_id;
             let podcast = borrowed_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
             let ep_id = ep_data.id;
             let mut episode = episode_map
                 .get_mut(&ep_id)
-                .ok_or(anyhow!("Failed to get ep_data.id: {ep_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get ep_data.id: {ep_id}"))?
                 .write()
                 .unwrap();
-            episode.path = Some(file_path.clone());
+            episode.path = Some(file_path);
             if let Some(duration) = ep_data.duration {
                 episode.duration = Some(duration);
             }
@@ -1010,15 +1011,18 @@ impl App {
             let borrowed_map = self.podcasts.borrow_map();
             let podcast = borrowed_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?;
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().unwrap();
             let mut episode_map = podcast.episodes.borrow_map();
             let mut episode = episode_map
                 .get_mut(&ep_id)
-                .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                 .write()
                 .unwrap();
-            let old_path = episode.path.clone().ok_or(anyhow!("Episode has no path"))?;
+            let old_path = episode
+                .path
+                .clone()
+                .ok_or_else(|| anyhow!("Episode has no path"))?;
             episode.path = None;
             (old_path, episode.title.clone())
         };
@@ -1042,12 +1046,13 @@ impl App {
 
         {
             let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map
+            let episodes = &borrowed_map
                 .get(&pod_id)
-                .ok_or(anyhow!("Failed to get pod_id: {pod_id}"))?
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
-                .unwrap();
-            let mut borrowed_ep_map = podcast.episodes.borrow_map();
+                .unwrap()
+                .episodes;
+            let mut borrowed_ep_map = episodes.borrow_map();
 
             for (_, ep) in borrowed_ep_map.iter_mut() {
                 let mut ep = ep.write().unwrap();
@@ -1055,7 +1060,7 @@ impl App {
                     eps_path_to_remove.push(
                         ep.path
                             .clone()
-                            .ok_or(anyhow!("Failed to get episode path"))?,
+                            .ok_or_else(|| anyhow!("Failed to get episode path"))?,
                     );
                     eps_id_to_remove.push(ep.id);
                     ep.path = None;
@@ -1089,7 +1094,7 @@ impl App {
     }
 
     /// Removes a podcast from the list, optionally deleting local files first
-    pub fn remove_podcast(&mut self, pod_id: i64, delete_files: bool) -> Result<()> {
+    pub fn remove_podcast(&self, pod_id: i64, delete_files: bool) -> Result<()> {
         if delete_files {
             let _ = self.delete_files(pod_id);
         }

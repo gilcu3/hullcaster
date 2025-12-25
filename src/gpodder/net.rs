@@ -35,7 +35,7 @@ pub async fn execute_request_post(
             }
         }
     }?;
-    Ok(response.text().await?.to_string())
+    Ok(response.text().await?)
 }
 
 pub async fn execute_request_get(
@@ -73,5 +73,5 @@ pub async fn execute_request_get(
             }
         }
     }?;
-    Ok(response.text().await?.to_string())
+    Ok(response.text().await?)
 }

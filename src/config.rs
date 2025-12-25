@@ -133,7 +133,7 @@ impl Config {
     /// Given a file path, this reads a TOML config file and returns a
     /// Config struct with keybindings, etc. Inserts defaults if config
     /// file does not exist, or if specific values are not set.
-    pub fn new(path: &Path) -> Result<Config> {
+    pub fn new(path: &Path) -> Result<Self> {
         let mut config_string = String::new();
 
         let config_toml = match File::open(path) {
@@ -222,20 +222,16 @@ impl Config {
 /// settings that were not specified by the user.
 fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
     // specify keybindings
-    let keymap = match config_toml.keybindings {
-        Some(kb) => Keybindings::from_config(kb),
-        None => Keybindings::default(),
-    };
+    let keymap = config_toml
+        .keybindings
+        .map_or_else(Keybindings::default, Keybindings::from_config);
 
     // specify app colors
-    let colors = match config_toml.colors {
-        Some(clrs) => {
-            let mut colors = AppColors::default();
-            colors.add_from_config(clrs);
-            colors
-        }
-        None => AppColors::default(),
-    };
+    let colors = config_toml.colors.map_or_else(AppColors::default, |clrs| {
+        let mut colors = AppColors::default();
+        colors.add_from_config(clrs);
+        colors
+    });
 
     // paths are set by user, or they resolve to OS-specific path as
     // provided by dirs crate
@@ -245,10 +241,10 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
     });
     let download_path = parse_create_dir(config_toml.download_path.as_deref(), default_path)?;
 
-    let play_command = match config_toml.play_command.as_deref() {
-        Some(cmd) => cmd.to_string(),
-        None => "vlc %s".to_string(),
-    };
+    let play_command = config_toml
+        .play_command
+        .as_deref()
+        .map_or_else(|| "vlc %s".to_string(), |cmd| cmd.to_string());
 
     let simultaneous_downloads = match config_toml.simultaneous_downloads {
         Some(num) if num > 0 => num,

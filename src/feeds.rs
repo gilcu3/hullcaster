@@ -30,7 +30,7 @@ pub struct PodcastFeed {
 }
 
 impl PodcastFeed {
-    pub fn new(id: Option<i64>, url: String, title: Option<String>) -> Self {
+    pub const fn new(id: Option<i64>, url: String, title: Option<String>) -> Self {
         Self { id, url, title }
     }
 }
@@ -106,21 +106,17 @@ fn parse_feed_data(channel: Channel, url: &str) -> PodcastNoId {
     let last_checked = Utc::now();
 
     let mut author = None;
-    let mut explicit = None;
-    if let Some(itunes) = channel.itunes_ext() {
+    let explicit = channel.itunes_ext().and_then(|itunes| {
         author = itunes.author().map(|a| a.to_string());
-        explicit = match itunes.explicit() {
-            None => None,
-            Some(s) => {
-                let ss = s.to_lowercase();
-                match &ss[..] {
-                    "yes" | "explicit" | "true" => Some(true),
-                    "no" | "clean" | "false" => Some(false),
-                    _ => None,
-                }
+        itunes.explicit().and_then(|s| {
+            let ss = s.to_lowercase();
+            match &ss[..] {
+                "yes" | "explicit" | "true" => Some(true),
+                "no" | "clean" | "false" => Some(false),
+                _ => None,
             }
-        };
-    }
+        })
+    });
 
     let mut episodes = Vec::new();
     let items = channel.into_items();
@@ -147,43 +143,31 @@ fn parse_feed_data(channel: Channel, url: &str) -> PodcastNoId {
 /// make some attempt to account for the possibility that a feed might
 /// not be valid according to the spec.
 fn parse_episode_data(item: &Item) -> EpisodeNoId {
-    let title = match item.title() {
-        Some(s) => s.to_string(),
-        None => "".to_string(),
-    };
-    let url = match item.enclosure() {
-        Some(enc) => enc.url().to_string(),
-        None => "".to_string(),
-    };
-    let guid = match item.guid() {
-        Some(guid) => guid.value().to_string(),
-        None => "".to_string(),
-    };
-    let description = match item.description() {
-        Some(dsc) => dsc.to_string(),
-        None => "".to_string(),
-    };
-    let pubdate = match item.pub_date() {
-        Some(pd) => match parse_from_rfc2822_with_fallback(pd) {
-            Ok(date) => {
-                // this is a bit ridiculous, but it seems like
-                // you have to convert from a DateTime<FixedOffset>
-                // to a NaiveDateTime, and then from there create
-                // a DateTime<Utc>; see
-                // https://github.com/chronotope/chrono/issues/169#issue-239433186
-                Some(DateTime::from_naive_utc_and_offset(date.naive_utc(), Utc))
-            }
-            Err(_) => None,
-        },
-        None => None,
-    };
+    let title = item
+        .title()
+        .map_or_else(|| "".to_string(), |s| s.to_string());
+    let url = item
+        .enclosure()
+        .map_or_else(|| "".to_string(), |enc| enc.url().to_string());
+    let guid = item
+        .guid()
+        .map_or_else(|| "".to_string(), |guid| guid.value().to_string());
+    let description = item
+        .description()
+        .map_or_else(|| "".to_string(), |dsc| dsc.to_string());
+    let pubdate = item.pub_date().and_then(|pd| {
+        parse_from_rfc2822_with_fallback(pd).map_or(None, |date| {
+            Some(DateTime::from_naive_utc_and_offset(date.naive_utc(), Utc))
+        })
+    });
 
-    let mut duration = None;
-    if let Some(itunes) = item.itunes_ext()
+    let duration = if let Some(itunes) = item.itunes_ext()
         && let Some(itures_duration) = itunes.duration()
     {
-        duration = parse_duration(itures_duration).ok().map(|dur| dur as i64);
-    }
+        parse_duration(itures_duration).ok().map(|dur| dur as i64)
+    } else {
+        None
+    };
 
     EpisodeNoId {
         title,

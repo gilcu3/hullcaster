@@ -26,7 +26,7 @@ pub struct GpodderController {
 }
 
 impl GpodderController {
-    fn new(config: Config, timestamp: Option<i64>) -> GpodderController {
+    fn new(config: Config, timestamp: Option<i64>) -> Self {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(120))
@@ -39,7 +39,7 @@ impl GpodderController {
             subscriptions_timestamp: timestamp.into(),
             logged_in: false.into(),
         };
-        GpodderController {
+        Self {
             config,
             client,
             state,
@@ -50,7 +50,7 @@ impl GpodderController {
         rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
         timestamp: Option<i64>,
     ) {
-        let sync_client = GpodderController::new(config, timestamp);
+        let sync_client = Self::new(config, timestamp);
         loop {
             if let Ok(message) = rx_from_app.try_recv() {
                 match message {
@@ -225,10 +225,10 @@ impl GpodderController {
         let actions: serde_json::Value = serde_json::from_str(json_string.as_str())?;
         let timestamp = actions["timestamp"]
             .as_i64()
-            .ok_or(anyhow::anyhow!("Parsing timestamp failed"))?;
+            .ok_or_else(|| anyhow::anyhow!("Parsing timestamp failed"))?;
         let episode_actions = actions["actions"]
             .as_array()
-            .ok_or(anyhow!("Failed to get actions"))?;
+            .ok_or_else(|| anyhow!("Failed to get actions"))?;
         let mut actions: Vec<EpisodeAction> = Vec::new();
         for action in episode_actions {
             let action = serde_json::from_value::<EpisodeAction>(action.clone())?;
@@ -371,11 +371,10 @@ impl GpodderController {
         .await?;
         let parsed: serde_json::Result<Vec<Podcast>> = serde_json::from_str(json_string.as_str());
 
-        if let Ok(subscriptions) = parsed {
-            Ok(subscriptions.iter().map(|f| f.feed.clone()).collect())
-        } else {
-            Err(anyhow!("Error parsing subscriptions"))
-        }
+        parsed.map_or_else(
+            |err| Err(anyhow!("Error parsing subscriptions: {err}")),
+            |subscriptions| Ok(subscriptions.iter().map(|f| f.feed.clone()).collect()),
+        )
     }
 
     async fn get_devices(&self) -> Result<Vec<Device>> {

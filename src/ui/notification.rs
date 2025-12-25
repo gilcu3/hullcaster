@@ -14,7 +14,7 @@ impl Notification {
     /// Creates a new Notification. The `expiry` is optional, and is
     /// used to create timed notifications -- `Instant` should refer
     /// to the timestamp when the message should disappear.
-    pub fn new(message: String, error: bool, expiry: Option<Instant>) -> Self {
+    pub const fn new(message: String, error: bool, expiry: Option<Instant>) -> Self {
         Self {
             message,
             error,
@@ -41,7 +41,7 @@ pub struct NotificationManager {
 }
 
 impl NotificationManager {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             msg_stack: Vec::new(),
             persistent_msg: None,
@@ -56,10 +56,8 @@ impl NotificationManager {
             // compare expiry times of all notifications to current
             // time, remove expired ones
             let now = Instant::now();
-            self.msg_stack.retain(|x| match x.expiry {
-                Some(exp) => now < exp,
-                None => true,
-            });
+            self.msg_stack
+                .retain(|x| x.expiry.is_none_or(|exp| now < exp));
 
             if !self.msg_stack.is_empty() {
                 // check if last item changed, and update screen if it has
@@ -117,14 +115,15 @@ pub fn render_notification_line(
     } else {
         &notification.current_msg
     };
-    let line = if let Some(notif) = cur_notif {
-        if notif.error {
-            Line::from(notif.message.clone()).style(colors.error).bold()
-        } else {
-            Line::from(notif.message.clone()).style(colors.normal)
-        }
-    } else {
-        Line::from(" ").style(colors.normal)
-    };
+    let line = cur_notif.as_ref().map_or_else(
+        || Line::from(" ").style(colors.normal),
+        |notif| {
+            if notif.error {
+                Line::from(notif.message.clone()).style(colors.error).bold()
+            } else {
+                Line::from(notif.message.clone()).style(colors.normal)
+            }
+        },
+    );
     frame.render_widget(line, area);
 }

@@ -24,13 +24,13 @@ pub struct Database {
 impl Database {
     /// Creates a new connection to the database (and creates database if
     /// it does not already exist). Panics if database cannot be accessed.
-    pub fn connect(path: &Path) -> Result<Database> {
+    pub fn connect(path: &Path) -> Result<Self> {
         let mut db_path = path.to_path_buf();
         std::fs::create_dir_all(&db_path)
             .with_context(|| "Unable to create subdirectory for database.")?;
         db_path.push("data.db");
         let conn = Connection::open(&db_path)?;
-        let db_conn = Database {
+        let db_conn = Self {
             path: db_path,
             conn: Some(conn),
         };
@@ -337,16 +337,17 @@ impl Database {
             let new_pd = new_ep.pubdate.map(|dt| dt.timestamp());
 
             let mut existing_id = None;
-            let mut update = false;
 
             // primary matching mechanism: check guid to see if it
             // already exists in database
-            if !new_ep.guid.is_empty()
+            let mut update = if !new_ep.guid.is_empty()
                 && let Some(old_ep) = old_ep_map.get(&new_ep.guid)
             {
                 existing_id = Some(old_ep.id);
-                update = self.check_for_updates(old_ep, new_ep);
-            }
+                self.check_for_updates(old_ep, new_ep)
+            } else {
+                false
+            };
 
             // fallback matching: for each existing episode, check the
             // title, url, and pubdate -- if two of the three match, we
@@ -417,12 +418,13 @@ impl Database {
     /// been changed).
     fn check_for_updates(&self, old_ep: &Episode, new_ep: &EpisodeNoId) -> bool {
         let new_pd = new_ep.pubdate.map(|dt| dt.timestamp());
-        let mut pd_match = false;
-        if let Some(pd) = new_pd
+        let pd_match = if let Some(pd) = new_pd
             && let Some(old_pd) = old_ep.pubdate
         {
-            pd_match = pd == old_pd.timestamp();
-        }
+            pd == old_pd.timestamp()
+        } else {
+            false
+        };
         if !(new_ep.title == old_ep.title
             && new_ep.url == old_ep.url
             && new_ep.guid == old_ep.guid

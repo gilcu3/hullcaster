@@ -149,15 +149,9 @@ fn get_file_ext<'a>(mime_type: Option<&str>, url: &'a str) -> Option<&'a str> {
         // Otherwise, use the extension in the URL as a fallback
         _ => {
             // Look for what's after the last slash (/)
-            match url.rsplit('/').next() {
-                Some(file_name) => {
-                    // Look for what's after the last dot (.)
-                    // Return Some(ext) if next returns Some(ext),
-                    // return None if next returns None
-                    file_name.rsplit('.').next()
-                }
-                None => None,
-            }
+            url.rsplit('/')
+                .next()
+                .and_then(|file_name| file_name.rsplit('.').next())
         }
     }
 }

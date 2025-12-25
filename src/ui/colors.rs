@@ -25,7 +25,7 @@ pub struct AppColors {
 
 impl AppColors {
     /// Creates an AppColors struct with default color values.
-    pub fn default() -> Self {
+    pub const fn default() -> Self {
         Self {
             normal: (Color::Gray, Color::Black),
             bold: (Color::White, Color::Blue),

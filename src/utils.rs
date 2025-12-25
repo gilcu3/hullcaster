@@ -30,8 +30,8 @@ static RE_MULT_LINE_BREAKS: Lazy<Regex> =
 /// Helper function converting an (optional) Unix timestamp to a
 /// DateTime<Utc> object
 pub fn convert_date(timestamp: i64) -> Result<DateTime<Utc>> {
-    let ndt =
-        DateTime::from_timestamp(timestamp, 0).ok_or(anyhow!("Wrong timestamp: {timestamp}"))?;
+    let ndt = DateTime::from_timestamp(timestamp, 0)
+        .ok_or_else(|| anyhow!("Wrong timestamp: {timestamp}"))?;
     Ok(DateTime::from_naive_utc_and_offset(ndt.naive_utc(), Utc))
 }
 
@@ -55,12 +55,12 @@ pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
             let tt = track
                 .codec_params
                 .time_base
-                .ok_or(anyhow!("time_base is None"))?
+                .ok_or_else(|| anyhow!("time_base is None"))?
                 .calc_time(
                     track
                         .codec_params
                         .n_frames
-                        .ok_or(anyhow!("n_frames is None"))?,
+                        .ok_or_else(|| anyhow!("n_frames is None"))?,
                 );
             duration += tt.seconds;
         }
@@ -86,7 +86,7 @@ impl StringUtils for String {
         self.graphemes(true)
             .skip(start)
             .take(length)
-            .collect::<String>()
+            .collect::<Self>()
     }
 
     /// Counts the total number of Unicode graphemes in the String.
@@ -111,10 +111,8 @@ pub fn clean_html(text: &str) -> String {
     let stripped_tags = RE_HTML_TAGS.replace_all(&br_to_lb, "");
 
     // convert HTML entities (e.g., &amp;)
-    let decoded = match escaper::decode_html(&stripped_tags) {
-        Err(_) => stripped_tags.to_string(),
-        Ok(s) => s,
-    };
+    let decoded =
+        escaper::decode_html(&stripped_tags).unwrap_or_else(|_| stripped_tags.to_string());
 
     // remove anything more than two line breaks (i.e., one blank line)
     RE_MULT_LINE_BREAKS
@@ -197,15 +195,15 @@ pub fn parse_create_dir(user_dir: Option<&str>, default: Option<PathBuf>) -> Res
 }
 
 pub fn format_duration(duration: Option<u64>) -> String {
-    match duration {
-        Some(dur) => {
+    duration.map_or_else(
+        || "--:--:--".to_string(),
+        |dur| {
             let mut seconds = dur;
             let hours = seconds / 3600;
             seconds -= hours * 3600;
             let minutes = seconds / 60;
             seconds -= minutes * 60;
             format!("{hours:02}:{minutes:02}:{seconds:02}")
-        }
-        None => "--:--:--".to_string(),
-    }
+        },
+    )
 }
