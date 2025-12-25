@@ -66,7 +66,7 @@ impl Player {
                 match message {
                     PlayerMessage::PlayPause => {
                         if !player.sink.empty() {
-                            player.play_pause()
+                            player.play_pause();
                         }
                     }
                     PlayerMessage::PlayFile(path, position, duration) => {
@@ -89,7 +89,7 @@ impl Player {
                     }
                     PlayerMessage::Seek(shift, direction) => {
                         if !player.sink.empty() {
-                            player.seek(shift, direction).await
+                            player.seek(shift, direction).await;
                         }
                     }
                     PlayerMessage::Quit => break,
@@ -122,8 +122,8 @@ impl Player {
         if position > 0
             && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
         {
-            log::warn!("Failed to seek: {err}")
-        };
+            log::warn!("Failed to seek: {err}");
+        }
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
@@ -153,8 +153,8 @@ impl Player {
         if position > 0
             && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
         {
-            log::warn!("Failed to seek: {err}")
-        };
+            log::warn!("Failed to seek: {err}");
+        }
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
@@ -183,13 +183,13 @@ impl Player {
                     pos + shift
                 }
             } else if pos >= shift {
-                pos - shift
+                pos.checked_sub(shift).unwrap()
             } else {
                 Duration::ZERO
             }
         }) {
-            log::warn!("Failed to seek: {err}")
-        };
+            log::warn!("Failed to seek: {err}");
+        }
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);

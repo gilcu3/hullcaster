@@ -30,7 +30,7 @@ impl Podcast {
     /// Counts and returns the number of unplayed episodes in the podcast.
     fn num_unplayed(&self) -> usize {
         self.episodes
-            .map(|ep| !ep.is_played() as usize, false)
+            .map(|ep| usize::from(!ep.is_played()), false)
             .iter()
             .sum()
     }
@@ -217,7 +217,7 @@ impl Menuable for NewEpisode {
             let empty = vec![" "; length - title_len - pod_title_len - 9];
             empty.join("")
         } else {
-            "".to_string()
+            String::new()
         };
 
         let full_string = format!(
@@ -234,7 +234,7 @@ impl Menuable for NewEpisode {
 
 /// Struct used to hold a vector of data inside a reference-counted
 /// mutex, to allow for multiple owners of mutable data.
-/// Primarily, the LockVec is used to provide methods that abstract
+/// Primarily, the `LockVec` is used to provide methods that abstract
 /// away some of the logic necessary for borrowing and locking the
 /// Arc<Mutex<_>>.
 ///
@@ -259,11 +259,11 @@ where
 }
 
 impl<T: Menuable> LockVec<T> {
-    /// Create a new LockVec.
+    /// Create a new `LockVec`.
     pub fn new(data: Vec<T>) -> Self {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
-        for i in data.into_iter() {
+        for i in data {
             let id = i.get_id();
             hm.insert(i.get_id(), Arc::new(RwLock::new(i)));
             order.push(id);
@@ -279,7 +279,7 @@ impl<T: Menuable> LockVec<T> {
     pub fn new_arc(data: Vec<Arc<RwLock<T>>>) -> Self {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
-        for i in data.into_iter() {
+        for i in data {
             let id = i.read().unwrap().get_id();
             hm.insert(id, i);
             order.push(id);
@@ -338,24 +338,24 @@ impl<T: Menuable> LockVec<T> {
         borrowed.contains_key(&id)
     }
 
-    /// Lock the LockVec hashmap for reading/writing.
+    /// Lock the `LockVec` hashmap for reading/writing.
     pub fn borrow_map(
         &self,
     ) -> MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>> {
         self.data.lock().expect("Mutex error")
     }
 
-    /// Lock the LockVec order vector for reading/writing.
+    /// Lock the `LockVec` order vector for reading/writing.
     pub fn borrow_order(&self) -> MutexGuard<'_, Vec<i64>> {
         self.order.lock().expect("Mutex error")
     }
 
-    /// Lock the LockVec filtered order vector for reading/writing.
+    /// Lock the `LockVec` filtered order vector for reading/writing.
     pub fn borrow_filtered_order(&self) -> MutexGuard<'_, Vec<i64>> {
         self.filtered_order.lock().expect("Mutex error")
     }
 
-    /// Lock the LockVec hashmap for reading/writing.
+    /// Lock the `LockVec` hashmap for reading/writing.
     #[allow(clippy::type_complexity)]
     pub fn borrow(
         &self,
@@ -371,13 +371,13 @@ impl<T: Menuable> LockVec<T> {
         )
     }
 
-    /// Empty out and replace all the data in the LockVec.
+    /// Empty out and replace all the data in the `LockVec`.
     pub fn replace_all(&self, data: Vec<T>) {
         let (mut map, mut order, mut filtered_order) = self.borrow();
         map.clear();
         order.clear();
         filtered_order.clear();
-        for i in data.into_iter() {
+        for i in data {
             let id = i.get_id();
             map.insert(i.get_id(), Arc::new(RwLock::new(i)));
             order.push(id);
@@ -390,7 +390,7 @@ impl<T: Menuable> LockVec<T> {
         map.clear();
         order.clear();
         filtered_order.clear();
-        for i in data.into_iter() {
+        for i in data {
             let id = i.read().unwrap().get_id();
             map.insert(id, i);
             order.push(id);
@@ -398,7 +398,7 @@ impl<T: Menuable> LockVec<T> {
         }
     }
 
-    /// Maps a closure to every element in the LockVec, in the same way
+    /// Maps a closure to every element in the `LockVec`, in the same way
     /// as an Iterator. However, to avoid issues with keeping the borrow
     /// alive, the function returns a Vec of the collected results,
     /// rather than an iterator.
@@ -420,7 +420,7 @@ impl<T: Menuable> LockVec<T> {
         }
     }
 
-    /// Maps a closure to a single element in the LockVec, specified by
+    /// Maps a closure to a single element in the `LockVec`, specified by
     /// `id`. If there is no element `id`, this returns None.
     pub fn map_single<B, F>(&self, id: i64, f: F) -> Option<B>
     where
@@ -430,7 +430,7 @@ impl<T: Menuable> LockVec<T> {
         borrowed.get(&id).map(|x| f(&x.read().unwrap()))
     }
 
-    /// Maps a closure to a single element in the LockVec, specified by
+    /// Maps a closure to a single element in the `LockVec`, specified by
     /// `index` (position order). If there is no element at that index,
     /// this returns None.
     pub fn map_single_by_index<B, F>(&self, index: usize, f: F) -> Option<B>
@@ -443,7 +443,7 @@ impl<T: Menuable> LockVec<T> {
             .map_or_else(|| None, |id| self.map_single(*id, f))
     }
 
-    /// Maps a closure to every element in the LockVec, in the same way
+    /// Maps a closure to every element in the `LockVec`, in the same way
     /// as the `filter_map()` does on an Iterator, both mapping and
     /// filtering. However, to avoid issues with keeping the borrow
     /// alive, the function returns a Vec of the collected results,
@@ -466,16 +466,15 @@ impl<T: Menuable> LockVec<T> {
             .collect()
     }
 
-    /// Returns the number of items in the LockVec.
+    /// Returns the number of items in the `LockVec`.
     pub fn len(&self, filtered: bool) -> usize {
         if filtered {
             return self.borrow_filtered_order().len();
-        } else {
-            return self.borrow_order().len();
         }
+        return self.borrow_order().len();
     }
 
-    /// Returns whether or not there are any items in the LockVec.
+    /// Returns whether or not there are any items in the `LockVec`.
     pub fn is_empty(&self) -> bool {
         return self.borrow_order().is_empty();
     }
@@ -530,17 +529,17 @@ impl LockVec<Episode> {
             .into_iter()
             .collect::<HashSet<i64>>();
         let mut norder = Vec::new();
-        let mut nforder = Vec::new();
+        let mut new_forder = Vec::new();
         for (_, i) in epvec {
             if sforder.contains(&i) {
                 norder.push(i);
-                nforder.push(i);
+                new_forder.push(i);
             }
         }
         let mut order = self.borrow_order();
         *order = norder;
         let mut forder = self.borrow_filtered_order();
-        *forder = nforder;
+        *forder = new_forder;
     }
 
     pub fn reverse(&self) {

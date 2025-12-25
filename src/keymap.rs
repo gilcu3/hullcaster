@@ -69,7 +69,7 @@ impl Keybindings {
     pub fn default() -> Self {
         let defaults = Self::_defaults();
         let mut keymap = Self::new();
-        for (action, defaults) in defaults.into_iter() {
+        for (action, defaults) in defaults {
             keymap.insert_from_vec(defaults.clone(), action);
             keymap.1.insert(action, defaults);
         }
@@ -116,7 +116,7 @@ impl Keybindings {
         ];
 
         let mut keymap = Self::default();
-        for (config, action) in config_actions.into_iter() {
+        for (config, action) in config_actions {
             if let Some(config) = config {
                 keymap.insert_from_vec(config.clone(), action);
                 keymap.1.insert(action, config);
@@ -132,10 +132,10 @@ impl Keybindings {
     }
 
     /// Inserts a set of new key-bindings into the hash map, each one
-    /// corresponding to the same UserAction. Will overwrite the value
+    /// corresponding to the same `UserAction`. Will overwrite the value
     /// of keys that already exist.
     pub fn insert_from_vec(&mut self, vec: Vec<String>, action: UserAction) {
-        for key in vec.into_iter() {
+        for key in vec {
             self.0.insert(key, action);
         }
     }
@@ -188,7 +188,7 @@ impl Keybindings {
     }
 }
 
-/// Helper function converting a crossterm KeyEvent object to a unique
+/// Helper function converting a crossterm `KeyEvent` object to a unique
 /// string representing that input.
 pub fn input_to_str(input: KeyEvent) -> Option<String> {
     let ctrl = if input.modifiers.intersects(KeyModifiers::CONTROL) {
@@ -218,8 +218,7 @@ pub fn input_to_str(input: KeyEvent) -> Option<String> {
         KeyCode::End => Some(format!("{ctrl}{alt}{shift}End")),
         KeyCode::PageUp => Some(format!("{ctrl}{alt}{shift}PgUp")),
         KeyCode::PageDown => Some(format!("{ctrl}{alt}{shift}PgDn")),
-        KeyCode::Tab => Some(format!("{ctrl}{alt}{shift}Tab")),
-        KeyCode::BackTab => Some(format!("{ctrl}{alt}{shift}Tab")),
+        KeyCode::Tab | KeyCode::BackTab => Some(format!("{ctrl}{alt}{shift}Tab")),
         KeyCode::Delete => Some(format!("{ctrl}{alt}{shift}Del")),
         KeyCode::Insert => Some(format!("{ctrl}{alt}{shift}Ins")),
         KeyCode::Esc => Some(format!("{ctrl}{alt}{shift}Esc")),

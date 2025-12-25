@@ -1,16 +1,17 @@
 use anyhow::{Result, anyhow};
 
-use once_cell::sync::Lazy;
 use ratatui::style::Color;
 use regex::Regex;
 
 use crate::config::AppColorsFromToml;
 
-static RE_COLOR_HEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})").expect("Regex error"));
+static RE_COLOR_HEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?i)#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})").expect("Regex error")
+});
 
-static RE_COLOR_RGB: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)rgb\(([0-9]+), ?([0-9]+), ?([0-9]+)\)").expect("Regex error"));
+static RE_COLOR_RGB: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?i)rgb\(([0-9]+), ?([0-9]+), ?([0-9]+)\)").expect("Regex error")
+});
 
 /// Holds information about the colors to use in the application. Tuple
 /// values represent (foreground, background), respectively.
@@ -24,7 +25,7 @@ pub struct AppColors {
 }
 
 impl AppColors {
-    /// Creates an AppColors struct with default color values.
+    /// Creates an `AppColors` struct with default color values.
     pub const fn default() -> Self {
         Self {
             normal: (Color::Gray, Color::Black),

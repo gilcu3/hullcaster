@@ -36,7 +36,7 @@ use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
 use crate::player::{PlaybackStatus, Player, PlayerMessage};
 use crate::threadpool::Threadpool;
-use crate::types::*;
+use crate::types::{LockVec, Message};
 use crate::ui::UiState;
 use crate::utils::{evaluate_in_shell, get_unplayed_episodes};
 
@@ -152,10 +152,10 @@ fn main() -> Result<()> {
 
     match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
-        Some(("sync", sub_args)) => sync_podcasts(&db_path, config, sub_args),
+        Some(("sync", sub_args)) => sync_podcasts(&db_path, &config, sub_args),
 
         // IMPORT SUBCOMMAND --------------------------------------------
-        Some(("import", sub_args)) => import(&db_path, config, sub_args),
+        Some(("import", sub_args)) => import(&db_path, &config, sub_args),
 
         // EXPORT SUBCOMMAND --------------------------------------------
         Some(("export", sub_args)) => export(&db_path, sub_args),
@@ -166,6 +166,7 @@ fn main() -> Result<()> {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Result<()> {
     // get connection to the database
     let db_inst = Database::connect(db_path)?;
@@ -198,7 +199,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
                 config.sync_server.clone(),
                 device_id,
                 config.sync_username.clone(),
-                config.sync_password.clone(),
+                &config.sync_password,
             );
             async move {
                 GpodderController::spawn_async(
@@ -207,10 +208,10 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
                     gpodder_config,
                     timestamp.ok(),
                 )
-                .await
+                .await;
             }
         }));
-    };
+    }
 
     let (tx_to_player, rx_from_ui) = mpsc::channel();
     let elapsed = Arc::new(RwLock::new(0));
@@ -280,7 +281,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         podcast_list,
         queue_items,
         unplayed_items,
-    )?;
+    );
 
     blocking_tasks.push(tokio::task::spawn_blocking(move || {
         log::info!("Starting app");
@@ -340,14 +341,13 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
 /// specifying a config path. If the command-line API is
 /// extended in the future, this will have to be refactored.
 fn get_config_path(config: Option<&str>) -> Option<PathBuf> {
-    match config {
-        Some(path) => Some(PathBuf::from(path)),
-        None => {
-            let mut path = dirs::config_dir()?;
-            path.push("hullcaster");
-            path.push("config.toml");
-            Some(path)
-        }
+    if let Some(path) = config {
+        Some(PathBuf::from(path))
+    } else {
+        let mut path = dirs::config_dir()?;
+        path.push("hullcaster");
+        path.push("config.toml");
+        Some(path)
     }
 }
 
@@ -369,18 +369,17 @@ fn setup_logs() -> Result<()> {
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "INFO".to_string());
     let level_filter = match log_level.to_uppercase().as_str() {
         "DEBUG" => simplelog::LevelFilter::Debug,
-        "INFO" => simplelog::LevelFilter::Info,
         "WARN" => simplelog::LevelFilter::Warn,
         "ERROR" => simplelog::LevelFilter::Error,
         _ => simplelog::LevelFilter::Info, // Default to INFO if the variable is not set correctly
     };
-    let mut _log_config = simplelog::ConfigBuilder::new();
-    let mut log_config = _log_config
+    let mut tmp_log_config = simplelog::ConfigBuilder::new();
+    let mut log_config = tmp_log_config
         .set_time_format_rfc2822()
         .set_time_offset_to_local()
         .unwrap();
     if level_filter != simplelog::LevelFilter::Debug {
-        log_config = log_config.add_filter_ignore_str("symphonia")
+        log_config = log_config.add_filter_ignore_str("symphonia");
     }
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         level_filter,
@@ -400,14 +399,14 @@ fn init_lock_file() -> Result<File> {
         .create(true)
         .truncate(false)
         .open(file_path.clone())
-        .context(format!("{file_path:?}"))?;
+        .context(format!("{}", file_path.display()))?;
     file.try_lock_exclusive()
-        .context(format!("{file_path:?}"))?;
+        .context(format!("{}", file_path.display()))?;
     Ok(file)
 }
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
-fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
+fn sync_podcasts(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     let db_inst = Database::connect(db_path)?;
     let podcast_list = db_inst.get_podcasts()?;
     if podcast_list.is_empty() {
@@ -420,7 +419,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
     let threadpool = Threadpool::new(config.simultaneous_downloads);
     let (tx_to_main, rx_to_main) = mpsc::channel();
 
-    for pod in podcast_list.iter() {
+    for pod in &podcast_list {
         let feed = PodcastFeed::new(Some(pod.id), pod.url.clone(), Some(pod.title.clone()));
         feeds::check_feed(feed, config.max_retries, &threadpool, tx_to_main.clone());
     }
@@ -431,7 +430,7 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
         match message {
             Message::Feed(FeedMsg::SyncData((pod_id, pod))) => {
                 let title = pod.title.clone();
-                let db_result = db_inst.update_podcast(pod_id, pod);
+                let db_result = db_inst.update_podcast(pod_id, &pod);
                 match db_result {
                     Ok(_) => {
                         if !args.contains_id("quiet") {
@@ -472,27 +471,24 @@ fn sync_podcasts(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -
 /// Imports a list of podcasts from OPML format, either reading from a
 /// file or from stdin. If the `replace` flag is set, this replaces all
 /// existing data in the database.
-fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
+fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
     // read from file or from stdin
-    let xml = match args.get_one::<String>("file").map(String::as_str) {
-        Some(filepath) => {
-            let mut f = File::open(filepath)
-                .with_context(|| format!("Could not open OPML file: {filepath}"))?;
-            let mut contents = String::new();
-            f.read_to_string(&mut contents)
-                .with_context(|| format!("Failed to read from OPML file: {filepath}"))?;
-            contents
-        }
-        None => {
-            let mut contents = String::new();
-            std::io::stdin()
-                .read_to_string(&mut contents)
-                .with_context(|| "Failed to read OPML file from stdin")?;
-            contents
-        }
+    let xml = if let Some(filepath) = args.get_one::<String>("file").map(String::as_str) {
+        let mut f = File::open(filepath)
+            .with_context(|| format!("Could not open OPML file: {filepath}"))?;
+        let mut contents = String::new();
+        f.read_to_string(&mut contents)
+            .with_context(|| format!("Failed to read from OPML file: {filepath}"))?;
+        contents
+    } else {
+        let mut contents = String::new();
+        std::io::stdin()
+            .read_to_string(&mut contents)
+            .with_context(|| "Failed to read OPML file from stdin")?;
+        contents
     };
 
-    let mut podcast_list = opml::import(xml).with_context(
+    let mut podcast_list = opml::import(&xml).with_context(
         || "Could not properly parse OPML file -- file may be formatted improperly or corrupted.",
     )?;
 
@@ -538,7 +534,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
     let threadpool = Threadpool::new(config.simultaneous_downloads);
     let (tx_to_main, rx_to_main) = mpsc::channel();
 
-    for pod in podcast_list.iter() {
+    for pod in &podcast_list {
         feeds::check_feed(
             pod.clone(),
             config.max_retries,
@@ -553,7 +549,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
         match message {
             Message::Feed(FeedMsg::NewData(pod)) => {
                 let title = pod.title.clone();
-                let db_result = db_inst.insert_podcast(pod);
+                let db_result = db_inst.insert_podcast(&pod);
                 match db_result {
                     Ok(_) => {
                         if !args.contains_id("quiet") {
@@ -597,7 +593,7 @@ fn import(db_path: &Path, config: Arc<Config>, args: &clap::ArgMatches) -> Resul
 fn export(db_path: &Path, args: &clap::ArgMatches) -> Result<()> {
     let db_inst = Database::connect(db_path)?;
     let podcast_list = db_inst.get_podcasts()?;
-    let opml = opml::export(podcast_list);
+    let opml = opml::export(&podcast_list);
 
     let xml = opml
         .to_string()

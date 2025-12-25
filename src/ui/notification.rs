@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use super::colors::AppColors;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 struct Notification {
     message: String,
     error: bool,
@@ -19,16 +19,6 @@ impl Notification {
             message,
             error,
             expiry,
-        }
-    }
-}
-
-impl Default for Notification {
-    fn default() -> Self {
-        Self {
-            message: "".into(),
-            error: false,
-            expiry: None,
         }
     }
 }

@@ -36,12 +36,10 @@ pub fn init_controls(
         let mut last_status = PlaybackStatus::Ready;
 
         controls
-            .attach(move |event: MediaControlEvent| match event {
-                MediaControlEvent::Toggle => {
+            .attach(move |event: MediaControlEvent| {
+                if event == MediaControlEvent::Toggle {
                     let _ = tx_to_ui.send(ControlMessage::PlayPause);
                 }
-                MediaControlEvent::Next => {}
-                _ => {}
             })
             .unwrap();
 
@@ -72,9 +70,8 @@ pub fn init_controls(
                 }
                 if rx_from_main.try_recv().is_ok() {
                     break;
-                } else {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(TICK_RATE)).await;
                 }
+                tokio::time::sleep(tokio::time::Duration::from_millis(TICK_RATE)).await;
             }
         }
     })

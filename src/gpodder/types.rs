@@ -39,7 +39,7 @@ pub struct Device {
     pub id: String,
     pub caption: String,
     #[serde(rename = "type")]
-    pub _type: String,
+    pub dtype: String,
     pub subscriptions: u32,
     // These are not specified in gpodder API
     #[allow(dead_code)]
@@ -150,7 +150,7 @@ impl Serialize for EpisodeAction {
 
 impl Config {
     pub(crate) fn new(
-        max_retries: usize, server: String, device: String, username: String, password: String,
+        max_retries: usize, server: String, device: String, username: String, password: &str,
     ) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));

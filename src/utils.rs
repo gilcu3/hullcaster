@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::fs;
 use std::io::Cursor;
@@ -11,24 +10,27 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
+use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::types::*;
+use crate::types::{Episode, LockVec, Podcast};
 
 pub static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
-static RE_BR_TAGS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error"));
+static RE_BR_TAGS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"((\r\n)|\r|\n)*<br */?>((\r\n)|\r|\n)*").expect("Regex error")
+});
 
-static RE_HTML_TAGS: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^<>]*>").expect("Regex error"));
+static RE_HTML_TAGS: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"<[^<>]*>").expect("Regex error"));
 
-static RE_MULT_LINE_BREAKS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error"));
+static RE_MULT_LINE_BREAKS: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"((\r\n)|\r|\n){3,}").expect("Regex error"));
 
 /// Helper function converting an (optional) Unix timestamp to a
-/// DateTime<Utc> object
+/// `DateTime`<Utc> object
 pub fn convert_date(timestamp: i64) -> Result<DateTime<Utc>> {
     let ndt = DateTime::from_timestamp(timestamp, 0)
         .ok_or_else(|| anyhow!("Wrong timestamp: {timestamp}"))?;
@@ -47,7 +49,7 @@ pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
         &Hint::new(),
         mss,
         &FormatOptions::default(),
-        &Default::default(),
+        &MetadataOptions::default(),
     )?;
     let mut duration = 0;
     for track in probed.format.tracks() {
@@ -156,7 +158,7 @@ pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Epis
 
 /// Helper function that takes an (optionally specified) user directory
 /// and an (OS-dependent) default directory, expands any environment
-/// variables, ~ alias, etc. Returns a PathBuf. Panics if environment
+/// variables, ~ alias, etc. Returns a `PathBuf`. Panics if environment
 /// variables cannot be found, if OS could not produce the appropriate
 /// default directory, or if the specified directories in the path could
 /// not be created.

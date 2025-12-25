@@ -1405,7 +1405,6 @@ dependencies = [
  "gag",
  "log",
  "nohash-hasher",
- "once_cell",
  "opml",
  "ratatui",
  "regex",

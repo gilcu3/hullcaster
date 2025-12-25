@@ -15,23 +15,19 @@ pub async fn execute_request_post(
             .send()
             .await;
 
-        match response {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    break Ok(resp);
-                } else {
-                    max_retries -= 1;
-                    if max_retries == 0 {
-                        let status_code = resp.status();
-                        break Err(anyhow!("Error code: {status_code}"));
-                    }
-                }
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                break Ok(resp);
             }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Max retries exceeded"));
-                }
+            max_retries -= 1;
+            if max_retries == 0 {
+                let status_code = resp.status();
+                break Err(anyhow!("Error code: {status_code}"));
+            }
+        } else {
+            max_retries -= 1;
+            if max_retries == 0 {
+                break Err(anyhow!("Max retries exceeded"));
             }
         }
     }?;
@@ -53,23 +49,19 @@ pub async fn execute_request_get(
             .send()
             .await;
 
-        match response {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    break Ok(resp);
-                } else {
-                    max_retries -= 1;
-                    if max_retries == 0 {
-                        let status_code = resp.status();
-                        break Err(anyhow!("Error code: {status_code}"));
-                    }
-                }
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                break Ok(resp);
             }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("Max retries exceeded"));
-                }
+            max_retries -= 1;
+            if max_retries == 0 {
+                let status_code = resp.status();
+                break Err(anyhow!("Error code: {status_code}"));
+            }
+        } else {
+            max_retries -= 1;
+            if max_retries == 0 {
+                break Err(anyhow!("Max retries exceeded"));
             }
         }
     }?;

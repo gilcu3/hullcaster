@@ -3,16 +3,16 @@ use chrono::Utc;
 use opml::{Body, Head, OPML, Outline};
 
 use crate::feeds::PodcastFeed;
-use crate::types::*;
+use crate::types::Podcast;
 
 /// Import a list of podcast feeds from an OPML file. Supports
 /// v1.0, v1.1, and v2.0 OPML files.
-pub fn import(xml: String) -> Result<Vec<PodcastFeed>> {
-    match OPML::from_str(&xml) {
+pub fn import(xml: &str) -> Result<Vec<PodcastFeed>> {
+    match OPML::from_str(xml) {
         Err(err) => Err(anyhow!(err)),
         Ok(opml) => {
             let mut feeds = Vec::new();
-            for pod in opml.body.outlines.into_iter() {
+            for pod in opml.body.outlines {
                 if pod.xml_url.is_some() {
                     // match against title attribute first -- if this is
                     // not set or empty, then match against the text
@@ -37,7 +37,7 @@ pub fn import(xml: String) -> Result<Vec<PodcastFeed>> {
 }
 
 /// Converts the current set of podcast feeds to the OPML format
-pub fn export(podcasts: Vec<Podcast>) -> OPML {
+pub fn export(podcasts: &[Podcast]) -> OPML {
     let date = Utc::now();
     let mut opml = OPML {
         head: Some(Head {
@@ -50,7 +50,7 @@ pub fn export(podcasts: Vec<Podcast>) -> OPML {
 
     let mut outlines = Vec::new();
 
-    for pod in podcasts.iter() {
+    for pod in podcasts {
         // opml.add_feed(&pod.title, &pod.url);
         outlines.push(Outline {
             text: pod.title.clone(),

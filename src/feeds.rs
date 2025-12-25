@@ -8,7 +8,7 @@ use rfc822_sanitizer::parse_from_rfc2822_with_fallback;
 use rss::{Channel, Item};
 
 use crate::threadpool::Threadpool;
-use crate::types::*;
+use crate::types::{EpisodeNoId, Message, PodcastNoId};
 use crate::utils::APP_USER_AGENT;
 
 /// Enum for communicating back to the main thread after feed data has
@@ -40,7 +40,7 @@ pub fn check_feed(
     feed: PodcastFeed, max_retries: usize, threadpool: &Threadpool,
     tx_to_main: mpsc::Sender<Message>,
 ) {
-    threadpool.execute(move || match get_feed_data(feed.url.clone(), max_retries) {
+    threadpool.execute(move || match get_feed_data(&feed.url, max_retries) {
         Ok(pod) => match feed.id {
             Some(id) => {
                 tx_to_main
@@ -59,7 +59,7 @@ pub fn check_feed(
 
 /// Given a URL, this attempts to pull the data about a podcast and its
 /// episodes from an RSS feed.
-fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
+fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId> {
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
@@ -67,22 +67,18 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
         .build()?;
 
     let mut response = loop {
-        match client.get(&url).send() {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    break Ok(resp);
-                } else {
-                    max_retries -= 1;
-                    if max_retries == 0 {
-                        break Err(anyhow!("Failed to fetch feed: Status {}", resp.status()));
-                    }
-                }
+        if let Ok(resp) = client.get(url).send() {
+            if resp.status().is_success() {
+                break Ok(resp);
             }
-            Err(_) => {
-                max_retries -= 1;
-                if max_retries == 0 {
-                    break Err(anyhow!("No response from feed"));
-                }
+            max_retries -= 1;
+            if max_retries == 0 {
+                break Err(anyhow!("Failed to fetch feed: Status {}", resp.status()));
+            }
+        } else {
+            max_retries -= 1;
+            if max_retries == 0 {
+                break Err(anyhow!("No response from feed"));
             }
         }
     }?;
@@ -91,7 +87,7 @@ fn get_feed_data(url: String, mut max_retries: usize) -> Result<PodcastNoId> {
     response.read_to_end(&mut resp_data)?;
 
     let channel = Channel::read_from(&resp_data[..])?;
-    Ok(parse_feed_data(channel, &url))
+    Ok(parse_feed_data(channel, url))
 }
 
 /// Given a Channel with the RSS feed data, this parses the data about a
@@ -107,7 +103,7 @@ fn parse_feed_data(channel: Channel, url: &str) -> PodcastNoId {
 
     let mut author = None;
     let explicit = channel.itunes_ext().and_then(|itunes| {
-        author = itunes.author().map(|a| a.to_string());
+        author = itunes.author().map(std::string::ToString::to_string);
         itunes.explicit().and_then(|s| {
             let ss = s.to_lowercase();
             match &ss[..] {
@@ -145,16 +141,16 @@ fn parse_feed_data(channel: Channel, url: &str) -> PodcastNoId {
 fn parse_episode_data(item: &Item) -> EpisodeNoId {
     let title = item
         .title()
-        .map_or_else(|| "".to_string(), |s| s.to_string());
+        .map_or_else(String::new, std::string::ToString::to_string);
     let url = item
         .enclosure()
-        .map_or_else(|| "".to_string(), |enc| enc.url().to_string());
+        .map_or_else(String::new, |enc| enc.url().to_string());
     let guid = item
         .guid()
-        .map_or_else(|| "".to_string(), |guid| guid.value().to_string());
+        .map_or_else(String::new, |guid| guid.value().to_string());
     let description = item
         .description()
-        .map_or_else(|| "".to_string(), |dsc| dsc.to_string());
+        .map_or_else(String::new, std::string::ToString::to_string);
     let pubdate = item.pub_date().and_then(|pd| {
         parse_from_rfc2822_with_fallback(pd).map_or(None, |date| {
             Some(DateTime::from_naive_utc_and_offset(date.naive_utc(), Utc))
@@ -221,7 +217,7 @@ mod tests {
         let path = "./tests/test_no_description.xml";
         let channel = Channel::read_from(open_file(path)).unwrap();
         let data = parse_feed_data(channel, "dummy_url");
-        assert_eq!(data.description, Some("".to_string()));
+        assert_eq!(data.description, Some(String::new()));
     }
 
     #[test]
@@ -255,7 +251,7 @@ mod tests {
     #[test]
     fn duration_hhhmmss() {
         let duration = String::from("31:38:42");
-        assert_eq!(parse_duration(&duration).ok(), Some(113922));
+        assert_eq!(parse_duration(&duration).ok(), Some(113_922));
     }
 
     #[test]

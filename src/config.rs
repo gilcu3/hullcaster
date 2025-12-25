@@ -38,6 +38,7 @@ pub const FADING_TIME: u64 = 100;
 
 /// Holds information about user configuration of program.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Config {
     pub download_path: PathBuf,
     pub play_command: String,
@@ -113,7 +114,7 @@ pub struct KeybindingsFromToml {
 }
 
 /// A temporary struct used to deserialize colors data from the TOML
-/// configuration file. See crate::ui::colors module for the AppColors
+/// configuration file. See `crate::ui::colors` module for the `AppColors`
 /// struct which handles the final color scheme.
 #[derive(Debug, Deserialize)]
 pub struct AppColorsFromToml {
@@ -136,80 +137,76 @@ impl Config {
     pub fn new(path: &Path) -> Result<Self> {
         let mut config_string = String::new();
 
-        let config_toml = match File::open(path) {
-            Ok(mut file) => {
-                file.read_to_string(&mut config_string).with_context(
-                    || "Could not read config.toml. Please ensure file is readable.",
-                )?;
-                toml::from_str(&config_string)
-                    .with_context(|| "Could not parse config.toml. Please check file syntax.")?
-            }
-            Err(_) => {
-                // if we can't find the file, set everything to empty
-                // so we it will use the defaults for everything
-                let keybindings = KeybindingsFromToml {
-                    left: None,
-                    right: None,
-                    up: None,
-                    down: None,
-                    go_top: None,
-                    go_bot: None,
-                    page_up: None,
-                    page_down: None,
-                    move_up: None,
-                    move_down: None,
-                    add_feed: None,
-                    sync: None,
-                    sync_all: None,
-                    sync_gpodder: None,
-                    play_pause: None,
-                    enter: None,
-                    mark_played: None,
-                    mark_all_played: None,
-                    download: None,
-                    download_all: None,
-                    delete: None,
-                    delete_all: None,
-                    remove: None,
-                    filter_played: None,
-                    filter_downloaded: None,
-                    enqueue: None,
-                    help: None,
-                    quit: None,
-                    unplayed_list: None,
-                    back: None,
-                    switch: None,
-                    play_external: None,
-                };
+        let config_toml = if let Ok(mut file) = File::open(path) {
+            file.read_to_string(&mut config_string)
+                .with_context(|| "Could not read config.toml. Please ensure file is readable.")?;
+            toml::from_str(&config_string)
+                .with_context(|| "Could not parse config.toml. Please check file syntax.")?
+        } else {
+            // if we can't find the file, set everything to empty
+            // so we it will use the defaults for everything
+            let keybindings = KeybindingsFromToml {
+                left: None,
+                right: None,
+                up: None,
+                down: None,
+                go_top: None,
+                go_bot: None,
+                page_up: None,
+                page_down: None,
+                move_up: None,
+                move_down: None,
+                add_feed: None,
+                sync: None,
+                sync_all: None,
+                sync_gpodder: None,
+                play_pause: None,
+                enter: None,
+                mark_played: None,
+                mark_all_played: None,
+                download: None,
+                download_all: None,
+                delete: None,
+                delete_all: None,
+                remove: None,
+                filter_played: None,
+                filter_downloaded: None,
+                enqueue: None,
+                help: None,
+                quit: None,
+                unplayed_list: None,
+                back: None,
+                switch: None,
+                play_external: None,
+            };
 
-                let colors = AppColorsFromToml {
-                    normal_foreground: None,
-                    normal_background: None,
-                    bold_foreground: None,
-                    bold_background: None,
-                    highlighted_active_foreground: None,
-                    highlighted_active_background: None,
-                    highlighted_foreground: None,
-                    highlighted_background: None,
-                    error_foreground: None,
-                    error_background: None,
-                };
-                ConfigFromToml {
-                    download_path: None,
-                    play_command: None,
-                    simultaneous_downloads: None,
-                    max_retries: None,
-                    enable_sync: Some(false),
-                    sync_server: None,
-                    sync_username: None,
-                    sync_password: None,
-                    sync_password_eval: None,
-                    mark_as_played_on_play: None,
-                    sync_on_start: Some(true),
-                    keybindings: Some(keybindings),
-                    colors: Some(colors),
-                    confirm_quit: Some(true),
-                }
+            let colors = AppColorsFromToml {
+                normal_foreground: None,
+                normal_background: None,
+                bold_foreground: None,
+                bold_background: None,
+                highlighted_active_foreground: None,
+                highlighted_active_background: None,
+                highlighted_foreground: None,
+                highlighted_background: None,
+                error_foreground: None,
+                error_background: None,
+            };
+            ConfigFromToml {
+                download_path: None,
+                play_command: None,
+                simultaneous_downloads: None,
+                max_retries: None,
+                enable_sync: Some(false),
+                sync_server: None,
+                sync_username: None,
+                sync_password: None,
+                sync_password_eval: None,
+                mark_as_played_on_play: None,
+                sync_on_start: Some(true),
+                keybindings: Some(keybindings),
+                colors: Some(colors),
+                confirm_quit: Some(true),
             }
         };
 
@@ -244,18 +241,16 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
     let play_command = config_toml
         .play_command
         .as_deref()
-        .map_or_else(|| "vlc %s".to_string(), |cmd| cmd.to_string());
+        .map_or_else(|| "vlc %s".to_string(), std::string::ToString::to_string);
 
     let simultaneous_downloads = match config_toml.simultaneous_downloads {
         Some(num) if num > 0 => num,
-        Some(_) => 3,
-        None => 3,
+        Some(_) | None => 3,
     };
 
     let max_retries = match config_toml.max_retries {
         Some(num) if num > 0 => num,
-        Some(_) => 3,
-        None => 3,
+        Some(_) | None => 3,
     };
 
     let mark_as_played_on_play = config_toml.mark_as_played_on_play.unwrap_or(true);
@@ -273,7 +268,7 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         password.trim().to_string()
     } else {
         log::warn!("sync_password is not set, assuming empty");
-        "".to_string()
+        String::new()
     };
 
     let sync_on_start = config_toml.sync_on_start.unwrap_or(true);

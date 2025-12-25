@@ -126,7 +126,7 @@ impl GpodderController {
                 log::debug!(
                     "Using device: id = {}, type = {}, subscriptions = {}, caption = {}",
                     dev.id,
-                    dev._type,
+                    dev.dtype,
                     dev.subscriptions,
                     dev.caption
                 );
@@ -134,10 +134,10 @@ impl GpodderController {
                 break;
             }
         }
-        if !exists {
-            self.register_device().await
-        } else {
+        if exists {
             Ok(())
+        } else {
+            self.register_device().await
         }
     }
 
@@ -145,7 +145,7 @@ impl GpodderController {
         &self, podcast_url: &str, episode_url: &str, position: i64, duration: i64,
     ) -> Result<String> {
         self.require_login().await?;
-        let _url_mark_played = format!(
+        let url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
             self.config.server, self.config.username, self.config.device
         );
@@ -163,7 +163,7 @@ impl GpodderController {
 
         let result = execute_request_post(
             &self.client,
-            _url_mark_played,
+            url_mark_played,
             msg,
             &self.config.credentials,
             self.config.max_retries,
@@ -175,7 +175,7 @@ impl GpodderController {
 
     pub async fn mark_played_batch(&self, eps: Vec<(String, String, i64, i64)>) -> Result<String> {
         self.require_login().await?;
-        let _url_mark_played = format!(
+        let url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
             self.config.server, self.config.username, self.config.device
         );
@@ -197,7 +197,7 @@ impl GpodderController {
 
         let result = execute_request_post(
             &self.client,
-            _url_mark_played,
+            url_mark_played,
             msg,
             &self.config.credentials,
             self.config.max_retries,
@@ -478,10 +478,10 @@ impl GpodderController {
                 break;
             }
         }
-        if !exists {
-            self.register_device().await?;
-        } else {
+        if exists {
             println!("Device already exists");
+        } else {
+            self.register_device().await?;
         }
 
         // Not implemented in opodsync
@@ -545,7 +545,7 @@ mod tests {
             "http://localhost".to_string(),
             "device".to_string(),
             "user".to_string(),
-            "pass".to_string(),
+            "pass",
         );
         // pull changes from last week
         let timestamp = current_time().unwrap() - 7 * 24 * 60 * 60;

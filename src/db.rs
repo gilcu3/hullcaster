@@ -5,7 +5,7 @@ use ahash::AHashMap;
 use rusqlite::{Connection, params};
 use semver::Version;
 
-use crate::types::*;
+use crate::types::{Episode, EpisodeNoId, LockVec, NewEpisode, Podcast, PodcastNoId};
 use crate::utils::convert_date;
 
 pub struct SyncResult {
@@ -167,7 +167,7 @@ impl Database {
 
     /// Inserts a new podcast and list of podcast episodes into the
     /// database.
-    pub fn insert_podcast(&self, podcast: PodcastNoId) -> Result<SyncResult> {
+    pub fn insert_podcast(&self, podcast: &PodcastNoId) -> Result<SyncResult> {
         let mut conn = Connection::open(&self.path).expect("Error connecting to database.");
         let tx = conn.transaction()?;
         // let conn = self.conn.as_ref().expect("Error connecting to database.");
@@ -194,7 +194,7 @@ impl Database {
         }
         let mut ep_ids = Vec::new();
         for ep in podcast.episodes.iter().rev() {
-            let id = self.insert_episode(&tx, pod_id, ep)?;
+            let id = Self::insert_episode(&tx, pod_id, ep)?;
             let new_ep = NewEpisode {
                 id,
                 pod_id,
@@ -214,7 +214,7 @@ impl Database {
 
     /// Inserts a podcast episode into the database.
     pub fn insert_episode(
-        &self, conn: &Connection, podcast_id: i64, episode: &EpisodeNoId,
+        conn: &Connection, podcast_id: i64, episode: &EpisodeNoId,
     ) -> Result<i64> {
         let pubdate = episode.pubdate.map(|dt| dt.timestamp());
 
@@ -263,7 +263,10 @@ impl Database {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
 
         // convert list of episode ids into a comma-separated String
-        let episode_list: Vec<String> = episode_ids.iter().map(|x| x.to_string()).collect();
+        let episode_list: Vec<String> = episode_ids
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         let episodes = episode_list.join(", ");
 
         let mut stmt = conn.prepare_cached("DELETE FROM files WHERE episode_id = (?);")?;
@@ -286,7 +289,7 @@ impl Database {
     /// Updates an existing podcast in the database, where metadata is
     /// changed if necessary, and episodes are updated (modified episodes
     /// are updated, new episodes are inserted).
-    pub fn update_podcast(&self, pod_id: i64, podcast: PodcastNoId) -> Result<SyncResult> {
+    pub fn update_podcast(&self, pod_id: i64, podcast: &PodcastNoId) -> Result<SyncResult> {
         {
             let conn = self.conn.as_ref().expect("Error connecting to database.");
             let mut stmt = conn.prepare_cached(
@@ -305,7 +308,7 @@ impl Database {
             ])?;
         }
 
-        let result = self.update_episodes(pod_id, podcast.title, podcast.episodes)?;
+        let result = self.update_episodes(pod_id, &podcast.title, &podcast.episodes)?;
         Ok(result)
     }
 
@@ -318,11 +321,11 @@ impl Database {
     /// a "new" episode. The old version will still remain in the
     /// database.
     fn update_episodes(
-        &self, podcast_id: i64, podcast_title: String, episodes: Vec<EpisodeNoId>,
+        &self, podcast_id: i64, podcast_title: &str, episodes: &[EpisodeNoId],
     ) -> Result<SyncResult> {
         let old_episodes = self.get_episodes(podcast_id)?;
         let mut old_ep_map = AHashMap::new();
-        for ep in old_episodes.iter() {
+        for ep in &old_episodes {
             if !ep.guid.is_empty() {
                 old_ep_map.insert(ep.guid.clone(), ep);
             }
@@ -344,7 +347,7 @@ impl Database {
                 && let Some(old_ep) = old_ep_map.get(&new_ep.guid)
             {
                 existing_id = Some(old_ep.id);
-                self.check_for_updates(old_ep, new_ep)
+                Self::check_for_updates(old_ep, new_ep)
             } else {
                 false
             };
@@ -356,54 +359,51 @@ impl Database {
             if existing_id.is_none() {
                 for old_ep in old_episodes.iter().rev() {
                     let mut matching = 0;
-                    matching += (new_ep.title == old_ep.title) as i32;
-                    matching += (new_ep.url == old_ep.url) as i32;
+                    matching += i32::from(new_ep.title == old_ep.title);
+                    matching += i32::from(new_ep.url == old_ep.url);
 
                     if let Some(pd) = new_pd
                         && let Some(old_pd) = old_ep.pubdate
                     {
-                        matching += (pd == old_pd.timestamp()) as i32;
+                        matching += i32::from(pd == old_pd.timestamp());
                     }
 
                     if matching >= 2 {
                         existing_id = Some(old_ep.id);
-                        update = self.check_for_updates(old_ep, new_ep);
+                        update = Self::check_for_updates(old_ep, new_ep);
                         break;
                     }
                 }
             }
 
-            match existing_id {
-                Some(id) => {
-                    if update {
-                        let mut stmt = tx.prepare_cached(
-                            "UPDATE episodes SET title = ?, url = ?,
-                                guid = ?, description = ?, pubdate = ?,
-                                duration = ? WHERE id = ?;",
-                        )?;
-                        stmt.execute(params![
-                            new_ep.title,
-                            new_ep.url,
-                            new_ep.guid,
-                            new_ep.description,
-                            new_pd,
-                            new_ep.duration,
-                            id,
-                        ])?;
-                        update_ep.push(id);
-                    }
-                }
-                None => {
-                    let id = self.insert_episode(&tx, podcast_id, new_ep)?;
-                    let new_ep = NewEpisode {
+            if let Some(id) = existing_id {
+                if update {
+                    let mut stmt = tx.prepare_cached(
+                        "UPDATE episodes SET title = ?, url = ?,
+                            guid = ?, description = ?, pubdate = ?,
+                            duration = ? WHERE id = ?;",
+                    )?;
+                    stmt.execute(params![
+                        new_ep.title,
+                        new_ep.url,
+                        new_ep.guid,
+                        new_ep.description,
+                        new_pd,
+                        new_ep.duration,
                         id,
-                        pod_id: podcast_id,
-                        title: new_ep.title.clone(),
-                        pod_title: podcast_title.clone(),
-                        selected: false,
-                    };
-                    insert_ep.push(new_ep);
+                    ])?;
+                    update_ep.push(id);
                 }
+            } else {
+                let id = Self::insert_episode(&tx, podcast_id, new_ep)?;
+                let new_ep = NewEpisode {
+                    id,
+                    pod_id: podcast_id,
+                    title: new_ep.title.clone(),
+                    pod_title: podcast_title.to_string(),
+                    selected: false,
+                };
+                insert_ep.push(new_ep);
             }
         }
         tx.commit()?;
@@ -416,7 +416,7 @@ impl Database {
     /// Checks two matching episodes to see whether there are details
     /// that need to be updated (e.g., same episode, but the title has
     /// been changed).
-    fn check_for_updates(&self, old_ep: &Episode, new_ep: &EpisodeNoId) -> bool {
+    fn check_for_updates(old_ep: &Episode, new_ep: &EpisodeNoId) -> bool {
         let new_pd = new_ep.pubdate.map(|dt| dt.timestamp());
         let pd_match = if let Some(pd) = new_pd
             && let Some(old_pd) = old_ep.pubdate
@@ -524,7 +524,7 @@ impl Database {
                 url: row.get("url")?,
                 guid: row
                     .get::<&str, Option<String>>("guid")?
-                    .unwrap_or_else(|| "".to_string()),
+                    .unwrap_or_else(String::new),
                 description: row.get("description")?,
                 pubdate,
                 duration: row.get("duration")?,
