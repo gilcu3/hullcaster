@@ -1106,6 +1106,7 @@ fn render_confirmation_popup(frame: &mut Frame, area: Rect, msg: String, colors:
     frame.render_widget(input, mid_area);
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn render_add_podcast_popup(frame: &mut Frame, area: Rect, input: &Input, colors: &AppColors) {
     let [_, input_area, _] = Layout::vertical([
         Constraint::Fill(1),
@@ -1325,7 +1326,7 @@ fn render_help_line(frame: &mut Frame, area: Rect, keymap: &Keybindings, colors:
         (UserAction::Remove, "Remove"),
         (UserAction::UnplayedList, "Show/Hide Unplayed"),
     ];
-    let mut cur_length = -3;
+    let mut cur_length = 0;
     let mut key_strs = Vec::new();
     for (action, action_str) in actions {
         if let Some(keys) = keymap.keys_for_action(action) {
@@ -1334,10 +1335,10 @@ fn render_help_line(frame: &mut Frame, area: Rect, keymap: &Keybindings, colors:
                 0 => format!(":{action_str}"),
                 _ => format!("{}:{}", &keys[0], action_str,),
             };
-            if cur_length + key_str.len() as i16 + 3 > area.width as i16 {
+            if cur_length + key_str.len() > area.width as usize {
                 break;
             }
-            cur_length += key_str.len() as i16 + 3;
+            cur_length += key_str.len() + 3;
             key_strs.push(key_str);
         }
     }
@@ -1466,6 +1467,11 @@ fn render_menuable_area<T: Menuable>(
 //     frame.render_stateful_widget(list, area, &mut episodes.state);
 // }
 
+#[allow(clippy::cast_precision_loss)]
+fn compute_ratio(elapsed: u64, total: u64) -> f64 {
+    (elapsed as f64 / total as f64).min(1.0)
+}
+
 fn render_play_area(
     frame: &mut Frame, area: Rect, ep: &ShareableRwLock<Option<ShareableRwLock<Episode>>>,
     pod_title: Option<&String>, elapsed: u64, colors: &AppColors,
@@ -1479,7 +1485,7 @@ fn render_play_area(
     let label = ep.read().unwrap().as_ref().map_or_else(String::new, |ep| {
         let ep = ep.read().unwrap();
         if let Some(total) = ep.duration {
-            ratio = (elapsed as f64 / total as f64).min(1.0);
+            ratio = compute_ratio(elapsed, total as u64);
         }
         let total_label = format_duration(ep.duration.map(|x| x as u64));
         title.clone_from(&ep.title);
