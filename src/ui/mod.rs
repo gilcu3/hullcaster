@@ -542,295 +542,295 @@ impl UiState {
     /// spawns a UI window to capture the feed URL, and only then passes this
     /// data back to the main controller.
     fn getch(&mut self) -> Vec<UiMsg> {
-        if event::poll(Duration::from_millis(TICK_RATE)).expect("Can't poll for inputs") {
-            if let Event::Key(input) = event::read().expect("Can't read inputs") {
-                let action = self.keymap.get_from_input(input).cloned();
-                if let Some(popup) = self.active_popup.clone() {
-                    if action == Some(UserAction::Back) {
-                        self.active_popup = None;
-                    } else {
-                        match popup {
-                            Popup::Welcome | Popup::Details | Popup::Help => match action {
-                                Some(a @ UserAction::Down)
-                                | Some(a @ UserAction::Up)
-                                | Some(a @ UserAction::PageUp)
-                                | Some(a @ UserAction::PageDown)
-                                | Some(a @ UserAction::GoTop)
-                                | Some(a @ UserAction::GoBot) => {
-                                    self.move_cursor(&a);
+        if event::poll(Duration::from_millis(TICK_RATE)).expect("Can't poll for inputs")
+            && let Event::Key(input) = event::read().expect("Can't read inputs")
+        {
+            let action = self.keymap.get_from_input(input).cloned();
+            if let Some(popup) = self.active_popup.clone() {
+                if action == Some(UserAction::Back) {
+                    self.active_popup = None;
+                } else {
+                    match popup {
+                        Popup::Welcome | Popup::Details | Popup::Help => match action {
+                            Some(a @ UserAction::Down)
+                            | Some(a @ UserAction::Up)
+                            | Some(a @ UserAction::PageUp)
+                            | Some(a @ UserAction::PageDown)
+                            | Some(a @ UserAction::GoTop)
+                            | Some(a @ UserAction::GoBot) => {
+                                self.move_cursor(&a);
+                            }
+                            Some(UserAction::Help) => {
+                                self.active_popup = Some(Popup::Help);
+                            }
+                            _ => {}
+                        },
+                        Popup::AddPodcast => match input.code {
+                            KeyCode::Enter => {
+                                self.active_popup = None;
+                                return vec![UiMsg::AddFeed(self.input.value().to_string())];
+                            }
+                            _ => {
+                                self.input.handle_event(&Event::Key(input));
+                            }
+                        },
+                        Popup::ConfirmRemovePodcast => match input.code {
+                            KeyCode::Char('y') => {
+                                self.active_popup = None;
+                                if let Some(msg) = self.remove_podcast() {
+                                    return vec![msg];
                                 }
-                                Some(UserAction::Help) => {
-                                    self.active_popup = Some(Popup::Help);
-                                }
-                                _ => {}
-                            },
-                            Popup::AddPodcast => match input.code {
-                                KeyCode::Enter => {
-                                    self.active_popup = None;
-                                    return vec![UiMsg::AddFeed(self.input.value().to_string())];
-                                }
-                                _ => {
-                                    self.input.handle_event(&Event::Key(input));
-                                }
-                            },
-                            Popup::ConfirmRemovePodcast => match input.code {
-                                KeyCode::Char('y') => {
-                                    self.active_popup = None;
-                                    if let Some(msg) = self.remove_podcast() {
-                                        return vec![msg];
-                                    }
-                                }
-                                KeyCode::Char('n') => {
-                                    self.active_popup = None;
-                                }
-                                _ => {}
-                            },
-                            Popup::ConfirmQuit => match input.code {
-                                KeyCode::Char('y') => {
-                                    self.active_popup = None;
-                                    return vec![UiMsg::Quit];
-                                }
-                                KeyCode::Char('n') => {
-                                    self.active_popup = None;
-                                }
-                                _ => {}
-                            },
+                            }
+                            KeyCode::Char('n') => {
+                                self.active_popup = None;
+                            }
+                            _ => {}
+                        },
+                        Popup::ConfirmQuit => match input.code {
+                            KeyCode::Char('y') => {
+                                self.active_popup = None;
+                                return vec![UiMsg::Quit];
+                            }
+                            KeyCode::Char('n') => {
+                                self.active_popup = None;
+                            }
+                            _ => {}
+                        },
+                    }
+                }
+            } else {
+                match action {
+                    Some(a @ UserAction::Down)
+                    | Some(a @ UserAction::Up)
+                    | Some(a @ UserAction::PageUp)
+                    | Some(a @ UserAction::PageDown)
+                    | Some(a @ UserAction::GoTop)
+                    | Some(a @ UserAction::GoBot) => {
+                        self.move_cursor(&a);
+                    }
+
+                    Some(UserAction::Left) => {
+                        let _ = self
+                            .tx_to_player
+                            .send(PlayerMessage::Seek(SEEK_LENGTH, false));
+                    }
+
+                    Some(UserAction::Right) => {
+                        let _ = self
+                            .tx_to_player
+                            .send(PlayerMessage::Seek(SEEK_LENGTH, true));
+                    }
+
+                    Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
+                        if let Panel::Queue = self.active_panel
+                            && let Some(ui_msg) = self.move_eps(&a)
+                        {
+                            return vec![ui_msg];
                         }
                     }
-                } else {
-                    match action {
-                        Some(a @ UserAction::Down)
-                        | Some(a @ UserAction::Up)
-                        | Some(a @ UserAction::PageUp)
-                        | Some(a @ UserAction::PageDown)
-                        | Some(a @ UserAction::GoTop)
-                        | Some(a @ UserAction::GoBot) => {
-                            self.move_cursor(&a);
-                        }
 
-                        Some(UserAction::Left) => {
-                            let _ = self
-                                .tx_to_player
-                                .send(PlayerMessage::Seek(SEEK_LENGTH, false));
-                        }
+                    Some(UserAction::AddFeed) => {
+                        self.input.reset();
+                        self.active_popup = Some(Popup::AddPodcast);
+                    }
 
-                        Some(UserAction::Right) => {
-                            let _ = self
-                                .tx_to_player
-                                .send(PlayerMessage::Seek(SEEK_LENGTH, true));
+                    Some(UserAction::Sync) => {
+                        if let Panel::Podcasts = self.active_panel
+                            && let Some(pod_id) = self.get_podcast_id()
+                        {
+                            return vec![UiMsg::Sync(pod_id)];
                         }
+                    }
+                    Some(UserAction::SyncAll) => {
+                        return vec![UiMsg::SyncAll];
+                    }
 
-                        Some(a @ UserAction::MoveUp) | Some(a @ UserAction::MoveDown) => {
-                            if let Panel::Queue = self.active_panel {
-                                if let Some(ui_msg) = self.move_eps(&a) {
-                                    return vec![ui_msg];
+                    Some(UserAction::SyncGpodder) => {
+                        return vec![UiMsg::SyncGpodder];
+                    }
+
+                    Some(UserAction::Enter) => match self.active_panel {
+                        Panel::Podcasts => {
+                            if let Some(pod_id) = self.get_podcast_id() {
+                                self.select_panel(Panel::Episodes);
+
+                                if let Some(items) = self
+                                    .podcasts
+                                    .items
+                                    .map_single(pod_id, |x| x.episodes.clone())
+                                {
+                                    self.episodes.items = items;
+                                    self.episodes.state =
+                                        ListState::default().with_selected(Some(0));
                                 }
                             }
                         }
-
-                        Some(UserAction::AddFeed) => {
-                            self.input.reset();
-                            self.active_popup = Some(Popup::AddPodcast);
+                        Panel::Queue | Panel::Episodes | Panel::Unplayed => {
+                            return self.play_selected_episode();
                         }
+                    },
 
-                        Some(UserAction::Sync) => {
-                            if let Panel::Podcasts = self.active_panel {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    return vec![UiMsg::Sync(pod_id)];
-                                }
+                    Some(UserAction::PlayExternal) => match self.active_panel {
+                        Panel::Queue | Panel::Episodes | Panel::Unplayed => {
+                            if let Some(pod_id) = self.get_podcast_id()
+                                && let Some(ep_id) = self.get_episode_id()
+                            {
+                                self.construct_current_episode(ep_id);
+                                return vec![UiMsg::Play(pod_id, ep_id, true)];
                             }
                         }
-                        Some(UserAction::SyncAll) => {
-                            return vec![UiMsg::SyncAll];
-                        }
+                        Panel::Podcasts => {}
+                    },
 
-                        Some(UserAction::SyncGpodder) => {
-                            return vec![UiMsg::SyncGpodder];
-                        }
-
-                        Some(UserAction::Enter) => match self.active_panel {
-                            Panel::Podcasts => {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    self.select_panel(Panel::Episodes);
-
-                                    if let Some(items) = self
-                                        .podcasts
-                                        .items
-                                        .map_single(pod_id, |x| x.episodes.clone())
-                                    {
-                                        self.episodes.items = items;
-                                        self.episodes.state =
-                                            ListState::default().with_selected(Some(0));
+                    Some(UserAction::Enqueue) => match self.active_panel {
+                        Panel::Episodes | Panel::Unplayed => {
+                            if let Some(ep_id) = self.get_episode_id()
+                                && !self.queue.items.contains_key(ep_id)
+                            {
+                                if self.left_panel == Panel::Episodes {
+                                    if let Some(ep) = self.episodes.items.get(ep_id) {
+                                        self.queue.items.push_arc(ep);
+                                        return vec![UiMsg::QueueModified];
                                     }
-                                }
-                            }
-                            Panel::Queue | Panel::Episodes | Panel::Unplayed => {
-                                return self.play_selected_episode();
-                            }
-                        },
-
-                        Some(UserAction::PlayExternal) => match self.active_panel {
-                            Panel::Queue | Panel::Episodes | Panel::Unplayed => {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    if let Some(ep_id) = self.get_episode_id() {
-                                        self.construct_current_episode(ep_id);
-                                        return vec![UiMsg::Play(pod_id, ep_id, true)];
-                                    }
-                                }
-                            }
-                            Panel::Podcasts => {}
-                        },
-
-                        Some(UserAction::Enqueue) => match self.active_panel {
-                            Panel::Episodes | Panel::Unplayed => {
-                                if let Some(ep_id) = self.get_episode_id() {
-                                    if !self.queue.items.contains_key(ep_id) {
-                                        if self.left_panel == Panel::Episodes {
-                                            if let Some(ep) = self.episodes.items.get(ep_id) {
-                                                self.queue.items.push_arc(ep);
-                                                return vec![UiMsg::QueueModified];
-                                            }
-                                        } else if self.left_panel == Panel::Unplayed {
-                                            if let Some(ep) = self.unplayed.items.get(ep_id) {
-                                                self.queue.items.push_arc(ep);
-                                                return vec![UiMsg::QueueModified];
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Panel::Queue | Panel::Podcasts => {}
-                        },
-                        Some(UserAction::PlayPause) => {
-                            if let Some(msg) = self.play_pause() {
-                                return vec![msg];
-                            }
-                        }
-                        Some(UserAction::MarkPlayed) => match self.active_panel {
-                            Panel::Episodes | Panel::Unplayed | Panel::Queue => {
-                                if let Some(ui_msg) = self.mark_played() {
-                                    return vec![ui_msg];
-                                }
-                            }
-                            _ => {}
-                        },
-                        Some(UserAction::MarkAllPlayed) => {
-                            if let Panel::Episodes = self.active_panel {
-                                if let Some(ui_msg) = self.mark_all_played() {
-                                    return vec![ui_msg];
-                                }
-                            }
-                        }
-
-                        Some(UserAction::Download) => match self.active_panel {
-                            Panel::Episodes | Panel::Unplayed | Panel::Queue => {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    if let Some(ep_id) = self.get_episode_id() {
-                                        return vec![UiMsg::Download(pod_id, ep_id)];
-                                    }
-                                }
-                            }
-                            _ => {}
-                        },
-                        Some(UserAction::DownloadAll) => {
-                            if let Panel::Podcasts = self.active_panel {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    return vec![UiMsg::DownloadAll(pod_id)];
-                                }
-                            }
-                        }
-
-                        Some(UserAction::Delete) => match self.active_panel {
-                            Panel::Episodes | Panel::Queue | Panel::Unplayed => {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    if let Some(ep_id) = self.get_episode_id() {
-                                        return vec![UiMsg::Delete(pod_id, ep_id)];
-                                    }
-                                }
-                            }
-                            Panel::Podcasts => {}
-                        },
-                        Some(UserAction::DeleteAll) => {
-                            if let Panel::Podcasts = self.active_panel {
-                                if let Some(pod_id) = self.get_podcast_id() {
-                                    return vec![UiMsg::DeleteAll(pod_id)];
-                                }
-                            }
-                        }
-
-                        Some(UserAction::Remove) => match self.active_panel {
-                            Panel::Podcasts => {
-                                self.active_popup = Some(Popup::ConfirmRemovePodcast);
-                            }
-                            Panel::Queue => {
-                                if let Some(ep_id) = self.get_episode_id() {
-                                    self.queue.items.remove(ep_id);
+                                } else if self.left_panel == Panel::Unplayed
+                                    && let Some(ep) = self.unplayed.items.get(ep_id)
+                                {
+                                    self.queue.items.push_arc(ep);
                                     return vec![UiMsg::QueueModified];
                                 }
                             }
-                            _ => {}
-                        },
-
-                        Some(UserAction::FilterPlayed) => {
-                            return vec![UiMsg::FilterChange(FilterType::Played)];
                         }
-                        Some(UserAction::FilterDownloaded) => {
-                            return vec![UiMsg::FilterChange(FilterType::Downloaded)];
+                        Panel::Queue | Panel::Podcasts => {}
+                    },
+                    Some(UserAction::PlayPause) => {
+                        if let Some(msg) = self.play_pause() {
+                            return vec![msg];
                         }
-
-                        Some(UserAction::Help) => {
-                            self.active_popup = Some(Popup::Help);
-                        }
-
-                        Some(UserAction::Quit) => {
-                            if self.active_popup.is_some() {
-                                self.active_popup = None;
-                            } else if self.confirm_quit {
-                                self.active_popup = Some(Popup::ConfirmQuit);
-                            } else {
-                                return vec![UiMsg::Quit];
-                            }
-                        }
-
-                        Some(UserAction::UnplayedList) => {
-                            if self.active_popup.is_none() {
-                                match self.active_panel {
-                                    Panel::Podcasts => {
-                                        self.select_panel(Panel::Unplayed);
-                                    }
-                                    Panel::Unplayed => {
-                                        self.select_panel(Panel::Podcasts);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        Some(UserAction::Information) => {
-                            match self.active_panel {
-                                Panel::Episodes | Panel::Queue | Panel::Unplayed => {
-                                    self.construct_details_episode();
-                                }
-                                Panel::Podcasts => {
-                                    self.construct_details_podcast();
-                                }
-                            }
-                            self.active_popup = Some(Popup::Details);
-                        }
-                        Some(UserAction::Back) => {
-                            if self.active_panel == Panel::Episodes {
-                                self.select_panel(Panel::Podcasts);
-                            }
-                        }
-                        Some(UserAction::Switch) => match self.active_panel {
-                            Panel::Episodes | Panel::Podcasts | Panel::Unplayed => {
-                                self.select_panel(Panel::Queue);
-                            }
-                            Panel::Queue => {
-                                self.select_panel(self.left_panel.clone());
-                            }
-                        },
-                        None => (),
                     }
+                    Some(UserAction::MarkPlayed) => match self.active_panel {
+                        Panel::Episodes | Panel::Unplayed | Panel::Queue => {
+                            if let Some(ui_msg) = self.mark_played() {
+                                return vec![ui_msg];
+                            }
+                        }
+                        _ => {}
+                    },
+                    Some(UserAction::MarkAllPlayed) => {
+                        if let Panel::Episodes = self.active_panel
+                            && let Some(ui_msg) = self.mark_all_played()
+                        {
+                            return vec![ui_msg];
+                        }
+                    }
+
+                    Some(UserAction::Download) => match self.active_panel {
+                        Panel::Episodes | Panel::Unplayed | Panel::Queue => {
+                            if let Some(pod_id) = self.get_podcast_id()
+                                && let Some(ep_id) = self.get_episode_id()
+                            {
+                                return vec![UiMsg::Download(pod_id, ep_id)];
+                            }
+                        }
+                        _ => {}
+                    },
+                    Some(UserAction::DownloadAll) => {
+                        if let Panel::Podcasts = self.active_panel
+                            && let Some(pod_id) = self.get_podcast_id()
+                        {
+                            return vec![UiMsg::DownloadAll(pod_id)];
+                        }
+                    }
+
+                    Some(UserAction::Delete) => match self.active_panel {
+                        Panel::Episodes | Panel::Queue | Panel::Unplayed => {
+                            if let Some(pod_id) = self.get_podcast_id()
+                                && let Some(ep_id) = self.get_episode_id()
+                            {
+                                return vec![UiMsg::Delete(pod_id, ep_id)];
+                            }
+                        }
+                        Panel::Podcasts => {}
+                    },
+                    Some(UserAction::DeleteAll) => {
+                        if let Panel::Podcasts = self.active_panel
+                            && let Some(pod_id) = self.get_podcast_id()
+                        {
+                            return vec![UiMsg::DeleteAll(pod_id)];
+                        }
+                    }
+
+                    Some(UserAction::Remove) => match self.active_panel {
+                        Panel::Podcasts => {
+                            self.active_popup = Some(Popup::ConfirmRemovePodcast);
+                        }
+                        Panel::Queue => {
+                            if let Some(ep_id) = self.get_episode_id() {
+                                self.queue.items.remove(ep_id);
+                                return vec![UiMsg::QueueModified];
+                            }
+                        }
+                        _ => {}
+                    },
+
+                    Some(UserAction::FilterPlayed) => {
+                        return vec![UiMsg::FilterChange(FilterType::Played)];
+                    }
+                    Some(UserAction::FilterDownloaded) => {
+                        return vec![UiMsg::FilterChange(FilterType::Downloaded)];
+                    }
+
+                    Some(UserAction::Help) => {
+                        self.active_popup = Some(Popup::Help);
+                    }
+
+                    Some(UserAction::Quit) => {
+                        if self.active_popup.is_some() {
+                            self.active_popup = None;
+                        } else if self.confirm_quit {
+                            self.active_popup = Some(Popup::ConfirmQuit);
+                        } else {
+                            return vec![UiMsg::Quit];
+                        }
+                    }
+
+                    Some(UserAction::UnplayedList) => {
+                        if self.active_popup.is_none() {
+                            match self.active_panel {
+                                Panel::Podcasts => {
+                                    self.select_panel(Panel::Unplayed);
+                                }
+                                Panel::Unplayed => {
+                                    self.select_panel(Panel::Podcasts);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Some(UserAction::Information) => {
+                        match self.active_panel {
+                            Panel::Episodes | Panel::Queue | Panel::Unplayed => {
+                                self.construct_details_episode();
+                            }
+                            Panel::Podcasts => {
+                                self.construct_details_podcast();
+                            }
+                        }
+                        self.active_popup = Some(Popup::Details);
+                    }
+                    Some(UserAction::Back) => {
+                        if self.active_panel == Panel::Episodes {
+                            self.select_panel(Panel::Podcasts);
+                        }
+                    }
+                    Some(UserAction::Switch) => match self.active_panel {
+                        Panel::Episodes | Panel::Podcasts | Panel::Unplayed => {
+                            self.select_panel(Panel::Queue);
+                        }
+                        Panel::Queue => {
+                            self.select_panel(self.left_panel.clone());
+                        }
+                    },
+                    None => (),
                 }
             }
         }
@@ -934,23 +934,23 @@ impl UiState {
     }
 
     fn construct_details_podcast(&mut self) {
-        if let Some(pod_id) = self.get_podcast_id() {
-            if let Some(pod) = self.podcasts.items.get(pod_id) {
-                let pod = pod.read().unwrap();
-                let desc = pod.description.clone().map(|desc| clean_html(&desc));
-                self.current_details = Some(Details {
-                    pubdate: None,
-                    position: None,
-                    duration: None,
-                    explicit: pod.explicit,
-                    description: desc,
-                    author: pod.author.clone(),
-                    last_checked: Some(pod.last_checked),
-                    episode_title: None,
-                    podcast_title: Some(pod.title.clone()),
-                    url: pod.url.clone(),
-                });
-            }
+        if let Some(pod_id) = self.get_podcast_id()
+            && let Some(pod) = self.podcasts.items.get(pod_id)
+        {
+            let pod = pod.read().unwrap();
+            let desc = pod.description.clone().map(|desc| clean_html(&desc));
+            self.current_details = Some(Details {
+                pubdate: None,
+                position: None,
+                duration: None,
+                explicit: pod.explicit,
+                description: desc,
+                author: pod.author.clone(),
+                last_checked: Some(pod.last_checked),
+                episode_title: None,
+                podcast_title: Some(pod.title.clone()),
+                url: pod.url.clone(),
+            });
         }
     }
     fn construct_current_episode(&mut self, ep_id: i64) {
@@ -994,7 +994,7 @@ impl UiState {
             self.tx_to_player.send(PlayerMessage::PlayUrl(
                 ep.url.clone(),
                 ep.position as u64,
-                ep.duration.map_or_else(|| 0, |x| x) as u64,
+                ep.duration.unwrap_or(0) as u64,
             ))?;
         }
         Ok(())
@@ -1031,10 +1031,10 @@ impl UiState {
     }
 
     fn play_selected_episode(&self) -> Vec<UiMsg> {
-        if let Some(pod_id) = self.get_podcast_id() {
-            if let Some(ep_id) = self.get_episode_id() {
-                return self.play_episode(pod_id, ep_id);
-            }
+        if let Some(pod_id) = self.get_podcast_id()
+            && let Some(ep_id) = self.get_episode_id()
+        {
+            return self.play_episode(pod_id, ep_id);
         }
         vec![]
     }

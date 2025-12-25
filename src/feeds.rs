@@ -179,10 +179,10 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
     };
 
     let mut duration = None;
-    if let Some(itunes) = item.itunes_ext() {
-        if let Some(itures_duration) = itunes.duration() {
-            duration = parse_duration(itures_duration).ok().map(|dur| dur as i64);
-        }
+    if let Some(itunes) = item.itunes_ext()
+        && let Some(itures_duration) = itunes.duration()
+    {
+        duration = parse_duration(itures_duration).ok().map(|dur| dur as i64);
     }
 
     EpisodeNoId {

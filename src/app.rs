@@ -682,11 +682,12 @@ impl App {
                 .ok_or(anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().unwrap();
-                if let Some(duration) = episode.duration {
-                    if !episode.played && position == duration {
-                        changed = true;
-                        episode.played = true;
-                    }
+                if let Some(duration) = episode.duration
+                    && !episode.played
+                    && position == duration
+                {
+                    changed = true;
+                    episode.played = true;
                 }
                 episode.position = position;
             }

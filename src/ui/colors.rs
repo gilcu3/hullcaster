@@ -41,55 +41,55 @@ impl AppColors {
     /// with `default()` to set default colors and then change
     /// the ones that the user has set.
     pub fn add_from_config(&mut self, config: AppColorsFromToml) {
-        if let Some(val) = config.normal_foreground {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.normal.0 = v;
-            }
+        if let Some(val) = config.normal_foreground
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.normal.0 = v;
         }
-        if let Some(val) = config.normal_background {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.normal.1 = v;
-            }
+        if let Some(val) = config.normal_background
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.normal.1 = v;
         }
-        if let Some(val) = config.bold_foreground {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.bold.0 = v;
-            }
+        if let Some(val) = config.bold_foreground
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.bold.0 = v;
         }
-        if let Some(val) = config.bold_background {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.bold.1 = v;
-            }
+        if let Some(val) = config.bold_background
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.bold.1 = v;
         }
-        if let Some(val) = config.highlighted_active_foreground {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.highlighted_active.0 = v;
-            }
+        if let Some(val) = config.highlighted_active_foreground
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.highlighted_active.0 = v;
         }
-        if let Some(val) = config.highlighted_active_background {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.highlighted_active.1 = v;
-            }
+        if let Some(val) = config.highlighted_active_background
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.highlighted_active.1 = v;
         }
-        if let Some(val) = config.highlighted_foreground {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.highlighted.0 = v;
-            }
+        if let Some(val) = config.highlighted_foreground
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.highlighted.0 = v;
         }
-        if let Some(val) = config.highlighted_background {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.highlighted.1 = v;
-            }
+        if let Some(val) = config.highlighted_background
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.highlighted.1 = v;
         }
-        if let Some(val) = config.error_foreground {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.error.0 = v;
-            }
+        if let Some(val) = config.error_foreground
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.error.0 = v;
         }
-        if let Some(val) = config.error_background {
-            if let Ok(v) = Self::color_from_str(&val) {
-                self.error.1 = v;
-            }
+        if let Some(val) = config.error_background
+            && let Ok(v) = Self::color_from_str(&val)
+        {
+            self.error.1 = v;
         }
     }
 
@@ -115,10 +115,10 @@ impl AppColors {
                     u8::from_str_radix(&cap[3], 10)?,
                 ));
             }
-            return Err(anyhow!("Invalid color RGB code"));
+            Err(anyhow!("Invalid color RGB code"))
         } else {
             let text_lower = text.to_lowercase();
-            return match &text_lower[..] {
+            match &text_lower[..] {
                 "black" => Ok(Color::Black),
                 "darkgrey" | "darkgray" => Ok(Color::DarkGray),
                 "red" => Ok(Color::Red),
@@ -131,7 +131,7 @@ impl AppColors {
                 "grey" | "gray" => Ok(Color::Gray),
                 "terminal" => Ok(Color::Reset),
                 _ => Err(anyhow!("Invalid color code")),
-            };
+            }
         }
     }
 }

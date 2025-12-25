@@ -119,10 +119,10 @@ impl Player {
         self.sink.set_volume(0.0);
         self.sink.append(source);
         let position = *self.elapsed.read().unwrap();
-        if position > 0 {
-            if let Err(err) = self.sink.try_seek(Duration::from_secs(position)) {
-                log::warn!("Failed to seek: {err}")
-            }
+        if position > 0
+            && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
+        {
+            log::warn!("Failed to seek: {err}")
         };
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
@@ -150,10 +150,10 @@ impl Player {
         self.sink.append(source);
 
         let position = *self.elapsed.read().unwrap();
-        if position > 0 {
-            if let Err(err) = self.sink.try_seek(Duration::from_secs(position)) {
-                log::warn!("Failed to seek: {err}")
-            }
+        if position > 0
+            && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
+        {
+            log::warn!("Failed to seek: {err}")
         };
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;

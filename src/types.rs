@@ -340,17 +340,19 @@ impl<T: Menuable> LockVec<T> {
     }
 
     /// Lock the LockVec hashmap for reading/writing.
-    pub fn borrow_map(&self) -> MutexGuard<HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>> {
+    pub fn borrow_map(
+        &self,
+    ) -> MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>> {
         self.data.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec order vector for reading/writing.
-    pub fn borrow_order(&self) -> MutexGuard<Vec<i64>> {
+    pub fn borrow_order(&self) -> MutexGuard<'_, Vec<i64>> {
         self.order.lock().expect("Mutex error")
     }
 
     /// Lock the LockVec filtered order vector for reading/writing.
-    pub fn borrow_filtered_order(&self) -> MutexGuard<Vec<i64>> {
+    pub fn borrow_filtered_order(&self) -> MutexGuard<'_, Vec<i64>> {
         self.filtered_order.lock().expect("Mutex error")
     }
 
@@ -359,9 +361,9 @@ impl<T: Menuable> LockVec<T> {
     pub fn borrow(
         &self,
     ) -> (
-        MutexGuard<HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>>,
-        MutexGuard<Vec<i64>>,
-        MutexGuard<Vec<i64>>,
+        MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>>,
+        MutexGuard<'_, Vec<i64>>,
+        MutexGuard<'_, Vec<i64>>,
     ) {
         (
             self.data.lock().expect("Mutex error"),
