@@ -34,7 +34,7 @@ use crate::db::Database;
 use crate::feeds::{FeedMsg, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
-use crate::player::{PlaybackStatus, PlayerMessage, init_player};
+use crate::player::{PlaybackStatus, Player, PlayerMessage};
 use crate::threadpool::Threadpool;
 use crate::types::*;
 use crate::ui::UiState;
@@ -70,6 +70,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Connects to the sqlite database, and reads all podcasts into an OPML
 /// file, with the location specified from the command line arguments.
 fn main() -> Result<()> {
+    #[cfg(feature = "instrument")]
+    console_subscriber::init();
     // SETUP -----------------------------------------------------------
 
     // set up the possible command line arguments and subcommands
@@ -213,7 +215,17 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let (tx_to_player, rx_from_ui) = mpsc::channel();
     let elapsed = Arc::new(RwLock::new(0));
     let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
-    init_player(rx_from_ui, elapsed.clone(), playing.clone());
+    blocking_tasks.push({
+        let playing_clone = playing.clone();
+        let elapsed_clone = elapsed.clone();
+        tokio::task::spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(Player::spawn_async(
+                rx_from_ui,
+                elapsed_clone,
+                playing_clone,
+            ));
+        })
+    });
 
     let (tx_to_control, rx_from_control) = mpsc::channel();
     let current_episode = Arc::new(RwLock::new(None));
@@ -244,7 +256,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     unplayed_items.sort();
     unplayed_items.reverse();
 
-    blocking_tasks.push(UiState::spawn(
+    blocking_tasks.push(UiState::spawn_blocking(
         config.clone(),
         podcast_list.clone(),
         queue_items.clone(),

@@ -121,7 +121,7 @@ impl<T: Menuable> MenuList<T> {
 
 impl UiState {
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    pub fn spawn_blocking(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
         tx_to_main: mpsc::Sender<Message>, tx_to_player: mpsc::Sender<PlayerMessage>,
@@ -148,7 +148,6 @@ impl UiState {
                 if ui.playback_finished() {
                     let mut msgs = vec![];
                     if let Some(msg) = ui.update_position() {
-                        // let _ = tx_to_main.send(Message::Ui(msg));
                         msgs.push(msg);
                     }
                     *ui.playing.write().unwrap() = PlaybackStatus::Ready;

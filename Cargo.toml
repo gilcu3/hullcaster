@@ -13,47 +13,51 @@ repository = "https://github.com/gilcu3/hullcaster"
 documentation = "https://github.com/gilcu3/hullcaster"
 readme = "README.md"
 
+[features]
+instrument = ["tokio/tracing", "console-subscriber"]
+
+[dependencies]
+ahash = "0.8.12"
+anyhow = "1.0.100"
+base64 = "0.22.1"
+chrono = "0.4.42"
+clap = { version = "4.5.53", features = ["cargo", "env"] }
+console-subscriber = { version = "0.5.0", optional = true }
+dirs = { package = "dirs-next", version = "2.0.0" }
+escaper = "0.1.1"
+fs2 = "0.4.3"
+gag = "1.0.0"
+log = "0.4.29"
+nohash-hasher = "0.2.0"
+once_cell = "1.21.3"
+opml = "1.1.6"
+ratatui = "0.29.0"
+regex = "1.12.2"
+reqwest = { version = "0.12.28", features = ["cookies", "blocking"] }
+rfc822_sanitizer = "0.3.6"
+rodio = { version = "0.21.1", features = ["tracing"] }
+rss = "2.0.12"
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+sanitize-filename = "0.6.0"
+semver = "1.0.27"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.147" }
+shellexpand = "3.1.1"
+simplelog = { version = "0.12.2", features = ["local-offset"] }
+souvlaki = "0.8.3"
+stream-download = { version = "0.22.9", features = ["reqwest-native-tls"] }
+symphonia = { version = "0.5.5", features = ["mp3"] }
+tokio = { version = "1.48.0", features = ["rt-multi-thread"] }
+toml = "0.9.8"
+tui-input = "0.14.0"
+unicode-segmentation = "1.12.0"
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+winit = "0.30.12"
+
 [profile.reproducible]
 inherits = "release"
 debug = false
 panic = "abort"
 codegen-units = 1
 overflow-checks = true
-
-[dependencies]
-rss = "2.0.12"
-rusqlite = { version = "0.37.0", features = ["bundled"] }
-reqwest = { version = "0.12.24", features = ["cookies", "blocking"] }
-clap = { version = "4.5.51", features = ["cargo", "env"] }
-toml = "0.9.8"
-anyhow = "1.0.100"
-serde = { version = "1.0.228", features = ["derive"] }
-chrono = "0.4.42"
-fs2 = "0.4.3"
-regex = "1.12.2"
-sanitize-filename = "0.6.0"
-shellexpand = "3.1.1"
-dirs = { package = "dirs-next", version = "2.0.0" }
-opml = "1.1.6"
-ahash = "0.8.12"
-nohash-hasher = "0.2.0"
-unicode-segmentation = "1.12.0"
-escaper = "0.1.1"
-rfc822_sanitizer = "0.3.6"
-semver = "1.0.27"
-base64 = "0.22.1"
-serde_json = { version = "1.0.140" }
-log = "0.4.28"
-simplelog = { version = "0.12.2", features = ["local-offset"] }
-symphonia = { version = "0.5.5", features = ["mp3"] }
-once_cell = "1.21.3"
-ratatui = "0.29.0"
-tui-input = "0.14.0"
-rodio = { version = "0.21.1", features = ["tracing"] }
-souvlaki = "0.8.3"
-stream-download = { version = "0.22.7", features = ["reqwest-native-tls"] }
-tokio = { version = "1.48.0", features = ["rt-multi-thread"] }
-gag = "1.0.0"
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-winit = "0.30.12"

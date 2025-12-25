@@ -164,7 +164,7 @@ filled in with the default value specified in those comments.
 | Esc                               | Go to previous view                      |
 | Space                             | Play/Pause currently playing episode     |
 | Ctrl + Up/Down                    | Change order of episodes in the queue    |
-| Shift+P                           | Play selected episode with external player|
+| Shift+P                           | Play selected episode in external player |
 <!-- These are not currently implemented
 | 1                                 | Toggle played/unplayed                   |
 | 2                                 | Toggle downloaded/not downloaded filter  |

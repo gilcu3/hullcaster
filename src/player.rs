@@ -54,7 +54,7 @@ impl Player {
             playing,
         }
     }
-    #[tokio::main]
+
     pub async fn spawn_async(
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
@@ -209,11 +209,4 @@ impl Player {
         }
         *self.elapsed.write().unwrap() = elapsed.as_secs();
     }
-}
-
-pub fn init_player(
-    rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
-    playing: Arc<RwLock<PlaybackStatus>>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn_blocking(move || Player::spawn_async(rx_from_ui, elapsed, playing))
 }
