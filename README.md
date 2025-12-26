@@ -26,6 +26,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Add option to sync automatically on start, enabled by default
 - [ ] Add periodic synchronization
 - [ ] Migrate from threads to tokio
+- [ ] Implement filters on the podcast and episode lists
+- [ ] Lazy loading of data from the database
 
 ## Installing hullcaster
 
