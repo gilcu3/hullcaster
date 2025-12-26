@@ -23,6 +23,7 @@ base64 = "0.22.1"
 chrono = "0.4.42"
 clap = { version = "4.5.53", features = ["cargo", "env"] }
 console-subscriber = { version = "0.5.0", optional = true }
+derive_more = { version = "2.0.0", features = ["constructor"] }
 dirs = { package = "dirs-next", version = "2.0.0" }
 escaper = "0.1.1"
 fs2 = "0.4.3"

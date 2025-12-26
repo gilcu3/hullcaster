@@ -11,7 +11,7 @@ use crate::utils::{evaluate_in_shell, parse_create_dir};
 
 // Specifies how long, in milliseconds, to display messages at the
 // bottom of the screen in the UI.
-pub const MESSAGE_TIME: u64 = 5000;
+pub const MESSAGE_TIME: u64 = 2000;
 
 // How many columns we need, minimum, before we display the
 // (unplayed/total) after the podcast title
