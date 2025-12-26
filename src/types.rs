@@ -280,7 +280,7 @@ impl<T: Menuable> LockVec<T> {
         let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
         let mut order = Vec::new();
         for i in data {
-            let id = i.read().unwrap().get_id();
+            let id = i.read().expect("RwLock read should not fail").get_id();
             hm.insert(id, i);
             order.push(id);
         }
@@ -302,7 +302,7 @@ impl<T: Menuable> LockVec<T> {
     // }
 
     pub fn push_arc(&self, item: Arc<RwLock<T>>) {
-        let id = item.read().unwrap().get_id();
+        let id = item.read().expect("RwLock read should not fail").get_id();
         let (mut map, mut order, mut filtered_order) = self.borrow();
         map.insert(id, item);
         order.push(id);
@@ -391,7 +391,7 @@ impl<T: Menuable> LockVec<T> {
         order.clear();
         filtered_order.clear();
         for i in data {
-            let id = i.read().unwrap().get_id();
+            let id = i.read().expect("RwLock read should not fail").get_id();
             map.insert(id, i);
             order.push(id);
             filtered_order.push(id);
@@ -410,12 +410,24 @@ impl<T: Menuable> LockVec<T> {
         if filtered {
             filtered_order
                 .iter()
-                .map(|id| f(&map.get(id).expect("Index error in LockVec").read().unwrap()))
+                .map(|id| {
+                    f(&map
+                        .get(id)
+                        .expect("Index error in LockVec")
+                        .read()
+                        .expect("RwLock read should not fail"))
+                })
                 .collect()
         } else {
             order
                 .iter()
-                .map(|id| f(&map.get(id).expect("Index error in LockVec").read().unwrap()))
+                .map(|id| {
+                    f(&map
+                        .get(id)
+                        .expect("Index error in LockVec")
+                        .read()
+                        .expect("RwLock read should not fail"))
+                })
                 .collect()
         }
     }
@@ -427,7 +439,9 @@ impl<T: Menuable> LockVec<T> {
         F: FnOnce(&T) -> B,
     {
         let borrowed = self.borrow_map();
-        borrowed.get(&id).map(|x| f(&x.read().unwrap()))
+        borrowed
+            .get(&id)
+            .map(|x| f(&x.read().expect("RwLock read should not fail")))
     }
 
     /// Maps a closure to a single element in the `LockVec`, specified by
@@ -500,7 +514,7 @@ impl LockVec<Podcast> {
         let mut all_ep_map = HashMap::new();
         let pod_map = self.borrow_map();
         for (_pod_id, pod) in pod_map.iter() {
-            let rpod = pod.read().unwrap();
+            let rpod = pod.read().expect("RwLock read should not fail");
             let ep_map = rpod.episodes.borrow_map();
             for (ep_id, ep) in ep_map.iter() {
                 all_ep_map.insert(*ep_id, ep.clone());
@@ -512,13 +526,12 @@ impl LockVec<Podcast> {
 
 impl LockVec<Episode> {
     pub fn sort(&self) {
-        let dt = DateTime::from_timestamp(0, 0).unwrap();
         let mut epvec = self
             .borrow_map()
             .iter()
             .map(|(id, ep)| {
-                let value = ep.read().unwrap().pubdate;
-                value.map_or((dt, *id), |t| (t, *id))
+                let value = ep.read().expect("RwLock read should not fail").pubdate;
+                value.map_or((DateTime::UNIX_EPOCH, *id), |t| (t, *id))
             })
             .collect::<Vec<(DateTime<Utc>, i64)>>();
         epvec.sort();

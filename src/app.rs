@@ -1,3 +1,6 @@
+// TODO: remove this exception
+// #![allow(clippy::unwrap_used)]
+
 use anyhow::{Result, anyhow};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -441,24 +444,20 @@ impl App {
             match a.action {
                 Action::Play => {
                     log::debug!(
-                        "EpisodeAction received - podcast: {} episode: {} position: {} total: {}",
+                        "EpisodeAction received - podcast: {} episode: {} position: {:?} total: {:?}",
                         a.podcast,
                         a.episode,
-                        a.position.unwrap(),
-                        a.total.unwrap()
+                        a.position,
+                        a.total
                     );
 
-                    let pod_id_opt = pod_data.get(&a.podcast);
-                    if pod_id_opt.is_none() {
-                        continue;
+                    if let Some(pod) = pod_data.get(&a.podcast)
+                        && let Some(ep_id) = pod.1.get(a.episode.as_str())
+                        && let Some(position) = a.position
+                        && let Some(total) = a.total
+                    {
+                        last_actions.insert((pod.0, *ep_id), (position, total));
                     }
-                    let pod_id = pod_id_opt.unwrap().0;
-                    let ep_id_opt = pod_id_opt.unwrap().1.get(a.episode.as_str());
-                    if ep_id_opt.is_none() {
-                        continue;
-                    }
-                    let ep_id = *ep_id_opt.unwrap();
-                    last_actions.insert((pod_id, ep_id), (a.position.unwrap(), a.total.unwrap()));
                 }
                 Action::Delete | Action::Download | Action::New => {}
             }
@@ -573,13 +572,13 @@ impl App {
                 .podcasts
                 .get(pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let episodes = &pod.read().unwrap().episodes;
+            let episodes = &pod.read().expect("RwLock read should not fail").episodes;
             let episode_map = episodes.borrow_map();
             let mut episode = episode_map
                 .get(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                 .write()
-                .unwrap();
+                .expect("RwLock write should not fail");
             if Some(episode.position) == episode.duration {
                 episode.position = 0;
             }
@@ -595,7 +594,7 @@ impl App {
             match ep_path {
                 Some(path) => match path.to_str() {
                     Some(_p) => {
-                        self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id)).unwrap();
+                        self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id))?;
                     }
                     None => self.notif_to_ui(
                         format!("Error: Filepath {} is not valid Unicode.", path.display()),
@@ -603,7 +602,7 @@ impl App {
                     ),
                 },
                 None => {
-                    self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id)).unwrap();
+                    self.tx_to_ui.send(MainMessage::PlayCurrent(ep_id))?;
                 }
             }
         }
@@ -618,7 +617,7 @@ impl App {
             } else {
                 pod_map
                     .get_mut(&pod_id)
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("pod_id: {pod_id} does not exist"))?
                     .push((ep_id, position, total));
             }
         }
@@ -630,7 +629,7 @@ impl App {
                     .get(pod_id)
                     .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                     .read()
-                    .unwrap()
+                    .expect("RwLock read should not fail")
                     .episodes;
                 let mut episode_map = episodes.borrow_map();
                 let mut batch = Vec::new();
@@ -642,7 +641,7 @@ impl App {
                         .get_mut(ep_id)
                         .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                         .write()
-                        .unwrap();
+                        .expect("RwLock write should not fail");
                     episode.position = *position;
                     if episode.duration.is_none() {
                         episode.duration = Some(*total);
@@ -679,14 +678,14 @@ impl App {
             let podcast = podcast_map
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().unwrap();
+            let podcast = podcast.read().expect("RwLock read should not fail");
             let mut episode_map = podcast.episodes.borrow_map();
 
             let w_episode = episode_map
                 .get_mut(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
-                let mut episode = w_episode.write().unwrap();
+                let mut episode = w_episode.write().expect("RwLock write should not fail");
                 if let Some(duration) = episode.duration
                     && !episode.played
                     && position == duration
@@ -697,7 +696,7 @@ impl App {
                 episode.position = position;
             }
 
-            let episode = w_episode.read().unwrap();
+            let episode = w_episode.read().expect("RwLock read should not fail");
 
             if episode.played && self.unplayed.contains_key(ep_id) {
                 self.unplayed.remove(ep_id);
@@ -743,13 +742,13 @@ impl App {
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
-                .unwrap();
+                .expect("RwLock read should not fail");
             let mut episode_map = podcast.episodes.borrow_map();
             let w_episode = episode_map
                 .get_mut(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
-                let mut episode = w_episode.write().unwrap();
+                let mut episode = w_episode.write().expect("RwLock write should not fail");
                 if episode.played != played {
                     changed = true;
                     episode.played = played;
@@ -758,7 +757,7 @@ impl App {
                     }
                 }
             }
-            let episode = w_episode.read().unwrap();
+            let episode = w_episode.read().expect("RwLock read should not fail");
             if episode.played && self.unplayed.contains_key(ep_id) {
                 self.unplayed.remove(ep_id);
                 changed = true;
@@ -806,7 +805,7 @@ impl App {
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
-                .unwrap();
+                .expect("RwLock read should not fail");
             let podcast_url = podcast.url.clone();
 
             let mut sync_list = Vec::new();
@@ -815,13 +814,13 @@ impl App {
             for (ep_id, episode) in episode_map.iter_mut() {
                 let w_episode = episode;
                 {
-                    let mut episode = w_episode.write().unwrap();
+                    let mut episode = w_episode.write().expect("RwLock write should not fail");
                     if episode.played != played {
                         changed = true;
                         episode.played = played;
                     }
                 }
-                let episode = w_episode.read().unwrap();
+                let episode = w_episode.read().expect("RwLock read should not fail");
 
                 if episode.played && self.unplayed.contains_key(*ep_id) {
                     self.unplayed.remove(*ep_id);
@@ -874,7 +873,7 @@ impl App {
             let podcast = borrowed_map
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().unwrap();
+            let podcast = podcast.read().expect("RwLock read should not fail");
             pod_title = podcast.title.clone();
 
             // if we are selecting one specific episode, just grab that one;
@@ -898,7 +897,7 @@ impl App {
                                 ep.path.is_none(),
                             )
                         })
-                        .unwrap();
+                        .ok_or_else(|| anyhow!("ep_id: {ep_id} does not exist"))?;
                     if data.1 {
                         ep_data.push(data.0);
                     }
@@ -906,7 +905,7 @@ impl App {
                 None => {
                     // grab just the relevant data we need
                     ep_data = podcast.episodes.filter_map(|ep| {
-                        let ep = ep.read().unwrap();
+                        let ep = ep.read().expect("RwLock read should not fail");
                         if ep.path.is_none() {
                             Some(EpData {
                                 id: ep.id,
@@ -961,7 +960,9 @@ impl App {
 
     /// Handles logic for what to do when a download successfully completes.
     pub fn download_complete(&mut self, ep_data: EpData) -> Result<()> {
-        let file_path = ep_data.file_path.unwrap();
+        let file_path = ep_data
+            .file_path
+            .ok_or_else(|| anyhow!("ep_data does not contain a file_path"))?;
         self.db.insert_file(ep_data.id, &file_path)?;
         {
             let borrowed_map = self.podcasts.borrow_map();
@@ -969,14 +970,14 @@ impl App {
             let podcast = borrowed_map
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().unwrap();
+            let podcast = podcast.read().expect("RwLock read should not fail");
             let mut episode_map = podcast.episodes.borrow_map();
             let ep_id = ep_data.id;
             let mut episode = episode_map
                 .get_mut(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_data.id: {ep_id}"))?
                 .write()
-                .unwrap();
+                .expect("RwLock write should not fail");
             episode.path = Some(file_path);
             if let Some(duration) = ep_data.duration {
                 episode.duration = Some(duration);
@@ -1011,13 +1012,13 @@ impl App {
             let podcast = borrowed_map
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().unwrap();
+            let podcast = podcast.read().expect("RwLock read should not fail");
             let mut episode_map = podcast.episodes.borrow_map();
             let mut episode = episode_map
                 .get_mut(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
                 .write()
-                .unwrap();
+                .expect("RwLock write should not fail");
             let old_path = episode
                 .path
                 .clone()
@@ -1049,12 +1050,12 @@ impl App {
                 .get(&pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
-                .unwrap()
+                .expect("RwLock read should not fail")
                 .episodes;
             let mut borrowed_ep_map = episodes.borrow_map();
 
             for (_, ep) in borrowed_ep_map.iter_mut() {
-                let mut ep = ep.write().unwrap();
+                let mut ep = ep.write().expect("RwLock write should not fail");
                 if ep.path.is_some() {
                     eps_path_to_remove.push(
                         ep.path
@@ -1098,13 +1099,14 @@ impl App {
             let _ = self.delete_files(pod_id);
         }
 
-        let pod = self.podcasts.get(pod_id);
-        let (pod_id, url) = pod
-            .map(|pod| {
-                let pod = pod.read().unwrap();
-                (pod.id, pod.url.clone())
-            })
-            .unwrap();
+        let pod = self
+            .podcasts
+            .get(pod_id)
+            .ok_or_else(|| anyhow!("pod_id: {pod_id} not found"))?;
+        let (pod_id, url) = {
+            let pod = pod.read().expect("RwLock read should not fail");
+            (pod.id, pod.url.clone())
+        };
         self.db.remove_podcast(pod_id)?;
         if self.config.enable_sync {
             self.tx_to_gpodder
@@ -1137,11 +1139,11 @@ impl App {
             }
             self.last_filter_time_ms.set(current_time);
 
-            let (pod_map, pod_order, _unused) = self.podcasts.borrow();
-            for pod_id in pod_order.iter() {
-                let pod = pod_map.get(pod_id).unwrap().read().unwrap();
+            let pod_map = self.podcasts.borrow_map();
+            for pod in pod_map.values() {
+                let pod = pod.read().expect("RwLock read should not fail");
                 let new_filter = pod.episodes.filter_map(|ep| {
-                    let ep = ep.read().unwrap();
+                    let ep = ep.read().expect("RwLock read should not fail");
                     let play_filter = match filters.played {
                         FilterStatus::All => false,
                         FilterStatus::PositiveCases => !ep.is_played(),

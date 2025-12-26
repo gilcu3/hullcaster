@@ -44,7 +44,8 @@ pub struct Player {
 
 impl Player {
     fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
+        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
+            .expect("rodio default stream should be available");
         let sink = rodio::Sink::connect_new(stream_handle.mixer());
         Self {
             _stream_handle: stream_handle,
@@ -71,8 +72,14 @@ impl Player {
                     }
                     PlayerMessage::PlayFile(path, position, duration) => {
                         player.duration = duration;
-                        *player.elapsed.write().unwrap() = position;
-                        *player.playing.write().unwrap() = PlaybackStatus::Playing;
+                        *player
+                            .elapsed
+                            .write()
+                            .expect("RwLock write should not fail") = position;
+                        *player
+                            .playing
+                            .write()
+                            .expect("RwLock write should not fail") = PlaybackStatus::Playing;
                         player
                             .play_file(&path)
                             .await
@@ -80,8 +87,14 @@ impl Player {
                     }
                     PlayerMessage::PlayUrl(url, position, duration) => {
                         player.duration = duration;
-                        *player.elapsed.write().unwrap() = position;
-                        *player.playing.write().unwrap() = PlaybackStatus::Playing;
+                        *player
+                            .elapsed
+                            .write()
+                            .expect("RwLock write should not fail") = position;
+                        *player
+                            .playing
+                            .write()
+                            .expect("RwLock write should not fail") = PlaybackStatus::Playing;
                         player
                             .play_url(&url)
                             .await
@@ -97,7 +110,9 @@ impl Player {
             }
             tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
 
-            if *player.playing.read().unwrap() == PlaybackStatus::Playing {
+            if *player.playing.read().expect("RwLock read should not fail")
+                == PlaybackStatus::Playing
+            {
                 let now = Instant::now();
                 if now.duration_since(last_time) >= Duration::from_secs(1) {
                     player.set_elapsed();
@@ -108,7 +123,7 @@ impl Player {
     }
 
     async fn play_file(&self, path: &PathBuf) -> Result<()> {
-        let file = std::fs::File::open(path).unwrap();
+        let file = std::fs::File::open(path)?;
         let source = rodio::Decoder::builder()
             .with_seekable(true)
             .with_data(file)
@@ -118,7 +133,7 @@ impl Player {
         }
         self.sink.set_volume(0.0);
         self.sink.append(source);
-        let position = *self.elapsed.read().unwrap();
+        let position = *self.elapsed.read().expect("RwLock read should not fail");
         if position > 0
             && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
         {
@@ -149,7 +164,7 @@ impl Player {
         self.sink.set_volume(0.0);
         self.sink.append(source);
 
-        let position = *self.elapsed.read().unwrap();
+        let position = *self.elapsed.read().expect("RwLock read should not fail");
         if position > 0
             && let Err(err) = self.sink.try_seek(Duration::from_secs(position))
         {
@@ -163,10 +178,10 @@ impl Player {
     fn play_pause(&self) {
         if self.sink.is_paused() {
             self.sink.play();
-            *self.playing.write().unwrap() = PlaybackStatus::Playing;
+            *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Playing;
         } else {
             self.sink.pause();
-            *self.playing.write().unwrap() = PlaybackStatus::Paused;
+            *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Paused;
         }
     }
 
@@ -174,22 +189,21 @@ impl Player {
         let pos = self.sink.get_pos();
         self.sink.pause();
         self.sink.set_volume(0.0);
-        if let Err(err) = self.sink.try_seek({
-            if direction {
-                let max_pos = Duration::from_secs(self.duration);
-                if pos + shift >= max_pos {
-                    max_pos
+        self.sink
+            .try_seek({
+                if direction {
+                    let max_pos = Duration::from_secs(self.duration);
+                    if pos + shift >= max_pos {
+                        max_pos
+                    } else {
+                        pos + shift
+                    }
                 } else {
-                    pos + shift
+                    pos.checked_sub(shift).unwrap_or(Duration::ZERO)
                 }
-            } else if pos >= shift {
-                pos.checked_sub(shift).unwrap()
-            } else {
-                Duration::ZERO
-            }
-        }) {
-            log::warn!("Failed to seek: {err}");
-        }
+            })
+            .inspect_err(|err| log::warn!("Failed to seek: {err}"))
+            .unwrap_or_default();
         self.sink.play();
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
@@ -199,14 +213,14 @@ impl Player {
     fn set_elapsed(&self) {
         let elapsed = self.sink.get_pos();
         if self.sink.empty() {
-            *self.playing.write().unwrap() = PlaybackStatus::Finished;
+            *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
             // Allow for tiny error in duration
             // TODO: this is a hack that should be done better
             if self.duration > 0 && self.duration <= elapsed.as_secs() + 1 {
-                *self.elapsed.write().unwrap() = self.duration;
+                *self.elapsed.write().expect("RwLock write should not fail") = self.duration;
             }
             return;
         }
-        *self.elapsed.write().unwrap() = elapsed.as_secs();
+        *self.elapsed.write().expect("RwLock write should not fail") = elapsed.as_secs();
     }
 }

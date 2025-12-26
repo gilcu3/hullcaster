@@ -113,15 +113,23 @@ impl GpodderController {
 
     pub fn get_timestamp(&self) -> i64 {
         std::cmp::min(
-            *self.state.actions_timestamp.read().unwrap(),
-            *self.state.subscriptions_timestamp.read().unwrap(),
+            *self
+                .state
+                .actions_timestamp
+                .read()
+                .expect("RwLock read should not fail"),
+            *self
+                .state
+                .subscriptions_timestamp
+                .read()
+                .expect("RwLock read should not fail"),
         )
     }
 
     async fn init(&self) -> Result<()> {
-        let res = self.get_devices();
+        let res = self.get_devices().await?;
         let mut exists = false;
-        for dev in res.await.unwrap() {
+        for dev in res {
             if dev.id == self.config.device {
                 log::debug!(
                     "Using device: id = {}, type = {}, subscriptions = {}, caption = {}",
@@ -213,7 +221,11 @@ impl GpodderController {
             "{}/api/2/episodes/{}.json",
             self.config.server, self.config.username
         );
-        let since = *self.state.actions_timestamp.read().unwrap();
+        let since = *self
+            .state
+            .actions_timestamp
+            .read()
+            .expect("RwLock read should not fail");
         let json_string = execute_request_get(
             &self.client,
             url_episode_action_changes,
@@ -234,14 +246,27 @@ impl GpodderController {
             let action = serde_json::from_value::<EpisodeAction>(action.clone())?;
             actions.push(action);
         }
-        *self.state.actions_timestamp.write().unwrap() = timestamp + 1;
+        *self
+            .state
+            .actions_timestamp
+            .write()
+            .expect("RwLock write should not fail") = timestamp + 1;
         Ok(actions)
     }
 
     async fn require_login(&self) -> Result<()> {
-        if !*self.state.logged_in.read().unwrap() {
+        if !*self
+            .state
+            .logged_in
+            .read()
+            .expect("RwLock read should not fail")
+        {
             self.login().await?;
-            *self.state.logged_in.write().unwrap() = true;
+            *self
+                .state
+                .logged_in
+                .write()
+                .expect("RwLock write should not fail") = true;
             self.init().await?;
         }
         Ok(())
@@ -282,7 +307,13 @@ impl GpodderController {
     }
 
     pub async fn get_subscription_changes(&self) -> Result<(Vec<String>, Vec<String>)> {
-        if *self.state.subscriptions_timestamp.read().unwrap() == 0 {
+        if *self
+            .state
+            .subscriptions_timestamp
+            .read()
+            .expect("RwLock read should not fail")
+            == 0
+        {
             let added = self.get_all_subscriptions().await?;
             return Ok((added, Vec::new()));
         }
@@ -290,7 +321,12 @@ impl GpodderController {
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.server, self.config.username, self.config.device
         );
-        let pastime = (*self.state.subscriptions_timestamp.read().unwrap()).to_string();
+        let pastime = (*self
+            .state
+            .subscriptions_timestamp
+            .read()
+            .expect("RwLock read should not fail"))
+        .to_string();
         let params = vec![("since", pastime.as_str())];
         let json_string = execute_request_get(
             &self.client,
@@ -308,7 +344,11 @@ impl GpodderController {
             for sub in &changes.remove {
                 log::info!("podcast removed {sub}");
             }
-            *self.state.subscriptions_timestamp.write().unwrap() = changes.timestamp + 1;
+            *self
+                .state
+                .subscriptions_timestamp
+                .write()
+                .expect("RwLock write should not fail") = changes.timestamp + 1;
             Ok((changes.add, changes.remove))
         } else {
             Err(anyhow!("Error parsing subscription changes"))
@@ -341,7 +381,11 @@ impl GpodderController {
             for sub in &changes.update_urls {
                 log::info!("url changed {} {}", sub[0], sub[1]);
             }
-            *self.state.subscriptions_timestamp.write().unwrap() = changes.timestamp + 1;
+            *self
+                .state
+                .subscriptions_timestamp
+                .write()
+                .expect("RwLock write should not fail") = changes.timestamp + 1;
             Ok(())
         } else {
             Err(anyhow!("Error parsing url subscription changes"))
@@ -421,7 +465,11 @@ impl GpodderController {
             "{}/api/2/updates/{}/{}.json",
             self.config.server, self.config.username, self.config.device
         );
-        let actions_timestamp = *self.state.actions_timestamp.read().unwrap();
+        let actions_timestamp = *self
+            .state
+            .actions_timestamp
+            .read()
+            .expect("RwLock read should not fail");
         let _json_string = execute_request_get(
             &self.client,
             url_device_updates,

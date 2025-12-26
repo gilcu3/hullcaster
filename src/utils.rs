@@ -144,10 +144,10 @@ pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Epis
     let podcast_map = podcasts.borrow_map();
     let mut ueps = Vec::new();
     for podcast in podcast_map.values() {
-        let rpod = podcast.read().unwrap();
+        let rpod = podcast.read().expect("RwLock read should not fail");
         let episode_map = rpod.episodes.borrow_map();
         for episode in episode_map.values() {
-            let rep = episode.read().unwrap();
+            let rep = episode.read().expect("RwLock read should not fail");
             if !rep.played {
                 ueps.push(episode.clone());
             }

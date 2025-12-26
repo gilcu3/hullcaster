@@ -11,42 +11,40 @@ pub enum ControlMessage {
     PlayPause,
 }
 
-fn update_control_metadata(title: &str, controls: &mut MediaControls) {
-    controls
-        .set_metadata(MediaMetadata {
-            title: Some(title),
-            ..Default::default()
-        })
-        .unwrap();
+fn update_control_metadata(
+    title: &str, controls: &mut MediaControls,
+) -> Result<(), souvlaki::Error> {
+    controls.set_metadata(MediaMetadata {
+        title: Some(title),
+        ..Default::default()
+    })
 }
 
 pub fn init_controls(
     tx_to_ui: Sender<ControlMessage>,
     current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
     playing: ShareableRwLock<PlaybackStatus>, mut rx_from_main: tokio::sync::oneshot::Receiver<()>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn({
+) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    let task = tokio::task::spawn({
         let config = PlatformConfig {
             dbus_name: "hullcaster",
             display_name: "Hullcaster",
             hwnd: None,
         };
-        let mut controls = MediaControls::new(config).unwrap();
+        let mut controls = MediaControls::new(config)?;
         let mut last_episode_id = -1_i64;
         let mut last_status = PlaybackStatus::Ready;
 
-        controls
-            .attach(move |event: MediaControlEvent| {
-                if event == MediaControlEvent::Toggle {
-                    let _ = tx_to_ui.send(ControlMessage::PlayPause);
-                }
-            })
-            .unwrap();
+        controls.attach(move |event: MediaControlEvent| {
+            if event == MediaControlEvent::Toggle {
+                let _ = tx_to_ui.send(ControlMessage::PlayPause);
+            }
+        })?;
 
         async move {
             loop {
-                if last_status != *playing.read().unwrap() {
-                    last_status = *playing.read().unwrap();
+                if last_status != *playing.read().expect("RwLock read should not fail") {
+                    last_status = *playing.read().expect("RwLock read should not fail");
                     match last_status {
                         PlaybackStatus::Playing => {
                             let _ =
@@ -61,10 +59,18 @@ pub fn init_controls(
                     }
                 }
 
-                if let Some(ep) = current_episode.read().unwrap().as_ref() {
-                    let ep = ep.read().unwrap();
+                if let Some(ep) = current_episode
+                    .read()
+                    .expect("RwLock read should not fail")
+                    .as_ref()
+                {
+                    let ep = ep.read().expect("RwLock read should not fail");
                     if ep.id != last_episode_id {
-                        update_control_metadata(&ep.title, &mut controls);
+                        update_control_metadata(&ep.title, &mut controls)
+                            .inspect_err(|err| {
+                                log::error!("update_control_metadata failed: {err}");
+                            })
+                            .unwrap_or_default();
                         last_episode_id = ep.id;
                     }
                 }
@@ -74,5 +80,6 @@ pub fn init_controls(
                 tokio::time::sleep(tokio::time::Duration::from_millis(TICK_RATE)).await;
             }
         }
-    })
+    });
+    Ok(task)
 }

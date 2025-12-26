@@ -148,7 +148,7 @@ fn main() -> Result<()> {
     }
 
     // fix https://github.com/RustAudio/cpal/issues/671
-    let _printerr_gag = Gag::stderr().unwrap();
+    let _printerr_gag = Gag::stderr()?;
 
     match args.subcommand() {
         // SYNC SUBCOMMAND ----------------------------------------------
@@ -231,12 +231,16 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let (tx_to_control, rx_from_control) = mpsc::channel();
     let current_episode = Arc::new(RwLock::new(None));
     let (tx_to_controls, rx_controls_from_main) = tokio::sync::oneshot::channel::<()>();
-    tasks.push(init_controls(
+
+    match init_controls(
         tx_to_control,
         current_episode.clone(),
         playing.clone(),
         rx_controls_from_main,
-    ));
+    ) {
+        Ok(task) => tasks.push(task),
+        Err(err) => log::error!("Failed to run init_controls: {err}"),
+    }
 
     // Create vector of podcasts, where references are checked at runtime.
     // This is necessary because we want main.rs to hold the "ground truth"
@@ -377,7 +381,7 @@ fn setup_logs() -> Result<()> {
     let mut log_config = tmp_log_config
         .set_time_format_rfc2822()
         .set_time_offset_to_local()
-        .unwrap();
+        .map_err(|_| anyhow!("set_time_offset_to_local failed"))?;
     if level_filter != simplelog::LevelFilter::Debug {
         log_config = log_config.add_filter_ignore_str("symphonia");
     }
@@ -385,8 +389,7 @@ fn setup_logs() -> Result<()> {
         level_filter,
         log_config.build(),
         log_file,
-    )])
-    .unwrap();
+    )])?;
     Ok(())
 }
 

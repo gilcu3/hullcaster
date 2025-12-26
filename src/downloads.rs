@@ -72,19 +72,15 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
             return DownloadMsg::ResponseError(ep_data);
         }
     };
+    let default_header: &str = "audio/mpeg";
+    let header = response
+        .headers()
+        .get("content-type")
+        .map(|h| h.to_str().unwrap_or(default_header));
 
     // figure out the file type
     // assume .mp3 unless we figure out otherwise
-    let ext = get_file_ext(
-        response
-            .headers()
-            .get("content-type")
-            .unwrap()
-            .to_str()
-            .ok(),
-        &ep_data.url,
-    )
-    .unwrap_or("mp3");
+    let ext = get_file_ext(header, &ep_data.url).unwrap_or("mp3");
 
     let mut file_name = sanitize_with_options(
         &ep_data.title,
@@ -103,17 +99,17 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     file_path.push(format!("{file_name}.{ext}"));
 
     let dest = File::create(&file_path);
-    if dest.is_err() {
-        return DownloadMsg::FileCreateError(ep_data);
-    }
 
     ep_data.file_path = Some(file_path.clone());
-
-    if response.copy_to(&mut dest.unwrap()).is_ok() {
-        ep_data.duration = audio_duration_file(file_path).ok();
-        DownloadMsg::Complete(ep_data)
+    if let Ok(mut dest) = dest {
+        if response.copy_to(&mut dest).is_ok() {
+            ep_data.duration = audio_duration_file(file_path).ok();
+            DownloadMsg::Complete(ep_data)
+        } else {
+            DownloadMsg::FileWriteError(ep_data)
+        }
     } else {
-        DownloadMsg::FileWriteError(ep_data)
+        DownloadMsg::FileCreateError(ep_data)
     }
 }
 
