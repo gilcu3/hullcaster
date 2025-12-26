@@ -181,7 +181,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     if config.enable_sync {
         let timestamp = db_inst
             .get_param("timestamp")
-            .and_then(|s| Ok(s.parse::<i64>()?));
+            .and_then(|s| Ok(s.parse::<u64>()?));
         let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
             let res = evaluate_in_shell("hostname")
                 .expect("Failed to get hostname")

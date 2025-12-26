@@ -31,7 +31,7 @@ pub struct EpData {
     pub url: String,
     pub pubdate: Option<DateTime<Utc>>,
     pub file_path: Option<PathBuf>,
-    pub duration: Option<i64>,
+    pub duration: Option<u64>,
 }
 
 /// This is the function the main controller uses to indicate new

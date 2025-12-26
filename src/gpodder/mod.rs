@@ -14,8 +14,8 @@ pub use self::types::{Action, Config, EpisodeAction, GpodderMsg, GpodderRequest}
 mod net;
 mod types;
 
-fn current_time() -> Result<i64> {
-    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64)
+fn current_time() -> Result<u64> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
 
 #[derive(Debug)]
@@ -26,7 +26,7 @@ pub struct GpodderController {
 }
 
 impl GpodderController {
-    fn new(config: Config, timestamp: Option<i64>) -> Self {
+    fn new(config: Config, timestamp: Option<u64>) -> Self {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(120))
@@ -48,7 +48,7 @@ impl GpodderController {
 
     pub async fn spawn_async(
         rx_from_app: Receiver<GpodderRequest>, tx_to_app: Sender<Message>, config: Config,
-        timestamp: Option<i64>,
+        timestamp: Option<u64>,
     ) {
         let sync_client = Self::new(config, timestamp);
         loop {
@@ -111,7 +111,7 @@ impl GpodderController {
         }
     }
 
-    pub fn get_timestamp(&self) -> i64 {
+    pub fn get_timestamp(&self) -> u64 {
         std::cmp::min(
             *self
                 .state
@@ -150,7 +150,7 @@ impl GpodderController {
     }
 
     pub async fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, position: i64, duration: i64,
+        &self, podcast_url: &str, episode_url: &str, position: u64, duration: u64,
     ) -> Result<String> {
         self.require_login().await?;
         let url_mark_played = format!(
@@ -181,7 +181,7 @@ impl GpodderController {
         Ok(result)
     }
 
-    pub async fn mark_played_batch(&self, eps: Vec<(String, String, i64, i64)>) -> Result<String> {
+    pub async fn mark_played_batch(&self, eps: Vec<(String, String, u64, u64)>) -> Result<String> {
         self.require_login().await?;
         let url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -236,7 +236,7 @@ impl GpodderController {
         .await?;
         let actions: serde_json::Value = serde_json::from_str(json_string.as_str())?;
         let timestamp = actions["timestamp"]
-            .as_i64()
+            .as_u64()
             .ok_or_else(|| anyhow::anyhow!("Parsing timestamp failed"))?;
         let episode_actions = actions["actions"]
             .as_array()

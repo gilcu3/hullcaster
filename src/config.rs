@@ -31,7 +31,7 @@ pub const TICK_RATE: u64 = 50;
 pub const SEEK_LENGTH: Duration = Duration::from_secs(30);
 
 /// Maximum duration of episode when unknown
-pub const MAX_DURATION: i64 = 10000;
+pub const MAX_DURATION: u64 = 10000;
 
 /// Number of milliseconds on mute to avoid audio artifacts
 pub const FADING_TIME: u64 = 100;

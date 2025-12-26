@@ -42,7 +42,7 @@ pub fn evaluate_in_shell(value: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&res.stdout).to_string())
 }
 
-pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
+pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<u64> {
     let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
     let probed = get_probe().format(
@@ -67,10 +67,10 @@ pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<i64> {
             duration += tt.seconds;
         }
     }
-    Ok(duration as i64)
+    Ok(duration)
 }
 
-pub fn audio_duration_file(file_path: PathBuf) -> Result<i64> {
+pub fn audio_duration_file(file_path: PathBuf) -> Result<u64> {
     let bytes = fs::read(file_path)?;
     audio_duration(bytes)
 }

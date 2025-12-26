@@ -386,7 +386,7 @@ impl App {
 
     fn gpodder_sync_pos(
         &mut self, subscription_changes: (Vec<String>, Vec<String>),
-        episode_actions: Vec<EpisodeAction>, timestamp: i64,
+        episode_actions: Vec<EpisodeAction>, timestamp: u64,
     ) -> Result<()> {
         let removed_pods = {
             let (added, deleted) = subscription_changes;
@@ -609,7 +609,7 @@ impl App {
         Ok(())
     }
 
-    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, i64, i64)>) -> Result<()> {
+    fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, u64, u64)>) -> Result<()> {
         let mut pod_map = HashMap::new();
         for (pod_id, ep_id, position, total) in updates {
             if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
@@ -646,10 +646,9 @@ impl App {
                     if episode.duration.is_none() {
                         episode.duration = Some(*total);
                     }
-                    let played = episode.duration.map_or_else(
-                        || episode.played,
-                        |duration| (duration - position).abs() <= 1,
-                    );
+                    let played = episode
+                        .duration
+                        .map_or_else(|| episode.played, |duration| (duration - position) <= 1);
                     if episode.played != played {
                         changed = true;
                         episode.played = played;
@@ -671,7 +670,7 @@ impl App {
         Ok(())
     }
 
-    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: i64) -> Result<()> {
+    pub fn update_position(&self, pod_id: i64, ep_id: i64, position: u64) -> Result<()> {
         let mut changed = false;
         let (duration, ep_url, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();

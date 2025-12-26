@@ -8,14 +8,14 @@ pub enum GpodderRequest {
     GetSubscriptionChanges,
     AddPodcast(String),
     RemovePodcast(String),
-    MarkPlayed(String, String, i64, i64),
-    MarkPlayedBatch(Vec<(String, String, i64, i64)>),
+    MarkPlayed(String, String, u64, u64),
+    MarkPlayedBatch(Vec<(String, String, u64, u64)>),
     Quit,
 }
 
 #[derive(Debug)]
 pub enum GpodderMsg {
-    SubscriptionChanges((Vec<String>, Vec<String>), Vec<EpisodeAction>, i64),
+    SubscriptionChanges((Vec<String>, Vec<String>), Vec<EpisodeAction>, u64),
 }
 
 #[derive(Clone, Debug)]
@@ -29,8 +29,8 @@ pub struct Config {
 
 #[derive(Debug)]
 pub struct State {
-    pub actions_timestamp: RwLock<i64>,
-    pub subscriptions_timestamp: RwLock<i64>,
+    pub actions_timestamp: RwLock<u64>,
+    pub subscriptions_timestamp: RwLock<u64>,
     pub logged_in: RwLock<bool>,
 }
 
@@ -52,7 +52,7 @@ pub struct Device {
 pub struct PodcastChanges {
     pub add: Vec<String>,
     pub remove: Vec<String>,
-    pub timestamp: i64,
+    pub timestamp: u64,
     #[allow(unused)]
     pub update_urls: Option<Vec<String>>,
 }
@@ -71,7 +71,7 @@ pub struct Podcast {
 #[derive(Deserialize, Debug)]
 pub struct UploadPodcastChanges {
     pub update_urls: Vec<Vec<String>>,
-    pub timestamp: i64,
+    pub timestamp: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -89,20 +89,20 @@ pub struct EpisodeAction {
     pub episode: String,
     pub action: Action,
     #[serde(deserialize_with = "deserialize_date")]
-    pub timestamp: i64,
-    pub started: Option<i64>,
-    pub position: Option<i64>,
-    pub total: Option<i64>,
+    pub timestamp: u64,
+    pub started: Option<u64>,
+    pub position: Option<u64>,
+    pub total: Option<u64>,
 }
 
-fn deserialize_date<'de, D>(deserializer: D) -> Result<i64, D::Error>
+fn deserialize_date<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct GpodderDate;
 
     impl Visitor<'_> for GpodderDate {
-        type Value = i64;
+        type Value = u64;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a date string in the format YYYY-MM-DD")
@@ -114,7 +114,9 @@ where
         {
             let dt = DateTime::parse_from_rfc3339(value)
                 .map_err(|err| E::custom(format!("failed to parse date: {err}")))?;
-            Ok(dt.timestamp())
+            dt.timestamp()
+                .try_into()
+                .map_err(|err| E::custom(format!("failed to parse date: {err}")))
         }
     }
 
@@ -136,7 +138,12 @@ impl Serialize for EpisodeAction {
             Action::Delete => "delete",
         };
         state.serialize_field("action", action)?;
-        let datetime = Utc.timestamp_opt(self.timestamp, 0);
+        let datetime = Utc.timestamp_opt(
+            self.timestamp
+                .try_into()
+                .map_err(|_| serde::ser::Error::custom("timestamp conversion error"))?,
+            0,
+        );
         let datetime_str = datetime
             .unwrap()
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);

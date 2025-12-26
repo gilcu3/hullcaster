@@ -947,8 +947,8 @@ impl UiState {
                 };
                 self.current_details = Some(Details {
                     pubdate: ep.pubdate,
-                    position: Some(format_duration(Some(ep.position as u64))),
-                    duration: Some(format_duration(ep.duration.map(|x| x as u64))),
+                    position: Some(format_duration(Some(ep.position))),
+                    duration: Some(format_duration(ep.duration)),
                     explicit: None,
                     description: Some(desc),
                     author: None,
@@ -1022,18 +1022,18 @@ impl UiState {
             .ok_or_else(|| anyhow!("Failed to get current episode"))?
             .read()
             .expect("RwLock read should not fail");
-        *self.elapsed.write().expect("RwLock write should not fail") = ep.position as u64;
+        *self.elapsed.write().expect("RwLock write should not fail") = ep.position;
         if let Some(path) = &ep.path {
             self.tx_to_player.send(PlayerMessage::PlayFile(
                 path.clone(),
-                ep.position as u64,
-                ep.duration.unwrap_or(0) as u64,
+                ep.position,
+                ep.duration.unwrap_or(0),
             ))?;
         } else {
             self.tx_to_player.send(PlayerMessage::PlayUrl(
                 ep.url.clone(),
-                ep.position as u64,
-                ep.duration.unwrap_or(0) as u64,
+                ep.position,
+                ep.duration.unwrap_or(0),
             ))?;
         }
         Ok(())
@@ -1053,7 +1053,7 @@ impl UiState {
             .read()
             .expect("RwLock read should not fail");
         let cur_ep = cur_ep.as_ref()?;
-        let position = *self.elapsed.read().expect("RwLock read should not fail") as i64;
+        let position = *self.elapsed.read().expect("RwLock read should not fail");
         let cur_ep = cur_ep.read().expect("RwLock read should not fail");
         Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position))
     }
@@ -1103,7 +1103,7 @@ impl UiState {
             });
         if !same {
             if playing {
-                let position = *self.elapsed.read().expect("RwLock read should not fail") as i64;
+                let position = *self.elapsed.read().expect("RwLock read should not fail");
                 return vec![
                     UiMsg::UpdatePosition(cur_pod_id, cur_ep_id, position),
                     UiMsg::Play(pod_id, ep_id, false),
@@ -1530,9 +1530,9 @@ fn render_play_area(
         .map_or_else(String::new, |ep| {
             let ep = ep.read().expect("RwLock read should not fail");
             if let Some(total) = ep.duration {
-                ratio = compute_ratio(elapsed, total as u64);
+                ratio = compute_ratio(elapsed, total);
             }
-            let total_label = format_duration(ep.duration.map(|x| x as u64));
+            let total_label = format_duration(ep.duration);
             title.clone_from(&ep.title);
             podcast_title = pod_title.map_or_else(String::new, std::clone::Clone::clone);
             format!("{}/{}", format_duration(Some(elapsed)), total_label)

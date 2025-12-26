@@ -223,6 +223,10 @@ impl Database {
                 description, pubdate, duration, played, position)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
         )?;
+        let duration: Option<i64> = episode
+            .duration
+            .map(std::convert::TryInto::try_into)
+            .transpose()?;
         stmt.execute(params![
             podcast_id,
             episode.title,
@@ -230,7 +234,7 @@ impl Database {
             episode.guid,
             episode.description,
             pubdate,
-            episode.duration,
+            duration,
             false,
             0,
         ])?;
@@ -383,13 +387,17 @@ impl Database {
                             guid = ?, description = ?, pubdate = ?,
                             duration = ? WHERE id = ?;",
                     )?;
+                    let duration: Option<i64> = new_ep
+                        .duration
+                        .map(std::convert::TryInto::try_into)
+                        .transpose()?;
                     stmt.execute(params![
                         new_ep.title,
                         new_ep.url,
                         new_ep.guid,
                         new_ep.description,
                         new_pd,
-                        new_ep.duration,
+                        duration,
                         id,
                     ])?;
                     update_ep.push(id);
@@ -440,20 +448,22 @@ impl Database {
 
     /// Updates an episode to mark it as played or unplayed.
     pub fn set_played_status(
-        &self, episode_id: i64, position: i64, duration: Option<i64>, played: bool,
+        &self, episode_id: i64, position: u64, duration: Option<u64>, played: bool,
     ) -> Result<()> {
         let conn = self.conn.as_ref().expect("Error connecting to database.");
 
         let mut stmt = conn.prepare_cached(
             "UPDATE episodes SET played = ?, position = ?, duration = ? WHERE id = ?;",
         )?;
+        let duration: Option<i64> = duration.map(std::convert::TryInto::try_into).transpose()?;
+        let position: i64 = position.try_into()?;
         stmt.execute(params![played, position, duration, episode_id])?;
         Ok(())
     }
 
     /// Updates an episode to mark it as played or unplayed.
     pub fn set_played_status_batch(
-        &mut self, eps: Vec<(i64, i64, Option<i64>, bool)>,
+        &mut self, eps: Vec<(i64, u64, Option<u64>, bool)>,
     ) -> Result<()> {
         let conn = self.conn.as_mut().expect("Error connecting to database.");
         let tx = conn.transaction()?;
@@ -462,6 +472,9 @@ impl Database {
                 "UPDATE episodes SET played = ?, position = ?, duration = ? WHERE id = ?;",
             )?;
             for (episode_id, position, duration, played) in eps {
+                let position: i64 = position.try_into()?;
+                let duration: Option<i64> =
+                    duration.map(std::convert::TryInto::try_into).transpose()?;
                 stmt.execute(params![played, position, duration, episode_id])?;
             }
         }
@@ -514,9 +527,22 @@ impl Database {
                     WHERE episodes.podcast_id = ?
                     ORDER BY pubdate DESC;",
         )?;
+        let duration_index = stmt.column_index("duration")?;
+        let position_index = stmt.column_index("position")?;
         let episode_iter = stmt.query_map(params![pod_id], |row| {
             let path = row.get::<&str, String>("path").ok().map(PathBuf::from);
             let pubdate = convert_date(row.get("pubdate")?).ok();
+            let duration: Option<i64> = row.get("duration")?;
+            let position: i64 = row.get("position")?;
+            let duration = duration
+                .map(|x| {
+                    x.try_into()
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(duration_index, x))
+                })
+                .transpose()?;
+            let position = position
+                .try_into()
+                .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(position_index, position))?;
             Ok(Episode {
                 id: row.get("id")?,
                 pod_id: row.get("podcast_id")?,
@@ -527,8 +553,8 @@ impl Database {
                     .unwrap_or_else(String::new),
                 description: row.get("description")?,
                 pubdate,
-                duration: row.get("duration")?,
-                position: row.get("position")?,
+                duration,
+                position,
                 path,
                 played: row.get("played")?,
             })

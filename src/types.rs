@@ -68,8 +68,8 @@ pub struct Episode {
     pub guid: String,
     pub description: String,
     pub pubdate: Option<DateTime<Utc>>,
-    pub duration: Option<i64>,
-    pub position: i64,
+    pub duration: Option<u64>,
+    pub position: u64,
     pub path: Option<PathBuf>,
     pub played: bool,
 }
@@ -109,7 +109,7 @@ pub struct EpisodeNoId {
     pub guid: String,
     pub description: String,
     pub pubdate: Option<DateTime<Utc>>,
-    pub duration: Option<i64>,
+    pub duration: Option<u64>,
 }
 
 /// Struct holding data about an individual podcast episode, specifically
@@ -184,7 +184,7 @@ impl Menuable for Episode {
         );
 
         if length > crate::config::EPISODE_DURATION_LENGTH {
-            let dur = format_duration(self.duration.map(|x| x as u64));
+            let dur = format_duration(self.duration);
             let meta_dur = format!("[{dur}]");
             let out_added = out.substr(0, length - meta_dur.chars().count() - 3);
             format!(
