@@ -652,6 +652,17 @@ impl UiState {
                             .ok();
                     }
 
+                    Some(UserAction::ResetPlayer) => {
+                        self.tx_to_player
+                            .send(PlayerMessage::ResetSink)
+                            .inspect_err(|err| {
+                                log::error!(
+                                    "Failed to send PlayerMessage::ResetSink to player: {err}"
+                                );
+                            })
+                            .ok();
+                    }
+
                     Some(a @ (UserAction::MoveUp | UserAction::MoveDown)) => {
                         if self.active_panel == Panel::Queue
                             && let Some(ui_msg) = self.move_eps(a)

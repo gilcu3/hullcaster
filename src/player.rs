@@ -24,6 +24,8 @@ pub enum PlayerMessage {
     PlayUrl(String, u64, u64),
     Seek(Duration, bool),
     Quit,
+    /// Workaround for sound not working after resume
+    ResetSink,
 }
 
 #[derive(PartialEq, Eq, Copy, Clone)]
@@ -35,7 +37,7 @@ pub enum PlaybackStatus {
 }
 
 pub struct Player {
-    _stream_handle: OutputStream, // else the sink stops working
+    stream_handle: OutputStream, // else the sink stops working
     sink: Sink,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
@@ -48,12 +50,22 @@ impl Player {
             .expect("rodio default stream should be available");
         let sink = rodio::Sink::connect_new(stream_handle.mixer());
         Self {
-            _stream_handle: stream_handle,
+            stream_handle,
             sink,
             elapsed,
             duration: 0,
             playing,
         }
+    }
+
+    fn reset(&mut self) {
+        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
+            .expect("rodio default stream should be available");
+        let sink = rodio::Sink::connect_new(stream_handle.mixer());
+        self.stream_handle = stream_handle;
+        self.sink = sink;
+        *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
+        *self.elapsed.write().expect("RwLock write should not fail") = 0;
     }
 
     pub async fn spawn_async(
@@ -106,6 +118,7 @@ impl Player {
                         }
                     }
                     PlayerMessage::Quit => break,
+                    PlayerMessage::ResetSink => player.reset(),
                 }
             }
             tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;

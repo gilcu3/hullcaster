@@ -49,3 +49,5 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Eliminate all possible panics, currently some can happen when there are
   network issues, using the `unwrap-used` clippy rule
 - [x] Remove `let` `_` statements so that errors are handled properly
+- [x] Bug fix: silence after resuming from suspend -> fixed with workaround to
+restart rodio sink by pressing `R`

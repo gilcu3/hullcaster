@@ -57,7 +57,7 @@ pub struct Config {
 
 /// A temporary struct used to deserialize data from the TOML configuration
 /// file. Will be converted into Config struct.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct ConfigFromToml {
     download_path: Option<String>,
     play_command: Option<String>,
@@ -77,7 +77,7 @@ struct ConfigFromToml {
 
 /// A temporary struct used to deserialize keybinding data from the TOML
 /// configuration file.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct KeybindingsFromToml {
     pub left: Option<Vec<String>>,
     pub right: Option<Vec<String>>,
@@ -111,12 +111,13 @@ pub struct KeybindingsFromToml {
     pub back: Option<Vec<String>>,
     pub switch: Option<Vec<String>>,
     pub play_external: Option<Vec<String>>,
+    pub reset_player: Option<Vec<String>>,
 }
 
 /// A temporary struct used to deserialize colors data from the TOML
 /// configuration file. See `crate::ui::colors` module for the `AppColors`
 /// struct which handles the final color scheme.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct AppColorsFromToml {
     pub normal_foreground: Option<String>,
     pub normal_background: Option<String>,
@@ -145,68 +146,15 @@ impl Config {
         } else {
             // if we can't find the file, set everything to empty
             // so we it will use the defaults for everything
-            let keybindings = KeybindingsFromToml {
-                left: None,
-                right: None,
-                up: None,
-                down: None,
-                go_top: None,
-                go_bot: None,
-                page_up: None,
-                page_down: None,
-                move_up: None,
-                move_down: None,
-                add_feed: None,
-                sync: None,
-                sync_all: None,
-                sync_gpodder: None,
-                play_pause: None,
-                enter: None,
-                mark_played: None,
-                mark_all_played: None,
-                download: None,
-                download_all: None,
-                delete: None,
-                delete_all: None,
-                remove: None,
-                filter_played: None,
-                filter_downloaded: None,
-                enqueue: None,
-                help: None,
-                quit: None,
-                unplayed_list: None,
-                back: None,
-                switch: None,
-                play_external: None,
-            };
+            let keybindings = KeybindingsFromToml::default();
 
-            let colors = AppColorsFromToml {
-                normal_foreground: None,
-                normal_background: None,
-                bold_foreground: None,
-                bold_background: None,
-                highlighted_active_foreground: None,
-                highlighted_active_background: None,
-                highlighted_foreground: None,
-                highlighted_background: None,
-                error_foreground: None,
-                error_background: None,
-            };
+            let colors = AppColorsFromToml::default();
             ConfigFromToml {
-                download_path: None,
-                play_command: None,
-                simultaneous_downloads: None,
-                max_retries: None,
-                enable_sync: Some(false),
-                sync_server: None,
-                sync_username: None,
-                sync_password: None,
-                sync_password_eval: None,
-                mark_as_played_on_play: None,
                 sync_on_start: Some(true),
                 keybindings: Some(keybindings),
                 colors: Some(colors),
                 confirm_quit: Some(true),
+                ..Default::default()
             }
         };
 
