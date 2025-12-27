@@ -73,6 +73,3 @@ unwrap-used = "deny"
 
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-
-# TODO: handle these
-significant-drop-tightening = "allow"

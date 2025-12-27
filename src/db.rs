@@ -197,7 +197,6 @@ impl Database {
             let id = Self::insert_episode(&tx, pod_id, ep)?;
             let new_ep = NewEpisode {
                 id,
-                pod_id,
                 title: ep.title.clone(),
                 pod_title: podcast.title.clone(),
                 selected: false,
@@ -406,7 +405,6 @@ impl Database {
                 let id = Self::insert_episode(&tx, podcast_id, new_ep)?;
                 let new_ep = NewEpisode {
                     id,
-                    pod_id: podcast_id,
                     title: new_ep.title.clone(),
                     pod_title: podcast_title.to_string(),
                     selected: false,

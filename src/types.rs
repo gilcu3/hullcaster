@@ -116,10 +116,9 @@ pub struct EpisodeNoId {
 /// for the popup window that asks users which new episodes they wish to
 /// download.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct NewEpisode {
     pub id: i64,
-    pub pod_id: i64,
+    // pub pod_id: i64,
     pub title: String,
     pub pod_title: String,
     pub selected: bool,
@@ -512,10 +511,9 @@ impl<T: Menuable> Clone for LockVec<T> {
 impl LockVec<Podcast> {
     pub fn get_episodes_map(&self) -> HashMap<i64, Arc<RwLock<Episode>>> {
         let mut all_ep_map = HashMap::new();
-        let pod_map = self.borrow_map();
-        for (_pod_id, pod) in pod_map.iter() {
-            let rpod = pod.read().expect("RwLock read should not fail");
-            let ep_map = rpod.episodes.borrow_map();
+        for (_pod_id, pod) in self.borrow_map().iter() {
+            let episodes = &pod.read().expect("RwLock read should not fail").episodes;
+            let ep_map = episodes.borrow_map();
             for (ep_id, ep) in ep_map.iter() {
                 all_ep_map.insert(*ep_id, ep.clone());
             }
@@ -549,8 +547,7 @@ impl LockVec<Episode> {
                 new_forder.push(i);
             }
         }
-        let mut order = self.borrow_order();
-        *order = norder;
+        *self.borrow_order() = norder;
         let mut forder = self.borrow_filtered_order();
         *forder = new_forder;
     }

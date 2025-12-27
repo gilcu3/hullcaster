@@ -141,11 +141,13 @@ pub fn resolve_redirection(url: &str) -> Result<String> {
 }
 
 pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
-    let podcast_map = podcasts.borrow_map();
     let mut ueps = Vec::new();
-    for podcast in podcast_map.values() {
-        let rpod = podcast.read().expect("RwLock read should not fail");
-        let episode_map = rpod.episodes.borrow_map();
+    for podcast in podcasts.borrow_map().values() {
+        let episodes = &podcast
+            .read()
+            .expect("RwLock read should not fail")
+            .episodes;
+        let episode_map = episodes.borrow_map();
         for episode in episode_map.values() {
             let rep = episode.read().expect("RwLock read should not fail");
             if !rep.played {

@@ -492,13 +492,11 @@ impl App {
         // finished
         let mut added = 0;
         let mut updated = 0;
-        let mut new_eps = Vec::new();
         for res in &self.sync_tracker {
             added += res.added.len();
             updated += res.updated.len();
-            new_eps.extend(res.added.clone());
         }
-        if added + updated + new_eps.len() > 0 {
+        if added + updated > 0 {
             self.update_filters(self.filters, false);
         }
 
@@ -680,15 +678,15 @@ impl App {
     pub fn update_position(&self, pod_id: i64, ep_id: i64, position: u64) -> Result<()> {
         let mut changed = false;
         let (duration, ep_url, pod_url) = {
-            let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map
-                .get(&pod_id)
+            let podcast = self
+                .podcasts
+                .get(pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().expect("RwLock read should not fail");
-            let mut episode_map = podcast.episodes.borrow_map();
 
-            let w_episode = episode_map
-                .get_mut(&ep_id)
+            let w_episode = podcast
+                .episodes
+                .get(ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().expect("RwLock write should not fail");
@@ -749,9 +747,9 @@ impl App {
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
                 .read()
                 .expect("RwLock read should not fail");
-            let mut episode_map = podcast.episodes.borrow_map();
-            let w_episode = episode_map
-                .get_mut(&ep_id)
+            let w_episode = podcast
+                .episodes
+                .get(ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?;
             {
                 let mut episode = w_episode.write().expect("RwLock write should not fail");
@@ -806,18 +804,23 @@ impl App {
     pub fn mark_all_played(&mut self, pod_id: i64, played: bool) -> Result<()> {
         let mut changed = false;
         let (sync_list, db_list) = {
-            let podcast_map = self.podcasts.borrow_map();
-            let podcast = podcast_map
-                .get(&pod_id)
-                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?
+            let podcast = self
+                .podcasts
+                .get(pod_id)
+                .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
+            let podcast_url = podcast
                 .read()
-                .expect("RwLock read should not fail");
-            let podcast_url = podcast.url.clone();
+                .expect("RwLock read should not fail")
+                .url
+                .clone();
 
             let mut sync_list = Vec::new();
             let mut db_list = Vec::new();
-            let mut episode_map = podcast.episodes.borrow_map();
-            for (ep_id, episode) in episode_map.iter_mut() {
+            let episodes = &podcast
+                .read()
+                .expect("RwLock read should not fail")
+                .episodes;
+            for (ep_id, episode) in episodes.borrow_map().iter_mut() {
                 let w_episode = episode;
                 {
                     let mut episode = w_episode.write().expect("RwLock write should not fail");
@@ -875,9 +878,9 @@ impl App {
         let pod_title;
         let mut ep_data = Vec::new();
         {
-            let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map
-                .get(&pod_id)
+            let podcast = self
+                .podcasts
+                .get(pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
             let podcast = podcast.read().expect("RwLock read should not fail");
             pod_title = podcast.title.clone();
@@ -971,13 +974,16 @@ impl App {
             .ok_or_else(|| anyhow!("ep_data does not contain a file_path"))?;
         self.db.insert_file(ep_data.id, &file_path)?;
         {
-            let borrowed_map = self.podcasts.borrow_map();
             let pod_id = ep_data.pod_id;
-            let podcast = borrowed_map
-                .get(&pod_id)
+            let podcast = self
+                .podcasts
+                .get(pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().expect("RwLock read should not fail");
-            let mut episode_map = podcast.episodes.borrow_map();
+            let episodes = &podcast
+                .read()
+                .expect("RwLock read should not fail")
+                .episodes;
+            let mut episode_map = episodes.borrow_map();
             let ep_id = ep_data.id;
             let mut episode = episode_map
                 .get_mut(&ep_id)
@@ -1014,12 +1020,15 @@ impl App {
     /// Deletes a downloaded file for an episode from the user's local system.
     pub fn delete_file(&self, pod_id: i64, ep_id: i64) -> Result<()> {
         let (file_path, title) = {
-            let borrowed_map = self.podcasts.borrow_map();
-            let podcast = borrowed_map
-                .get(&pod_id)
+            let podcast = self
+                .podcasts
+                .get(pod_id)
                 .ok_or_else(|| anyhow!("Failed to get pod_id: {pod_id}"))?;
-            let podcast = podcast.read().expect("RwLock read should not fail");
-            let mut episode_map = podcast.episodes.borrow_map();
+            let episodes = &podcast
+                .read()
+                .expect("RwLock read should not fail")
+                .episodes;
+            let mut episode_map = episodes.borrow_map();
             let mut episode = episode_map
                 .get_mut(&ep_id)
                 .ok_or_else(|| anyhow!("Failed to get ep_id: {ep_id}"))?
@@ -1147,8 +1156,8 @@ impl App {
 
             let pod_map = self.podcasts.borrow_map();
             for pod in pod_map.values() {
-                let pod = pod.read().expect("RwLock read should not fail");
-                let new_filter = pod.episodes.filter_map(|ep| {
+                let episodes = &pod.read().expect("RwLock read should not fail").episodes;
+                let new_filter = episodes.filter_map(|ep| {
                     let ep = ep.read().expect("RwLock read should not fail");
                     let play_filter = match filters.played {
                         FilterStatus::All => false,
@@ -1166,7 +1175,7 @@ impl App {
                         Some(ep.id)
                     }
                 });
-                let mut filtered_order = pod.episodes.borrow_filtered_order();
+                let mut filtered_order = episodes.borrow_filtered_order();
                 *filtered_order = new_filter;
             }
         }

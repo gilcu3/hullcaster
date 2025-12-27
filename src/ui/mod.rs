@@ -161,15 +161,20 @@ impl UiState {
                         .expect("RwLock read should not fail")
                         .as_ref()
                     {
-                        let ep = ep.read().expect("RwLock read should not fail");
-                        if let Some(queue_index) = ui.queue.items.get_index(ep.id) {
+                        let ep_id = ep.read().expect("RwLock read should not fail").id;
+                        if let Some(queue_index) = ui.queue.items.get_index(ep_id) {
                             if let Some(next_ep) = ui.next_from_queue(queue_index) {
-                                let next_ep = next_ep.read().expect("RwLock read should not fail");
-                                let mut res = ui.play_episode(next_ep.pod_id, next_ep.id);
+                                let (pod_id, id) = {
+                                    let next_ep =
+                                        next_ep.read().expect("RwLock read should not fail");
+                                    (next_ep.pod_id, next_ep.id)
+                                };
+
+                                let mut res = ui.play_episode(pod_id, id);
                                 clear_episode = false;
                                 msgs.append(&mut res);
                             }
-                            ui.queue.items.remove(ep.id);
+                            ui.queue.items.remove(ep_id);
                             msgs.push(UiMsg::QueueModified);
                         }
                     }
@@ -948,8 +953,7 @@ impl UiState {
                 let ep = ep.read().expect("RwLock read should not fail");
                 let desc = clean_html(&ep.description);
                 let podcast_title = {
-                    let pod_map = self.podcasts.items.borrow_map();
-                    let pod = pod_map.get(&ep.pod_id);
+                    let pod = self.podcasts.items.get(ep.pod_id);
                     pod.map(|pod| {
                         pod.read()
                             .expect("RwLock read should not fail")
@@ -1001,10 +1005,9 @@ impl UiState {
             Panel::Podcasts => None,
         };
         if let Some(ep_arc) = ep {
-            let ep = ep_arc.read().expect("RwLock read should not fail");
+            let ep_pod_id = ep_arc.read().expect("RwLock read should not fail").pod_id;
             let podcast_title = {
-                let pod_map = self.podcasts.items.borrow_map();
-                let pod = pod_map.get(&ep.pod_id);
+                let pod = self.podcasts.items.get(ep_pod_id);
                 pod.map_or_else(
                     || "No title".to_string(),
                     |pod| {
@@ -1019,7 +1022,7 @@ impl UiState {
             *self
                 .current_episode
                 .write()
-                .expect("RwLock write should not fail") = Some(ep_arc.clone());
+                .expect("RwLock write should not fail") = Some(ep_arc);
         }
     }
 
@@ -1029,24 +1032,27 @@ impl UiState {
             .current_episode
             .read()
             .expect("RwLock read should not fail");
-        let ep = ep
-            .as_ref()
-            .ok_or_else(|| anyhow!("Failed to get current episode"))?
-            .read()
-            .expect("RwLock read should not fail");
-        *self.elapsed.write().expect("RwLock write should not fail") = ep.position;
-        if let Some(path) = &ep.path {
-            self.tx_to_player.send(PlayerMessage::PlayFile(
-                path.clone(),
+        let (path, position, duration, url) = {
+            let ep = ep
+                .as_ref()
+                .ok_or_else(|| anyhow!("Failed to get current episode"))?
+                .read()
+                .expect("RwLock read should not fail");
+            (
+                ep.path.clone(),
                 ep.position,
                 ep.duration.unwrap_or(0),
-            ))?;
-        } else {
-            self.tx_to_player.send(PlayerMessage::PlayUrl(
                 ep.url.clone(),
-                ep.position,
-                ep.duration.unwrap_or(0),
-            ))?;
+            )
+        };
+
+        *self.elapsed.write().expect("RwLock write should not fail") = position;
+        if let Some(path) = path {
+            self.tx_to_player
+                .send(PlayerMessage::PlayFile(path, position, duration))?;
+        } else {
+            self.tx_to_player
+                .send(PlayerMessage::PlayUrl(url, position, duration))?;
         }
         Ok(())
     }
@@ -1064,9 +1070,11 @@ impl UiState {
             .current_episode
             .read()
             .expect("RwLock read should not fail");
-        let cur_ep = cur_ep.as_ref()?;
         let position = *self.elapsed.read().expect("RwLock read should not fail");
-        let cur_ep = cur_ep.read().expect("RwLock read should not fail");
+        let cur_ep = cur_ep
+            .as_ref()?
+            .read()
+            .expect("RwLock read should not fail");
         Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position))
     }
 
@@ -1137,9 +1145,8 @@ impl UiState {
 
     fn next_from_queue(&self, queue_index: usize) -> Option<ShareableRwLock<Episode>> {
         if queue_index + 1 < self.queue.items.len(false) {
-            let order = self.queue.items.borrow_order();
-            let ep_id = order.get(queue_index + 1)?;
-            self.queue.items.get(*ep_id)
+            let ep_id = self.queue.items.get_id_by_index(queue_index + 1)?;
+            self.queue.items.get(ep_id)
         } else {
             None
         }
@@ -1545,12 +1552,16 @@ fn render_play_area(
         .expect("RwLock read should not fail")
         .as_ref()
         .map_or_else(String::new, |ep| {
-            let ep = ep.read().expect("RwLock read should not fail");
-            if let Some(total) = ep.duration {
+            let (ep_title, duration) = {
+                let ep = ep.read().expect("RwLock read should not fail");
+                (ep.title.clone(), ep.duration)
+            };
+
+            if let Some(total) = duration {
                 ratio = compute_ratio(elapsed, total);
             }
-            let total_label = format_duration(ep.duration);
-            title.clone_from(&ep.title);
+            let total_label = format_duration(duration);
+            title = ep_title;
             podcast_title = pod_title.map_or_else(String::new, std::clone::Clone::clone);
             format!("{}/{}", format_duration(Some(elapsed)), total_label)
         });
