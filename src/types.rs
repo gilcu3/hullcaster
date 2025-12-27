@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 
 use chrono::{DateTime, Utc};
-use nohash_hasher::BuildNoHashHasher;
 
 use crate::downloads::DownloadMsg;
 use crate::feeds::FeedMsg;
@@ -252,7 +251,7 @@ pub struct LockVec<T>
 where
     T: Menuable,
 {
-    data: ShareableMutex<HashMap<i64, ShareableRwLock<T>, BuildNoHashHasher<i64>>>,
+    data: ShareableMutex<HashMap<i64, ShareableRwLock<T>>>,
     order: Arc<Mutex<Vec<i64>>>,
     filtered_order: Arc<Mutex<Vec<i64>>>,
 }
@@ -260,7 +259,7 @@ where
 impl<T: Menuable> LockVec<T> {
     /// Create a new `LockVec`.
     pub fn new(data: Vec<T>) -> Self {
-        let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
+        let mut hm = HashMap::new();
         let mut order = Vec::new();
         for i in data {
             let id = i.get_id();
@@ -276,7 +275,7 @@ impl<T: Menuable> LockVec<T> {
     }
 
     pub fn new_arc(data: Vec<Arc<RwLock<T>>>) -> Self {
-        let mut hm = HashMap::with_hasher(BuildNoHashHasher::default());
+        let mut hm = HashMap::new();
         let mut order = Vec::new();
         for i in data {
             let id = i.read().expect("RwLock read should not fail").get_id();
@@ -338,9 +337,7 @@ impl<T: Menuable> LockVec<T> {
     }
 
     /// Lock the `LockVec` hashmap for reading/writing.
-    pub fn borrow_map(
-        &self,
-    ) -> MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>> {
+    pub fn borrow_map(&self) -> MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>>> {
         self.data.lock().expect("Mutex error")
     }
 
@@ -359,7 +356,7 @@ impl<T: Menuable> LockVec<T> {
     pub fn borrow(
         &self,
     ) -> (
-        MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>, BuildNoHashHasher<i64>>>,
+        MutexGuard<'_, HashMap<i64, Arc<RwLock<T>>>>,
         MutexGuard<'_, Vec<i64>>,
         MutexGuard<'_, Vec<i64>>,
     ) {

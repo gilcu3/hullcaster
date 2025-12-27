@@ -1,4 +1,5 @@
-use ahash::AHashMap;
+use std::collections::HashMap;
+
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::KeybindingsFromToml;
@@ -57,14 +58,14 @@ pub enum UserAction {
 /// action.
 #[derive(Debug, Clone)]
 pub struct Keybindings(
-    AHashMap<String, UserAction>,
-    AHashMap<UserAction, Vec<String>>,
+    HashMap<String, UserAction>,
+    HashMap<UserAction, Vec<String>>,
 );
 
 impl Keybindings {
     /// Returns a new Keybindings struct.
     pub fn new() -> Self {
-        Self(AHashMap::new(), AHashMap::new())
+        Self(HashMap::new(), HashMap::new())
     }
 
     /// Returns a Keybindings struct with all default values set.

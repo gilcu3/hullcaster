@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use ahash::AHashMap;
 use rusqlite::{Connection, params};
 use semver::Version;
 
@@ -327,7 +327,7 @@ impl Database {
         &self, podcast_id: i64, podcast_title: &str, episodes: &[EpisodeNoId],
     ) -> Result<SyncResult> {
         let old_episodes = self.get_episodes(podcast_id)?;
-        let mut old_ep_map = AHashMap::new();
+        let mut old_ep_map = HashMap::new();
         for ep in &old_episodes {
             if !ep.guid.is_empty() {
                 old_ep_map.insert(ep.guid.clone(), ep);

@@ -3,7 +3,7 @@ alias = "check-all"
 
 [tasks.check-all]
 description = "Run all checks"
-dependencies = ["clippy", "fmt", "taplo", "typos", "shear", "test"]
+dependencies = ["clippy", "fmt", "taplo", "typos", "shear", "deny", "test"]
 
 [tasks.clippy]
 command = "cargo"
@@ -27,6 +27,10 @@ command = "typos"
 [tasks.shear]
 command = "cargo"
 args = ["shear"]
+
+[tasks.deny]
+command = "cargo"
+args = ["deny", "--all-features", "check"]
 
 [tasks.taplo]
 command = "taplo"

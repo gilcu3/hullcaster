@@ -17,7 +17,6 @@ readme = "README.md"
 instrument = ["tokio/tracing", "console-subscriber"]
 
 [dependencies]
-ahash = "0.8.12"
 anyhow = "1.0.100"
 base64 = "0.22.1"
 chrono = "0.4.42"
@@ -29,7 +28,6 @@ escaper = "0.1.1"
 fs2 = "0.4.3"
 gag = "1.0.0"
 log = "0.4.29"
-nohash-hasher = "0.2.0"
 opml = "1.1.6"
 ratatui = "0.29.0"
 regex = "1.12.2"
@@ -38,14 +36,13 @@ reqwest = { version = "0.12.28", default-features = false, features = [
   "blocking",
   "rustls-tls",
 ] }
-rfc822_sanitizer = "0.3.6"
 rodio = { version = "0.21.1", features = ["tracing"] }
 rss = "2.0.12"
 rusqlite = "0.38.0"
 sanitize-filename = "0.6.0"
 semver = "1.0.27"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.147"
+serde_json = "1.0.148"
 shellexpand = "3.1.1"
 simplelog = { version = "0.12.2", features = ["local-offset"] }
 souvlaki = "0.8.3"

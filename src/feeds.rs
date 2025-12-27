@@ -4,7 +4,6 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use rfc822_sanitizer::parse_from_rfc2822_with_fallback;
 use rss::{Channel, Item};
 
 use crate::threadpool::Threadpool;
@@ -151,11 +150,9 @@ fn parse_episode_data(item: &Item) -> EpisodeNoId {
     let description = item
         .description()
         .map_or_else(String::new, std::string::ToString::to_string);
-    let pubdate = item.pub_date().and_then(|pd| {
-        parse_from_rfc2822_with_fallback(pd).map_or(None, |date| {
-            Some(DateTime::from_naive_utc_and_offset(date.naive_utc(), Utc))
-        })
-    });
+    let pubdate = item
+        .pub_date()
+        .and_then(|pd| DateTime::parse_from_rfc2822(pd).map(|dt| dt.to_utc()).ok());
 
     let duration = if let Some(itunes) = item.itunes_ext()
         && let Some(itures_duration) = itunes.duration()
