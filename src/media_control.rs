@@ -37,7 +37,12 @@ pub fn init_controls(
 
         controls.attach(move |event: MediaControlEvent| {
             if event == MediaControlEvent::Toggle {
-                let _ = tx_to_ui.send(ControlMessage::PlayPause);
+                tx_to_ui
+                    .send(ControlMessage::PlayPause)
+                    .inspect_err(|err| {
+                        log::error!("Could not send ControlMessage::PlayPause to ui: {err}");
+                    })
+                    .ok();
             }
         })?;
 
@@ -47,14 +52,34 @@ pub fn init_controls(
                     last_status = *playing.read().expect("RwLock read should not fail");
                     match last_status {
                         PlaybackStatus::Playing => {
-                            let _ =
-                                controls.set_playback(MediaPlayback::Playing { progress: None });
+                            controls
+                                .set_playback(MediaPlayback::Playing { progress: None })
+                                .inspect_err(|err| {
+                                    log::error!(
+                                        "Could not set playback to MediaPlayback::Playing: {err}"
+                                    );
+                                })
+                                .ok();
                         }
                         PlaybackStatus::Paused => {
-                            let _ = controls.set_playback(MediaPlayback::Paused { progress: None });
+                            controls
+                                .set_playback(MediaPlayback::Paused { progress: None })
+                                .inspect_err(|err| {
+                                    log::error!(
+                                        "Could not set playback to MediaPlayback::Paused: {err}"
+                                    );
+                                })
+                                .ok();
                         }
                         PlaybackStatus::Finished | PlaybackStatus::Ready => {
-                            let _ = controls.set_playback(MediaPlayback::Stopped);
+                            controls
+                                .set_playback(MediaPlayback::Stopped)
+                                .inspect_err(|err| {
+                                    log::error!(
+                                        "Could not set playback to MediaPlayback::Stopped: {err}"
+                                    );
+                                })
+                                .ok();
                         }
                     }
                 }

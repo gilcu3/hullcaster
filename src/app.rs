@@ -474,7 +474,10 @@ impl App {
         for pod_id in removed_pods {
             self.remove_podcast(pod_id, true)?;
         }
-        let _ = self.db.set_param("timestamp", &timestamp.to_string());
+        self.db
+            .set_param("timestamp", &timestamp.to_string())
+            .inspect_err(|err| log::error!("Failed to set timestamp in database: {err}"))
+            .ok();
         self.update_unplayed(true);
         self.update_filters(self.filters, false);
         self.notif_to_ui(
@@ -505,7 +508,9 @@ impl App {
             false,
         );
 
-        let _ = self.gpodder_sync_pre();
+        self.gpodder_sync_pre()
+            .inspect_err(|err| log::error!("gpodder_sync_pre failed: {err}"))
+            .ok();
     }
 
     /// Handles the application logic for adding a new podcast, or synchronizing
@@ -585,10 +590,12 @@ impl App {
             (episode.path.clone(), episode.url.clone())
         };
         if external {
-            if play_file::execute(&self.config.play_command, &ep_url).is_err() {
-                self.notif_to_ui("Error: Could not stream URL.".to_string(), true);
-            } else if self.config.mark_as_played_on_play {
-                let _ = self.mark_played(pod_id, ep_id, true);
+            if let Err(err) = play_file::execute(&self.config.play_command, &ep_url) {
+                self.notif_to_ui(format!("Could not stream URL: {err}"), true);
+            } else if self.config.mark_as_played_on_play
+                && let Err(err) = self.mark_played(pod_id, ep_id, true)
+            {
+                self.notif_to_ui(format!("Could not mark episode played: {err}"), true);
             }
         } else {
             match ep_path {
@@ -1095,7 +1102,7 @@ impl App {
     /// Removes a podcast from the list, optionally deleting local files first
     pub fn remove_podcast(&self, pod_id: i64, delete_files: bool) -> Result<()> {
         if delete_files {
-            let _ = self.delete_files(pod_id);
+            self.delete_files(pod_id).ok();
         }
 
         let pod = self

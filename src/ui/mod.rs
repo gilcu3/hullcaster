@@ -120,7 +120,7 @@ impl<T: Menuable> MenuList<T> {
 }
 
 impl UiState {
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn spawn_blocking(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
@@ -180,7 +180,10 @@ impl UiState {
                             .expect("RwLock write should not fail") = None;
                     }
                     for msg in msgs {
-                        let _ = tx_to_main.send(Message::Ui(msg));
+                        tx_to_main
+                            .send(Message::Ui(msg))
+                            .inspect_err(|err| log::error!("Failed to send Message::Ui: {err}"))
+                            .ok();
                     }
                 }
                 let msgs = ui.getch();
@@ -224,7 +227,10 @@ impl UiState {
                         }
                     }
                 }
-                let _ = terminal.draw(|frame| ui.draw(frame));
+                terminal
+                    .draw(|frame| ui.draw(frame))
+                    .inspect_err(|err| log::warn!("terminal.draw failed: {err}"))
+                    .ok();
             }
             ratatui::restore();
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -624,15 +630,21 @@ impl UiState {
                     }
 
                     Some(UserAction::Left) => {
-                        let _ = self
-                            .tx_to_player
-                            .send(PlayerMessage::Seek(SEEK_LENGTH, false));
+                        self.tx_to_player
+                            .send(PlayerMessage::Seek(SEEK_LENGTH, false))
+                            .inspect_err(|err| {
+                                log::error!("Failed to send PlayerMessage::Seek to player: {err}");
+                            })
+                            .ok();
                     }
 
                     Some(UserAction::Right) => {
-                        let _ = self
-                            .tx_to_player
-                            .send(PlayerMessage::Seek(SEEK_LENGTH, true));
+                        self.tx_to_player
+                            .send(PlayerMessage::Seek(SEEK_LENGTH, true))
+                            .inspect_err(|err| {
+                                log::error!("Failed to send PlayerMessage::Seek to player: {err}");
+                            })
+                            .ok();
                     }
 
                     Some(a @ (UserAction::MoveUp | UserAction::MoveDown)) => {
@@ -1113,7 +1125,12 @@ impl UiState {
         } else if *self.playing.read().expect("RwLock read should not fail")
             == PlaybackStatus::Paused
         {
-            let _ = self.tx_to_player.send(PlayerMessage::PlayPause);
+            self.tx_to_player
+                .send(PlayerMessage::PlayPause)
+                .inspect_err(|err| {
+                    log::error!("Failed to send PlayerMessage::PlayPause to player: {err}");
+                })
+                .ok();
         }
         vec![]
     }

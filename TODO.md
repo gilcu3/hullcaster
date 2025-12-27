@@ -46,6 +46,6 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [ ] Add a bar for the podcasts sync process
 - [ ] Fix synchronization issues with AntennaPod, for some podcasts it does not
   work as expected, probably because of url redirections
-- [ ] Eliminate all possible panics, currently some can happen when there are
+- [x] Eliminate all possible panics, currently some can happen when there are
   network issues, using the `unwrap-used` clippy rule
-- [ ] Remove `let` `_` statements so that errors are handled properly
+- [x] Remove `let` `_` statements so that errors are handled properly
