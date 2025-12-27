@@ -1,3 +1,4 @@
+use anyhow::Context;
 use anyhow::{Result, anyhow};
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -243,7 +244,8 @@ impl GpodderController {
             .ok_or_else(|| anyhow!("Failed to get actions"))?;
         let mut actions: Vec<EpisodeAction> = Vec::new();
         for action in episode_actions {
-            let action = serde_json::from_value::<EpisodeAction>(action.clone())?;
+            let action = serde_json::from_value::<EpisodeAction>(action.clone())
+                .with_context(|| format!("{action:?}"))?;
             actions.push(action);
         }
         *self

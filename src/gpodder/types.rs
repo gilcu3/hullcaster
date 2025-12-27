@@ -1,6 +1,7 @@
 use base64::Engine;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeStruct};
+use serde_json::Value;
 use std::{fmt, sync::RwLock};
 
 #[derive(Debug)]
@@ -90,8 +91,11 @@ pub struct EpisodeAction {
     pub action: Action,
     #[serde(deserialize_with = "deserialize_date")]
     pub timestamp: u64,
+    #[serde(deserialize_with = "i64_to_u64_deserializer")]
     pub started: Option<u64>,
+    #[serde(deserialize_with = "i64_to_u64_deserializer")]
     pub position: Option<u64>,
+    #[serde(deserialize_with = "i64_to_u64_deserializer")]
     pub total: Option<u64>,
 }
 
@@ -121,6 +125,27 @@ where
     }
 
     deserializer.deserialize_str(GpodderDate)
+}
+
+fn i64_to_u64_deserializer<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Value::deserialize(deserializer)?;
+
+    match v {
+        Value::Number(n) => n.as_i64().map_or_else(
+            || n.as_u64().map_or_else(|| Ok(None), |u| Ok(Some(u))),
+            |i| {
+                if i < 0 {
+                    Ok(None)
+                } else {
+                    Ok(Some(i.cast_unsigned()))
+                }
+            },
+        ),
+        _ => Ok(None),
+    }
 }
 
 impl Serialize for EpisodeAction {
