@@ -68,5 +68,8 @@ panic = "deny"
 panic-in-result-fn = "warn"
 unwrap-used = "deny"
 
+# Workaround for clippy on MacOS
+future_not_send = "allow"
+
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
