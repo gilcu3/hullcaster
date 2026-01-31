@@ -91,11 +91,11 @@ pub struct EpisodeAction {
     pub action: Action,
     #[serde(deserialize_with = "deserialize_date")]
     pub timestamp: u64,
-    #[serde(deserialize_with = "i64_to_u64_deserializer")]
+    #[serde(deserialize_with = "i64_to_u64_deserializer", default)]
     pub started: Option<u64>,
-    #[serde(deserialize_with = "i64_to_u64_deserializer")]
+    #[serde(deserialize_with = "i64_to_u64_deserializer", default)]
     pub position: Option<u64>,
-    #[serde(deserialize_with = "i64_to_u64_deserializer")]
+    #[serde(deserialize_with = "i64_to_u64_deserializer", default)]
     pub total: Option<u64>,
 }
 

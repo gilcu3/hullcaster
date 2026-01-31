@@ -653,7 +653,7 @@ impl App {
                     }
                     let played = episode
                         .duration
-                        .map_or_else(|| episode.played, |duration| (duration - position) <= 1);
+                        .map_or_else(|| episode.played, |duration| duration <= 1 + position);
                     if episode.played != played {
                         changed = true;
                         episode.played = played;

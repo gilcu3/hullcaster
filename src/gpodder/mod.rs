@@ -67,7 +67,7 @@ impl GpodderController {
                             .get_episode_action_changes()
                             .await
                             .unwrap_or_else(|err| {
-                                log::error!("Failed to get episode action changes: {err}");
+                                log::error!("Failed to get episode action changes: {err:?}");
                                 Vec::new()
                             });
                         let timestamp = sync_client.get_timestamp();
