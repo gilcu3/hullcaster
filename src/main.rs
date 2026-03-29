@@ -287,7 +287,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         unplayed_items,
     );
 
-    blocking_tasks.push(tokio::task::spawn_blocking(move || {
+    let app_task = tokio::task::spawn_blocking(move || {
         log::info!("Starting app");
         app.run();
 
@@ -309,7 +309,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
             .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
 
         log::info!("Closing app");
-    }));
+    });
 
     // the winit's event loop must be run in the main thread
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -324,6 +324,8 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         #[allow(deprecated)]
         event_loop.run(move |_, _| {})?;
     }
+
+    app_task.await?;
 
     let shutdown = async {
         for task in tasks {
