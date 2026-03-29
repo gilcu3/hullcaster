@@ -17,7 +17,6 @@ pub struct SyncResult {
 /// with this connection.
 #[derive(Debug)]
 pub struct Database {
-    path: PathBuf,
     conn: Option<Connection>,
 }
 
@@ -30,10 +29,7 @@ impl Database {
             .with_context(|| "Unable to create subdirectory for database.")?;
         db_path.push("data.db");
         let conn = Connection::open(&db_path)?;
-        let db_conn = Self {
-            path: db_path,
-            conn: Some(conn),
-        };
+        let db_conn = Self { conn: Some(conn) };
         db_conn.create()?;
 
         {
@@ -167,10 +163,9 @@ impl Database {
 
     /// Inserts a new podcast and list of podcast episodes into the
     /// database.
-    pub fn insert_podcast(&self, podcast: &PodcastNoId) -> Result<SyncResult> {
-        let mut conn = Connection::open(&self.path).expect("Error connecting to database.");
+    pub fn insert_podcast(&mut self, podcast: &PodcastNoId) -> Result<SyncResult> {
+        let conn = self.conn.as_mut().expect("Error connecting to database.");
         let tx = conn.transaction()?;
-        // let conn = self.conn.as_ref().expect("Error connecting to database.");
         {
             let mut stmt = tx.prepare_cached(
                 "INSERT INTO podcasts (title, url, description, author,
@@ -292,7 +287,7 @@ impl Database {
     /// Updates an existing podcast in the database, where metadata is
     /// changed if necessary, and episodes are updated (modified episodes
     /// are updated, new episodes are inserted).
-    pub fn update_podcast(&self, pod_id: i64, podcast: &PodcastNoId) -> Result<SyncResult> {
+    pub fn update_podcast(&mut self, pod_id: i64, podcast: &PodcastNoId) -> Result<SyncResult> {
         {
             let conn = self.conn.as_ref().expect("Error connecting to database.");
             let mut stmt = conn.prepare_cached(
@@ -324,7 +319,7 @@ impl Database {
     /// a "new" episode. The old version will still remain in the
     /// database.
     fn update_episodes(
-        &self, podcast_id: i64, podcast_title: &str, episodes: &[EpisodeNoId],
+        &mut self, podcast_id: i64, podcast_title: &str, episodes: &[EpisodeNoId],
     ) -> Result<SyncResult> {
         let old_episodes = self.get_episodes(podcast_id)?;
         let mut old_ep_map = HashMap::new();
@@ -334,7 +329,7 @@ impl Database {
             }
         }
 
-        let mut conn = Connection::open(&self.path).expect("Error connecting to database.");
+        let conn = self.conn.as_mut().expect("Error connecting to database.");
         let tx = conn.transaction()?;
 
         let mut insert_ep = Vec::new();
@@ -529,7 +524,8 @@ impl Database {
         let position_index = stmt.column_index("position")?;
         let episode_iter = stmt.query_map(params![pod_id], |row| {
             let path = row.get::<&str, String>("path").ok().map(PathBuf::from);
-            let pubdate = convert_date(row.get("pubdate")?).ok();
+            let pubdate: Option<i64> = row.get("pubdate")?;
+            let pubdate = pubdate.and_then(|ts| convert_date(ts).ok());
             let duration: Option<i64> = row.get("duration")?;
             let position: i64 = row.get("position")?;
             let duration = duration
@@ -598,5 +594,389 @@ impl Database {
         conn.execute("DELETE FROM episodes;", params![])?;
         conn.execute("DELETE FROM podcasts;", params![])?;
         Ok(())
+    }
+
+    /// Creates an in-memory database for testing.
+    #[cfg(test)]
+    fn connect_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let db = Self { conn: Some(conn) };
+        db.create()?;
+        {
+            let conn = db.conn.as_ref().expect("Error connecting to database.");
+            conn.execute("PRAGMA foreign_keys=ON;", params![])?;
+        }
+        Ok(db)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn sample_podcast() -> PodcastNoId {
+        PodcastNoId {
+            title: "Test Podcast".to_string(),
+            url: "https://example.com/feed.xml".to_string(),
+            description: Some("A test podcast".to_string()),
+            author: Some("Test Author".to_string()),
+            explicit: Some(false),
+            last_checked: Utc::now(),
+            episodes: vec![
+                EpisodeNoId {
+                    title: "Episode 1".to_string(),
+                    url: "https://example.com/ep1.mp3".to_string(),
+                    guid: "guid-ep1".to_string(),
+                    description: "First episode".to_string(),
+                    pubdate: Some(Utc::now()),
+                    duration: Some(3600),
+                },
+                EpisodeNoId {
+                    title: "Episode 2".to_string(),
+                    url: "https://example.com/ep2.mp3".to_string(),
+                    guid: "guid-ep2".to_string(),
+                    description: "Second episode".to_string(),
+                    pubdate: Some(Utc::now()),
+                    duration: Some(1800),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn create_tables() {
+        let db = Database::connect_in_memory().unwrap();
+        // Verify tables exist by querying them
+        let conn = db.conn.as_ref().unwrap();
+        conn.execute("SELECT 1 FROM podcasts LIMIT 1;", params![])
+            .unwrap();
+        conn.execute("SELECT 1 FROM episodes LIMIT 1;", params![])
+            .unwrap();
+        conn.execute("SELECT 1 FROM files LIMIT 1;", params![])
+            .unwrap();
+        conn.execute("SELECT 1 FROM queue LIMIT 1;", params![])
+            .unwrap();
+        conn.execute("SELECT 1 FROM params LIMIT 1;", params![])
+            .unwrap();
+    }
+
+    #[test]
+    fn params_set_and_get() {
+        let db = Database::connect_in_memory().unwrap();
+        db.set_param("test_key", "test_value").unwrap();
+        assert_eq!(db.get_param("test_key").unwrap(), "test_value");
+    }
+
+    #[test]
+    fn params_overwrite() {
+        let db = Database::connect_in_memory().unwrap();
+        db.set_param("key", "v1").unwrap();
+        db.set_param("key", "v2").unwrap();
+        assert_eq!(db.get_param("key").unwrap(), "v2");
+    }
+
+    #[test]
+    fn params_missing_key_errors() {
+        let db = Database::connect_in_memory().unwrap();
+        assert!(db.get_param("nonexistent").is_err());
+    }
+
+    #[test]
+    fn insert_and_get_podcast() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+
+        let result = db.insert_podcast(&podcast).unwrap();
+        assert_eq!(result.added.len(), 2);
+        assert!(result.updated.is_empty());
+
+        let podcasts = db.get_podcasts().unwrap();
+        assert_eq!(podcasts.len(), 1);
+        assert_eq!(podcasts[0].title, "Test Podcast");
+        assert_eq!(podcasts[0].url, "https://example.com/feed.xml");
+        assert_eq!(podcasts[0].author.as_deref(), Some("Test Author"));
+
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        assert_eq!(eps.len(), 2);
+    }
+
+    #[test]
+    fn insert_podcast_duplicate_url_fails() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+        assert!(db.insert_podcast(&podcast).is_err());
+    }
+
+    #[test]
+    fn remove_podcast_cascades() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod_id = podcasts[0].id;
+
+        // Add a file to one episode
+        let eps = db.get_episodes(pod_id).unwrap();
+        db.insert_file(eps[0].id, Path::new("/tmp/test.mp3"))
+            .unwrap();
+
+        db.remove_podcast(pod_id).unwrap();
+        assert!(db.get_podcasts().unwrap().is_empty());
+        assert!(db.get_episodes(pod_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn update_podcast_updates_metadata() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod_id = podcasts[0].id;
+
+        let mut updated = podcast.clone();
+        updated.title = "Updated Title".to_string();
+        updated.description = Some("Updated description".to_string());
+
+        db.update_podcast(pod_id, &updated).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        assert_eq!(podcasts[0].title, "Updated Title");
+        assert_eq!(
+            podcasts[0].description.as_deref(),
+            Some("Updated description")
+        );
+    }
+
+    #[test]
+    fn update_podcast_adds_new_episodes() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod_id = podcasts[0].id;
+
+        let mut updated = podcast.clone();
+        updated.episodes.push(EpisodeNoId {
+            title: "Episode 3".to_string(),
+            url: "https://example.com/ep3.mp3".to_string(),
+            guid: "guid-ep3".to_string(),
+            description: "Third episode".to_string(),
+            pubdate: Some(Utc::now()),
+            duration: Some(900),
+        });
+
+        let result = db.update_podcast(pod_id, &updated).unwrap();
+        assert_eq!(result.added.len(), 1);
+        assert_eq!(result.added[0].title, "Episode 3");
+
+        let eps = db.get_episodes(pod_id).unwrap();
+        assert_eq!(eps.len(), 3);
+    }
+
+    #[test]
+    fn update_podcast_detects_changes_by_guid() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod_id = podcasts[0].id;
+
+        let mut updated = podcast.clone();
+        updated.episodes[0].title = "Episode 1 - Revised".to_string();
+
+        let result = db.update_podcast(pod_id, &updated).unwrap();
+        assert_eq!(result.updated.len(), 1);
+        assert!(result.added.is_empty());
+
+        let eps = db.get_episodes(pod_id).unwrap();
+        let revised = eps.iter().find(|e| e.guid == "guid-ep1").unwrap();
+        assert_eq!(revised.title, "Episode 1 - Revised");
+    }
+
+    #[test]
+    fn set_played_status() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep_id = eps[0].id;
+
+        assert!(!eps[0].played);
+        assert_eq!(eps[0].position, 0);
+
+        db.set_played_status(ep_id, 120, Some(3600), true).unwrap();
+
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep = eps.iter().find(|e| e.id == ep_id).unwrap();
+        assert!(ep.played);
+        assert_eq!(ep.position, 120);
+        assert_eq!(ep.duration, Some(3600));
+    }
+
+    #[test]
+    fn set_played_status_batch() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+
+        let batch = vec![
+            (eps[0].id, 60, Some(3600), true),
+            (eps[1].id, 30, Some(1800), false),
+        ];
+        db.set_played_status_batch(batch).unwrap();
+
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep0 = eps.iter().find(|e| e.position == 60).unwrap();
+        let ep1 = eps.iter().find(|e| e.position == 30).unwrap();
+        assert!(ep0.played);
+        assert!(!ep1.played);
+    }
+
+    #[test]
+    fn insert_and_remove_file() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep_id = eps[0].id;
+
+        db.insert_file(ep_id, Path::new("/tmp/episode1.mp3"))
+            .unwrap();
+
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep = eps.iter().find(|e| e.id == ep_id).unwrap();
+        assert_eq!(ep.path.as_deref(), Some(Path::new("/tmp/episode1.mp3")));
+
+        db.remove_file(ep_id).unwrap();
+
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep = eps.iter().find(|e| e.id == ep_id).unwrap();
+        assert!(ep.path.is_none());
+    }
+
+    #[test]
+    fn queue_set_get_and_ordering() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+
+        let queue = vec![eps[1].id, eps[0].id];
+        db.set_queue(queue.clone()).unwrap();
+
+        let retrieved = db.get_queue().unwrap();
+        assert_eq!(retrieved, queue);
+    }
+
+    #[test]
+    fn queue_replace() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+
+        db.set_queue(vec![eps[0].id, eps[1].id]).unwrap();
+        db.set_queue(vec![eps[1].id]).unwrap();
+
+        let retrieved = db.get_queue().unwrap();
+        assert_eq!(retrieved, vec![eps[1].id]);
+    }
+
+    #[test]
+    fn queue_empty() {
+        let mut db = Database::connect_in_memory().unwrap();
+        db.set_queue(Vec::new()).unwrap();
+        assert!(db.get_queue().unwrap().is_empty());
+    }
+
+    #[test]
+    fn clear_db() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+
+        db.clear_db().unwrap();
+        assert!(db.get_podcasts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn episode_without_duration() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let mut podcast = sample_podcast();
+        podcast.episodes[0].duration = None;
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        let ep = eps.iter().find(|e| e.title == "Episode 1").unwrap();
+        assert!(ep.duration.is_none());
+    }
+
+    #[test]
+    fn episode_without_pubdate() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let mut podcast = sample_podcast();
+        podcast.episodes[0].pubdate = None;
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let eps = db.get_episodes(podcasts[0].id).unwrap();
+        assert_eq!(eps.len(), 2);
+        assert!(eps.iter().any(|e| e.pubdate.is_none()));
+    }
+
+    #[test]
+    fn multiple_podcasts() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let pod1 = sample_podcast();
+        let mut pod2 = sample_podcast();
+        pod2.url = "https://example.com/feed2.xml".to_string();
+        pod2.title = "Second Podcast".to_string();
+
+        db.insert_podcast(&pod1).unwrap();
+        db.insert_podcast(&pod2).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        assert_eq!(podcasts.len(), 2);
+    }
+
+    #[test]
+    fn fallback_matching_without_guid() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let mut podcast = sample_podcast();
+        // Clear guids so fallback matching is used
+        for ep in &mut podcast.episodes {
+            ep.guid = String::new();
+        }
+        db.insert_podcast(&podcast).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod_id = podcasts[0].id;
+
+        // Update with same episodes (still no guid) but changed description
+        let mut updated = podcast.clone();
+        updated.episodes[0].description = "Updated description".to_string();
+
+        let result = db.update_podcast(pod_id, &updated).unwrap();
+        // Should detect as update via title+url match, not insert new
+        assert_eq!(result.updated.len(), 1);
+        assert!(result.added.is_empty());
     }
 }

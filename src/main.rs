@@ -410,7 +410,7 @@ fn init_lock_file() -> Result<File> {
 
 /// Synchronizes RSS feed data for all podcasts, without setting up a UI.
 fn sync_podcasts(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Result<()> {
-    let db_inst = Database::connect(db_path)?;
+    let mut db_inst = Database::connect(db_path)?;
     let podcast_list = db_inst.get_podcasts()?;
     if podcast_list.is_empty() {
         if !args.contains_id("quiet") {
@@ -502,7 +502,7 @@ fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Resu
         return Ok(());
     }
 
-    let db_inst = Database::connect(db_path)?;
+    let mut db_inst = Database::connect(db_path)?;
 
     // delete database if we are replacing the data
     if args.contains_id("replace") {
