@@ -248,3 +248,193 @@ pub fn input_to_str(input: KeyEvent) -> Option<String> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn default_keybindings_has_all_actions() {
+        let kb = Keybindings::default();
+        let actions = [
+            UserAction::Left,
+            UserAction::Right,
+            UserAction::Up,
+            UserAction::Down,
+            UserAction::PageUp,
+            UserAction::PageDown,
+            UserAction::GoTop,
+            UserAction::GoBot,
+            UserAction::MoveUp,
+            UserAction::MoveDown,
+            UserAction::AddFeed,
+            UserAction::Sync,
+            UserAction::SyncAll,
+            UserAction::SyncGpodder,
+            UserAction::PlayPause,
+            UserAction::Enter,
+            UserAction::MarkPlayed,
+            UserAction::MarkAllPlayed,
+            UserAction::Download,
+            UserAction::DownloadAll,
+            UserAction::Delete,
+            UserAction::DeleteAll,
+            UserAction::Remove,
+            UserAction::FilterPlayed,
+            UserAction::FilterDownloaded,
+            UserAction::Enqueue,
+            UserAction::Help,
+            UserAction::Quit,
+            UserAction::UnplayedList,
+            UserAction::Information,
+            UserAction::Back,
+            UserAction::Switch,
+            UserAction::PlayExternal,
+            UserAction::ResetPlayer,
+        ];
+        for action in actions {
+            assert!(
+                kb.keys_for_action(action).is_some(),
+                "Missing default for {action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn input_to_str_simple_char() {
+        let input = key_event(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(input_to_str(input), Some("q".to_string()));
+    }
+
+    #[test]
+    fn input_to_str_uppercase() {
+        let input = key_event(KeyCode::Char('Q'), KeyModifiers::SHIFT);
+        assert_eq!(input_to_str(input), Some("Q".to_string()));
+    }
+
+    #[test]
+    fn input_to_str_ctrl_modifier() {
+        let input = key_event(KeyCode::Up, KeyModifiers::CONTROL);
+        assert_eq!(input_to_str(input), Some("Ctrl+Up".to_string()));
+    }
+
+    #[test]
+    fn input_to_str_alt_modifier() {
+        let input = key_event(KeyCode::Char('x'), KeyModifiers::ALT);
+        assert_eq!(input_to_str(input), Some("Alt+x".to_string()));
+    }
+
+    #[test]
+    fn input_to_str_special_keys() {
+        assert_eq!(
+            input_to_str(key_event(KeyCode::Enter, KeyModifiers::NONE)),
+            Some("Enter".to_string())
+        );
+        assert_eq!(
+            input_to_str(key_event(KeyCode::Esc, KeyModifiers::NONE)),
+            Some("Esc".to_string())
+        );
+        assert_eq!(
+            input_to_str(key_event(KeyCode::Tab, KeyModifiers::NONE)),
+            Some("Tab".to_string())
+        );
+        assert_eq!(
+            input_to_str(key_event(KeyCode::Char(' '), KeyModifiers::NONE)),
+            Some("Space".to_string())
+        );
+        assert_eq!(
+            input_to_str(key_event(KeyCode::PageUp, KeyModifiers::NONE)),
+            Some("PgUp".to_string())
+        );
+        assert_eq!(
+            input_to_str(key_event(KeyCode::PageDown, KeyModifiers::NONE)),
+            Some("PgDn".to_string())
+        );
+    }
+
+    #[test]
+    fn input_to_str_function_keys() {
+        let input = key_event(KeyCode::F(1), KeyModifiers::NONE);
+        assert_eq!(input_to_str(input), Some("F1".to_string()));
+        let input = key_event(KeyCode::F(12), KeyModifiers::NONE);
+        assert_eq!(input_to_str(input), Some("F12".to_string()));
+    }
+
+    #[test]
+    fn get_from_input_default_quit() {
+        let kb = Keybindings::default();
+        let input = key_event(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(kb.get_from_input(input), Some(&UserAction::Quit));
+    }
+
+    #[test]
+    fn get_from_input_default_arrows() {
+        let kb = Keybindings::default();
+        assert_eq!(
+            kb.get_from_input(key_event(KeyCode::Left, KeyModifiers::NONE)),
+            Some(&UserAction::Left)
+        );
+        assert_eq!(
+            kb.get_from_input(key_event(KeyCode::Char('h'), KeyModifiers::NONE)),
+            Some(&UserAction::Left)
+        );
+        assert_eq!(
+            kb.get_from_input(key_event(KeyCode::Char('j'), KeyModifiers::NONE)),
+            Some(&UserAction::Down)
+        );
+    }
+
+    #[test]
+    fn get_from_input_unbound_key() {
+        let kb = Keybindings::default();
+        let input = key_event(KeyCode::F(11), KeyModifiers::NONE);
+        assert!(kb.get_from_input(input).is_none());
+    }
+
+    #[test]
+    fn from_config_overrides_defaults() {
+        let config = KeybindingsFromToml {
+            quit: Some(vec!["x".to_string()]),
+            ..KeybindingsFromToml::default()
+        };
+
+        let kb = Keybindings::from_config(config);
+
+        // Custom binding works
+        let input = key_event(KeyCode::Char('x'), KeyModifiers::NONE);
+        assert_eq!(kb.get_from_input(input), Some(&UserAction::Quit));
+
+        // Default 'q' still works (from_config adds on top of defaults)
+        let input = key_event(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(kb.get_from_input(input), Some(&UserAction::Quit));
+    }
+
+    #[test]
+    fn from_config_empty_preserves_defaults() {
+        let config = KeybindingsFromToml::default();
+        let kb = Keybindings::from_config(config);
+
+        // All defaults should still work
+        let input = key_event(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(kb.get_from_input(input), Some(&UserAction::Quit));
+    }
+
+    #[test]
+    fn keys_for_action_returns_bindings() {
+        let kb = Keybindings::default();
+        let keys = kb.keys_for_action(UserAction::Left).unwrap();
+        assert!(keys.contains(&"Left".to_string()));
+        assert!(keys.contains(&"h".to_string()));
+    }
+
+    #[test]
+    fn ctrl_up_maps_to_move_up() {
+        let kb = Keybindings::default();
+        let input = key_event(KeyCode::Up, KeyModifiers::CONTROL);
+        assert_eq!(kb.get_from_input(input), Some(&UserAction::MoveUp));
+    }
+}
