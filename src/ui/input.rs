@@ -127,6 +127,28 @@ impl UiState {
                             .ok();
                     }
 
+                    Some(UserAction::SpeedUp) => {
+                        self.tx_to_player
+                            .blocking_send(PlayerMessage::SpeedUp)
+                            .inspect_err(|err| {
+                                log::error!(
+                                    "Failed to send PlayerMessage::SpeedUp to player: {err}"
+                                );
+                            })
+                            .ok();
+                    }
+
+                    Some(UserAction::SpeedDown) => {
+                        self.tx_to_player
+                            .blocking_send(PlayerMessage::SpeedDown)
+                            .inspect_err(|err| {
+                                log::error!(
+                                    "Failed to send PlayerMessage::SpeedDown to player: {err}"
+                                );
+                            })
+                            .ok();
+                    }
+
                     Some(a @ (UserAction::MoveUp | UserAction::MoveDown)) => {
                         if self.active_panel == Panel::Queue
                             && let Some(ui_msg) = self.move_eps(a)

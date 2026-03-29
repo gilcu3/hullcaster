@@ -40,6 +40,7 @@ impl UiState {
             &self.current_episode,
             self.current_podcast_title.as_ref(),
             *self.elapsed.read().expect("RwLock read should not fail"),
+            *self.speed.read().expect("RwLock read should not fail"),
             &self.colors,
         );
         match self.left_panel {
@@ -458,10 +459,10 @@ pub(super) fn compute_ratio(elapsed: u64, total: u64) -> f64 {
 
 pub(super) fn render_play_area(
     frame: &mut Frame, area: Rect, ep: &ShareableRwLock<Option<ShareableRwLock<Episode>>>,
-    pod_title: Option<&String>, elapsed: u64, colors: &AppColors,
+    pod_title: Option<&String>, elapsed: u64, speed: f32, colors: &AppColors,
 ) {
     let block = Block::bordered()
-        .title(Line::from(" Playing "))
+        .title(Line::from(format!(" Playing [{speed:.2}x] ")))
         .style(colors.normal);
     let mut ratio = 0.0;
     let mut title = String::new();

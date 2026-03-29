@@ -224,14 +224,17 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
     let sync_progress = Arc::new(RwLock::new(SyncProgress::default()));
     // spawn_blocking + block_on because rodio types aren't Send on macOS
+    let speed = Arc::new(RwLock::new(1.0_f32));
     blocking_tasks.push({
         let playing_clone = playing.clone();
         let elapsed_clone = elapsed.clone();
+        let speed_clone = speed.clone();
         tokio::task::spawn_blocking(move || {
             tokio::runtime::Handle::current().block_on(Player::spawn_async(
                 rx_from_ui,
                 elapsed_clone,
                 playing_clone,
+                speed_clone,
             ));
         })
     });
@@ -281,6 +284,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         current_episode,
         elapsed,
         playing,
+        speed,
         sync_progress.clone(),
     ));
 

@@ -41,7 +41,7 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Revise media_control implementation, make it async
 - [x] Revise gpodder implementation, make it truly async
 - [x] Fix seek backwards
-- [ ] Add support for changing audio speed
+- [x] Add support for changing audio speed
 - [x] Fix failure notifications disappearing too quickly
 - [x] Show sync progress in the Podcasts panel title
 - [x] Fix synchronization issues with AntennaPod, for some podcasts it does not
