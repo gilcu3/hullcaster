@@ -23,7 +23,7 @@ use crate::{
         PodcastNoId, ShareableRwLock, SyncProgress,
     },
     ui::UiMsg,
-    utils::{current_time_ms, get_unplayed_episodes, resolve_redirection},
+    utils::{current_time_ms, get_unplayed_episodes, normalize_url, resolve_redirection},
 };
 
 mod download_mgr;

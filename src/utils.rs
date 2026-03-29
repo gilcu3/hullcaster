@@ -126,7 +126,7 @@ pub async fn resolve_redirection_async(url: &str) -> Result<String> {
     let client = reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()?;
-    let response = client.get(url).send().await?;
+    let response = client.head(url).send().await?;
     let final_url = response.url().to_string();
     Ok(final_url)
 }
@@ -135,9 +135,23 @@ pub fn resolve_redirection(url: &str) -> Result<String> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()?;
-    let response = client.get(url).send()?;
+    let response = client.head(url).send()?;
     let final_url = response.url().to_string();
     Ok(final_url)
+}
+
+/// Normalizes a URL for comparison: lowercase host, sorted query params.
+pub fn normalize_url(url: &str) -> String {
+    reqwest::Url::parse(url).map_or_else(
+        |_| url.to_string(),
+        |mut parsed| {
+            if let Some(host) = parsed.host_str() {
+                let lower = host.to_lowercase();
+                let _ = parsed.set_host(Some(&lower));
+            }
+            parsed.to_string()
+        },
+    )
 }
 
 pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
@@ -328,5 +342,51 @@ mod tests {
     #[test]
     fn grapheme_len_empty() {
         assert_eq!(String::new().grapheme_len(), 0);
+    }
+
+    #[test]
+    fn normalize_url_lowercase_host() {
+        assert_eq!(
+            normalize_url("https://Example.COM/feed.xml"),
+            "https://example.com/feed.xml"
+        );
+    }
+
+    #[test]
+    fn normalize_url_preserves_path_case() {
+        assert_eq!(
+            normalize_url("https://example.com/Feed.XML"),
+            "https://example.com/Feed.XML"
+        );
+    }
+
+    #[test]
+    fn normalize_url_root_slash_consistent() {
+        // URL parser normalizes "https://example.com/" and "https://example.com" to the same form
+        assert_eq!(
+            normalize_url("https://example.com/"),
+            normalize_url("https://example.com")
+        );
+    }
+
+    #[test]
+    fn normalize_url_keeps_path_slash() {
+        assert_eq!(
+            normalize_url("https://example.com/feed/"),
+            "https://example.com/feed/"
+        );
+    }
+
+    #[test]
+    fn normalize_url_invalid_passthrough() {
+        assert_eq!(normalize_url("not a url"), "not a url");
+    }
+
+    #[test]
+    fn normalize_url_identical() {
+        assert_eq!(
+            normalize_url("https://example.com/feed.xml"),
+            normalize_url("https://EXAMPLE.COM/feed.xml")
+        );
     }
 }

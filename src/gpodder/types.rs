@@ -5,12 +5,21 @@ use serde_json::Value;
 use std::{fmt, sync::RwLock};
 
 #[derive(Debug)]
+pub struct EpisodePlayedData {
+    pub podcast_url: String,
+    pub episode_url: String,
+    pub guid: String,
+    pub position: u64,
+    pub duration: u64,
+}
+
+#[derive(Debug)]
 pub enum GpodderRequest {
     GetSubscriptionChanges,
     AddPodcast(String),
     RemovePodcast(String),
-    MarkPlayed(String, String, u64, u64),
-    MarkPlayedBatch(Vec<(String, String, u64, u64)>),
+    MarkPlayed(EpisodePlayedData),
+    MarkPlayedBatch(Vec<EpisodePlayedData>),
     Quit,
 }
 
@@ -89,6 +98,8 @@ pub enum Action {
 pub struct EpisodeAction {
     pub podcast: String,
     pub episode: String,
+    #[serde(default)]
+    pub guid: Option<String>,
     pub action: Action,
     #[serde(deserialize_with = "deserialize_date")]
     pub timestamp: u64,
@@ -154,9 +165,13 @@ impl Serialize for EpisodeAction {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("EpisodeAction", 6)?;
+        let field_count = if self.guid.is_some() { 8 } else { 7 };
+        let mut state = serializer.serialize_struct("EpisodeAction", field_count)?;
         state.serialize_field("podcast", &self.podcast)?;
         state.serialize_field("episode", &self.episode)?;
+        if let Some(guid) = &self.guid {
+            state.serialize_field("guid", guid)?;
+        }
         let action = match self.action {
             Action::New => "new",
             Action::Download => "download",

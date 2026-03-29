@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use super::{App, GpodderRequest, HashMap, MAX_DURATION, MainMessage, Result, anyhow, play_file};
+use crate::gpodder::EpisodePlayedData;
 use crate::types::Episode;
 
 impl App {
@@ -21,16 +22,21 @@ impl App {
 
     /// Sends a gpodder `MarkPlayed` request for a single episode.
     fn gpodder_mark_played(
-        &self, pod_url: String, ep_url: String, position: u64, duration: Option<u64>,
+        &self, pod_url: String, ep_url: String, guid: String, position: u64, duration: Option<u64>,
     ) -> Result<()> {
         if self.config.enable_sync {
             let duration = duration.unwrap_or_else(|| {
                 log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
                 MAX_DURATION
             });
-            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
-                pod_url, ep_url, position, duration,
-            ))?;
+            self.tx_to_gpodder
+                .send(GpodderRequest::MarkPlayed(EpisodePlayedData {
+                    podcast_url: pod_url,
+                    episode_url: ep_url,
+                    guid,
+                    position,
+                    duration,
+                }))?;
         }
         Ok(())
     }
@@ -98,7 +104,7 @@ impl App {
     /// TODO: separate `mark_played` from set position
     pub fn mark_played(&self, pod_id: i64, ep_id: i64, played: bool) -> Result<()> {
         let mut changed = false;
-        let (duration, ep_position, ep_url, pod_url) = {
+        let (duration, ep_position, ep_url, ep_guid, pod_url) = {
             let podcast_map = self.podcasts.borrow_map();
             let podcast = podcast_map
                 .get(&pod_id)
@@ -128,6 +134,7 @@ impl App {
                 episode.duration,
                 episode.position,
                 episode.url.clone(),
+                episode.guid.clone(),
                 podcast.url.clone(),
             )
         };
@@ -140,7 +147,13 @@ impl App {
             });
             let position = if played { dur } else { ep_position };
             self.tx_to_gpodder
-                .send(GpodderRequest::MarkPlayed(pod_url, ep_url, position, dur))?;
+                .send(GpodderRequest::MarkPlayed(EpisodePlayedData {
+                    podcast_url: pod_url,
+                    episode_url: ep_url,
+                    guid: ep_guid,
+                    position,
+                    duration: dur,
+                }))?;
         }
         Ok(())
     }
@@ -249,7 +262,13 @@ impl App {
                         MAX_DURATION
                     });
                     let position = if played { duration } else { episode.position };
-                    sync_list.push((podcast_url.clone(), episode.url.clone(), position, duration));
+                    sync_list.push(EpisodePlayedData {
+                        podcast_url: podcast_url.clone(),
+                        episode_url: episode.url.clone(),
+                        guid: episode.guid.clone(),
+                        position,
+                        duration,
+                    });
                 }
                 db_list.push((*ep_id, episode.position, episode.duration, played));
             }
@@ -268,7 +287,7 @@ impl App {
 
     pub fn update_position(&self, pod_id: i64, ep_id: i64, position: u64) -> Result<()> {
         let mut changed = false;
-        let (duration, ep_url, pod_url) = {
+        let (duration, ep_url, ep_guid, pod_url) = {
             let podcast = self
                 .podcasts
                 .get(pod_id)
@@ -295,11 +314,16 @@ impl App {
             let episode = w_episode.read().expect("RwLock read should not fail");
             self.db
                 .set_played_status(ep_id, episode.position, episode.duration, episode.played)?;
-            (episode.duration, episode.url.clone(), podcast.url.clone())
+            (
+                episode.duration,
+                episode.url.clone(),
+                episode.guid.clone(),
+                podcast.url.clone(),
+            )
         };
 
         self.apply_played_changes(changed);
-        self.gpodder_mark_played(pod_url, ep_url, position, duration)?;
+        self.gpodder_mark_played(pod_url, ep_url, ep_guid, position, duration)?;
         Ok(())
     }
 }

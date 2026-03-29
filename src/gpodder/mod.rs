@@ -11,7 +11,9 @@ use crate::types::Message;
 use self::net::{execute_request_get, execute_request_post};
 use self::types::{Device, Podcast, PodcastChanges, State, UploadPodcastChanges};
 
-pub use self::types::{Action, Config, EpisodeAction, GpodderMsg, GpodderRequest};
+pub use self::types::{
+    Action, Config, EpisodeAction, EpisodePlayedData, GpodderMsg, GpodderRequest,
+};
 mod net;
 mod types;
 
@@ -110,17 +112,24 @@ impl GpodderController {
                             send_error(&tx_to_app, format!("Gpodder: failed to remove {url}"));
                         }
                     }
-                    GpodderRequest::MarkPlayed(pod_url, ep_url, position, duration) => {
+                    GpodderRequest::MarkPlayed(data) => {
                         if let Err(err) = sync_client
-                            .mark_played(&pod_url, &ep_url, position, duration)
+                            .mark_played(
+                                &data.podcast_url,
+                                &data.episode_url,
+                                &data.guid,
+                                data.position,
+                                data.duration,
+                            )
                             .await
                         {
-                            log::error!(
-                                "Failed to mark played {ep_url} {position} {duration}: {err}"
-                            );
+                            log::error!("Failed to mark played {}: {err}", data.episode_url);
                             send_error(
                                 &tx_to_app,
-                                format!("Gpodder: failed to sync position for {ep_url}"),
+                                format!(
+                                    "Gpodder: failed to sync position for {}",
+                                    data.episode_url
+                                ),
                             );
                         }
                     }
@@ -179,7 +188,7 @@ impl GpodderController {
     }
 
     pub async fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, position: u64, duration: u64,
+        &self, podcast_url: &str, episode_url: &str, guid: &str, position: u64, duration: u64,
     ) -> Result<String> {
         self.require_login().await?;
         let url_mark_played = format!(
@@ -189,6 +198,11 @@ impl GpodderController {
         let action = EpisodeAction {
             podcast: podcast_url.to_string(),
             episode: episode_url.to_string(),
+            guid: if guid.is_empty() {
+                None
+            } else {
+                Some(guid.to_string())
+            },
             action: Action::Play,
             timestamp: current_time()?,
             started: Some(0),
@@ -210,7 +224,7 @@ impl GpodderController {
         Ok(result)
     }
 
-    pub async fn mark_played_batch(&self, eps: Vec<(String, String, u64, u64)>) -> Result<String> {
+    pub async fn mark_played_batch(&self, eps: Vec<EpisodePlayedData>) -> Result<String> {
         self.require_login().await?;
         let url_mark_played = format!(
             "{}/api/2/episodes/{}/{}.json",
@@ -218,15 +232,20 @@ impl GpodderController {
         );
         let actions: Vec<EpisodeAction> = eps
             .iter()
-            .filter_map(|(podcast_url, episode_url, position, duration)| {
+            .filter_map(|ep| {
                 Some(EpisodeAction {
-                    podcast: podcast_url.into(),
-                    episode: episode_url.into(),
+                    podcast: ep.podcast_url.clone(),
+                    episode: ep.episode_url.clone(),
+                    guid: if ep.guid.is_empty() {
+                        None
+                    } else {
+                        Some(ep.guid.clone())
+                    },
                     action: Action::Play,
                     timestamp: current_time().ok()?,
                     started: Some(0),
-                    position: Some(*position),
-                    total: Some(*duration),
+                    position: Some(ep.position),
+                    total: Some(ep.duration),
                 })
             })
             .collect();
@@ -766,6 +785,7 @@ mod tests {
             .mark_played(
                 "https://example.com/feed.xml",
                 "https://example.com/ep1.mp3",
+                "guid-ep1",
                 120,
                 3600,
             )
@@ -789,18 +809,20 @@ mod tests {
         let controller = GpodderController::new(config, Some(1000));
 
         let episodes = vec![
-            (
-                "https://example.com/feed.xml".into(),
-                "https://example.com/ep1.mp3".into(),
-                60,
-                1800,
-            ),
-            (
-                "https://example.com/feed.xml".into(),
-                "https://example.com/ep2.mp3".into(),
-                120,
-                3600,
-            ),
+            EpisodePlayedData {
+                podcast_url: "https://example.com/feed.xml".into(),
+                episode_url: "https://example.com/ep1.mp3".into(),
+                guid: "guid-ep1".into(),
+                position: 60,
+                duration: 1800,
+            },
+            EpisodePlayedData {
+                podcast_url: "https://example.com/feed.xml".into(),
+                episode_url: "https://example.com/ep2.mp3".into(),
+                guid: "guid-ep2".into(),
+                position: 120,
+                duration: 3600,
+            },
         ];
         let result = controller.mark_played_batch(episodes).await;
         assert!(result.is_ok());

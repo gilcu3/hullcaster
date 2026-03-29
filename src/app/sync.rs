@@ -1,8 +1,14 @@
 use std::collections::HashSet;
 
+struct PodcastEpisodeMap {
+    pod_id: i64,
+    by_url: HashMap<String, i64>,
+    by_guid: HashMap<String, i64>,
+}
+
 use super::{
     Action, App, Arc, EpisodeAction, GpodderRequest, HashMap, PodcastFeed, PodcastNoId, Result,
-    feeds, resolve_redirection,
+    feeds, normalize_url, resolve_redirection,
 };
 
 impl App {
@@ -144,13 +150,14 @@ impl App {
     /// Processes subscription changes: adds server-only podcasts locally,
     /// uploads local-only podcasts to server, returns IDs of podcasts to remove.
     fn process_subscription_changes(&self, added: Vec<String>, deleted: Vec<String>) -> Vec<i64> {
-        let pod_map: HashMap<String, i64> = self
+        // Build map with normalized URLs for comparison
+        let pod_map: HashMap<String, (i64, String)> = self
             .podcasts
             .borrow_map()
             .iter()
             .map(|(id, pod)| {
                 let rpod = pod.read().expect("Failed to acquire read lock");
-                (rpod.url.clone(), *id)
+                (normalize_url(&rpod.url), (*id, rpod.url.clone()))
             })
             .collect();
 
@@ -158,17 +165,18 @@ impl App {
         let mut server_urls = HashSet::new();
         for url in added {
             let url_resolved = resolve_redirection(&url).unwrap_or(url);
-            server_urls.insert(url_resolved.clone());
-            if !pod_map.contains_key(&url_resolved) {
+            let normalized = normalize_url(&url_resolved);
+            server_urls.insert(normalized.clone());
+            if !pod_map.contains_key(&normalized) {
                 self.add_podcast(url_resolved);
             }
         }
 
         // Upload local podcasts not on server
         let local_only: Vec<String> = pod_map
-            .keys()
-            .filter(|url| !server_urls.contains(*url))
-            .cloned()
+            .iter()
+            .filter(|(norm_url, _)| !server_urls.contains(norm_url.as_str()))
+            .map(|(_, (_, raw_url))| raw_url.clone())
             .collect();
         if !local_only.is_empty() {
             log::info!("Uploading {} local podcasts to gpodder", local_only.len());
@@ -187,7 +195,8 @@ impl App {
             .into_iter()
             .filter_map(|url| {
                 let url_resolved = resolve_redirection(&url).unwrap_or(url);
-                pod_map.get(&url_resolved).copied()
+                let normalized = normalize_url(&url_resolved);
+                pod_map.get(&normalized).map(|(id, _)| *id)
             })
             .collect()
     }
@@ -199,24 +208,34 @@ impl App {
         let (added, deleted) = subscription_changes;
         let removed_pods = self.process_subscription_changes(added, deleted);
 
-        let pod_data = self
+        let pod_data: HashMap<String, PodcastEpisodeMap> = self
             .podcasts
             .map(
                 |pod| {
-                    (pod.url.clone(), {
-                        (
-                            pod.id,
-                            pod.episodes
-                                .map(|ep| (ep.url.clone(), ep.id), false)
-                                .into_iter()
-                                .collect::<HashMap<String, i64>>(),
-                        )
-                    })
+                    let by_url: HashMap<String, i64> = pod
+                        .episodes
+                        .map(|ep| (ep.url.clone(), ep.id), false)
+                        .into_iter()
+                        .collect();
+                    let by_guid: HashMap<String, i64> = pod
+                        .episodes
+                        .map(|ep| (ep.guid.clone(), ep.id), false)
+                        .into_iter()
+                        .filter(|(guid, _)| !guid.is_empty())
+                        .collect();
+                    (
+                        normalize_url(&pod.url),
+                        PodcastEpisodeMap {
+                            pod_id: pod.id,
+                            by_url,
+                            by_guid,
+                        },
+                    )
                 },
                 false,
             )
             .into_iter()
-            .collect::<HashMap<String, (i64, HashMap<String, i64>)>>();
+            .collect();
 
         let mut last_actions = HashMap::new();
 
@@ -224,19 +243,38 @@ impl App {
             match a.action {
                 Action::Play => {
                     log::debug!(
-                        "EpisodeAction received - podcast: {} episode: {} position: {:?} total: {:?}",
+                        "EpisodeAction received - podcast: {} episode: {} guid: {:?} position: {:?} total: {:?}",
                         a.podcast,
                         a.episode,
+                        a.guid,
                         a.position,
                         a.total
                     );
 
-                    if let Some(pod) = pod_data.get(&a.podcast)
-                        && let Some(ep_id) = pod.1.get(a.episode.as_str())
+                    let normalized_podcast = normalize_url(&a.podcast);
+                    if let Some(pod) = pod_data.get(&normalized_podcast)
                         && let Some(position) = a.position
                         && let Some(total) = a.total
                     {
-                        last_actions.insert((pod.0, *ep_id), (position, total));
+                        // Match by GUID first (like AntennaPod), then fall back to URL
+                        let ep_id = a
+                            .guid
+                            .as_deref()
+                            .and_then(|g| pod.by_guid.get(g))
+                            .or_else(|| pod.by_url.get(a.episode.as_str()));
+                        if let Some(ep_id) = ep_id {
+                            last_actions.insert((pod.pod_id, *ep_id), (position, total));
+                        } else {
+                            log::warn!(
+                                "Gpodder episode action skipped: episode not found locally: {}",
+                                a.episode
+                            );
+                        }
+                    } else if !pod_data.contains_key(&normalized_podcast) {
+                        log::warn!(
+                            "Gpodder episode action skipped: podcast not found locally: {}",
+                            a.podcast
+                        );
                     }
                 }
                 Action::Delete | Action::Download | Action::New => {}
