@@ -43,11 +43,14 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Fix seek backwards
 - [ ] Add support for changing audio speed
 - [x] Fix failure notifications disappearing too quickly
-- [ ] Add a bar for the podcasts sync process
-- [ ] Fix synchronization issues with AntennaPod, for some podcasts it does not
+- [x] Show sync progress in the Podcasts panel title
+- [x] Fix synchronization issues with AntennaPod, for some podcasts it does not
   work as expected, probably because of url redirections
 - [x] Eliminate all possible panics, currently some can happen when there are
   network issues, using the `unwrap-used` clippy rule
 - [x] Remove `let` `_` statements so that errors are handled properly
 - [x] Bug fix: silence after resuming from suspend -> fixed with workaround to
 restart rodio sink by pressing `R`
+- [x] Add periodic sync via `sync_interval_minutes` config option
+- [x] Align gpodder sync behavior with AntennaPod (GUID matching, URL
+  normalization, HEAD redirects)
