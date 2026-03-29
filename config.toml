@@ -76,6 +76,9 @@
 
 # sync_on_start = true
 
+# Automatically sync all feeds every N minutes (disabled by default)
+# sync_interval_minutes = 60
+
 # Confirm before quitting
 # Default: True
 

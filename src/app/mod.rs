@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
 
@@ -99,7 +100,25 @@ impl App {
             self.sync(None);
         }
 
-        while let Some(message) = self.rx_to_main.iter().next() {
+        let sync_interval = self
+            .config
+            .sync_interval_minutes
+            .map(|m| Duration::from_secs(u64::from(m) * 60));
+        let mut last_sync = Instant::now();
+        let recv_timeout = sync_interval.unwrap_or(Duration::from_secs(3600));
+
+        loop {
+            let message = match self.rx_to_main.recv_timeout(recv_timeout) {
+                Ok(msg) => msg,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if sync_interval.is_some() && last_sync.elapsed() >= recv_timeout {
+                        self.sync(None);
+                        last_sync = Instant::now();
+                    }
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             let result = match message {
                 Message::Ui(UiMsg::Quit) => break,
 
@@ -140,6 +159,7 @@ impl App {
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);
+                    last_sync = Instant::now();
                     Ok(())
                 }
 

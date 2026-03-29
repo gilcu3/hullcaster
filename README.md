@@ -24,8 +24,8 @@ features stated below, while learning `rust` at the same time.
 - [x] Show key bindings in a bar on the bottom
 - [x] Migrate to [ratatui](https://ratatui.rs/)
 - [x] Add option to sync automatically on start, enabled by default
-- [ ] Add periodic synchronization
-- [ ] Migrate from threads to tokio
+- [x] Add periodic synchronization
+- [x] Migrate from threads to tokio
 - [ ] Implement filters on the podcast and episode lists
 - [ ] Lazy loading of data from the database
 

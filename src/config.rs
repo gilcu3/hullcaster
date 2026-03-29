@@ -50,6 +50,7 @@ pub struct Config {
     pub sync_username: String,
     pub sync_password: String,
     pub sync_on_start: bool,
+    pub sync_interval_minutes: Option<u32>,
     pub keybindings: Keybindings,
     pub colors: AppColors,
     pub confirm_quit: bool,
@@ -70,6 +71,7 @@ struct ConfigFromToml {
     sync_password: Option<String>,
     sync_password_eval: Option<String>,
     sync_on_start: Option<bool>,
+    sync_interval_minutes: Option<u32>,
     keybindings: Option<KeybindingsFromToml>,
     colors: Option<AppColorsFromToml>,
     confirm_quit: Option<bool>,
@@ -221,6 +223,8 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
 
     let sync_on_start = config_toml.sync_on_start.unwrap_or(true);
 
+    let sync_interval_minutes = config_toml.sync_interval_minutes;
+
     let confirm_quit = config_toml.confirm_quit.unwrap_or(true);
 
     Ok(Config {
@@ -234,6 +238,7 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         sync_username,
         sync_password,
         sync_on_start,
+        sync_interval_minutes,
         keybindings: keymap,
         colors,
         confirm_quit,
