@@ -483,35 +483,90 @@ impl Database {
         Ok(())
     }
 
-    /// Generates list of all podcasts in database.
-    /// TODO: This should probably use a JOIN statement instead.
+    /// Generates list of all podcasts in database using a single query.
     pub fn get_podcasts(&self) -> Result<Vec<Podcast>> {
         let conn = self.conn()?;
-        let mut stmt = conn.prepare_cached("SELECT * FROM podcasts;")?;
-        let podcast_iter = stmt.query_map(params![], |row| {
-            let pod_id = row.get("id")?;
-            let episodes = self
-                .get_episodes(pod_id)
-                .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
+        // Fetch all podcasts
+        let mut pod_stmt = conn.prepare_cached("SELECT * FROM podcasts;")?;
+        let mut podcasts_map: HashMap<i64, Podcast> = HashMap::new();
+        let mut pod_order = Vec::new();
+        let pod_iter = pod_stmt.query_map(params![], |row| {
+            let id: i64 = row.get("id")?;
             let title: String = row.get("title")?;
             let last_checked = convert_date(row.get("last_checked")?)
                 .map_err(|_| rusqlite::Error::InvalidQuery)?;
-
             Ok(Podcast {
-                id: pod_id,
+                id,
                 title,
                 url: row.get("url")?,
                 description: row.get("description")?,
                 author: row.get("author")?,
                 explicit: row.get("explicit")?,
                 last_checked,
-                episodes: LockVec::new(episodes),
+                episodes: LockVec::new(vec![]),
             })
         })?;
-        let mut podcasts = Vec::new();
-        for pc in podcast_iter {
-            podcasts.push(pc?);
+        for pc in pod_iter {
+            let pc = pc?;
+            pod_order.push(pc.id);
+            podcasts_map.insert(pc.id, pc);
+        }
+
+        // Fetch all episodes + files in one query and group by podcast
+        let mut ep_stmt = conn.prepare_cached(
+            "SELECT episodes.*, files.path FROM episodes
+                LEFT JOIN files ON episodes.id = files.episode_id
+                ORDER BY episodes.podcast_id, pubdate DESC;",
+        )?;
+        let duration_index = ep_stmt.column_index("duration")?;
+        let position_index = ep_stmt.column_index("position")?;
+        let ep_iter = ep_stmt.query_map(params![], |row| {
+            let path = row.get::<&str, String>("path").ok().map(PathBuf::from);
+            let pubdate: Option<i64> = row.get("pubdate")?;
+            let pubdate = pubdate.and_then(|ts| convert_date(ts).ok());
+            let duration: Option<i64> = row.get("duration")?;
+            let position: Option<i64> = row.get("position")?;
+            let duration = duration
+                .map(|x| {
+                    x.try_into()
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(duration_index, x))
+                })
+                .transpose()?;
+            let position = position.unwrap_or(0).try_into().map_err(|_| {
+                rusqlite::Error::IntegralValueOutOfRange(position_index, position.unwrap_or(0))
+            })?;
+            Ok(Episode {
+                id: row.get("id")?,
+                pod_id: row.get("podcast_id")?,
+                title: row.get("title")?,
+                url: row.get("url")?,
+                guid: row
+                    .get::<&str, Option<String>>("guid")?
+                    .unwrap_or_else(String::new),
+                description: row.get("description")?,
+                pubdate,
+                duration,
+                position,
+                path,
+                played: row.get("played").unwrap_or(false),
+            })
+        })?;
+
+        let mut episodes_by_pod: HashMap<i64, Vec<Episode>> = HashMap::new();
+        for ep in ep_iter {
+            let ep = ep?;
+            episodes_by_pod.entry(ep.pod_id).or_default().push(ep);
+        }
+
+        // Assemble podcasts with their episodes
+        let mut podcasts = Vec::with_capacity(pod_order.len());
+        for id in pod_order {
+            if let Some(mut podcast) = podcasts_map.remove(&id) {
+                let episodes = episodes_by_pod.remove(&id).unwrap_or_default();
+                podcast.episodes = LockVec::new(episodes);
+                podcasts.push(podcast);
+            }
         }
         podcasts.sort_unstable();
 
@@ -535,16 +590,16 @@ impl Database {
             let pubdate: Option<i64> = row.get("pubdate")?;
             let pubdate = pubdate.and_then(|ts| convert_date(ts).ok());
             let duration: Option<i64> = row.get("duration")?;
-            let position: i64 = row.get("position")?;
+            let position: Option<i64> = row.get("position")?;
             let duration = duration
                 .map(|x| {
                     x.try_into()
                         .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(duration_index, x))
                 })
                 .transpose()?;
-            let position = position
-                .try_into()
-                .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(position_index, position))?;
+            let position = position.unwrap_or(0).try_into().map_err(|_| {
+                rusqlite::Error::IntegralValueOutOfRange(position_index, position.unwrap_or(0))
+            })?;
             Ok(Episode {
                 id: row.get("id")?,
                 pod_id: row.get("podcast_id")?,
@@ -558,7 +613,7 @@ impl Database {
                 duration,
                 position,
                 path,
-                played: row.get("played")?,
+                played: row.get("played").unwrap_or(false),
             })
         })?;
         let episodes = episode_iter.flatten().collect();
@@ -986,5 +1041,84 @@ mod tests {
         // Should detect as update via title+url match, not insert new
         assert_eq!(result.updated.len(), 1);
         assert!(result.added.is_empty());
+    }
+
+    /// Inserts a podcast and episode with raw SQL, allowing NULL position/played.
+    fn insert_raw_episode(
+        db: &Database, pod_title: &str, pod_url: &str, ep_title: &str, position: Option<i64>,
+        played: Option<bool>,
+    ) -> (i64, i64) {
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "INSERT INTO podcasts (title, url, last_checked) VALUES (?, ?, 0);",
+            params![pod_title, pod_url],
+        )
+        .unwrap();
+        let pod_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO episodes (podcast_id, title, url, guid, description, position, played)
+             VALUES (?, ?, ?, '', '', ?, ?);",
+            params![
+                pod_id,
+                ep_title,
+                "http://example.com/ep.mp3",
+                position,
+                played
+            ],
+        )
+        .unwrap();
+        let ep_id = conn.last_insert_rowid();
+        (pod_id, ep_id)
+    }
+
+    #[test]
+    fn episode_with_null_position() {
+        let db = Database::connect_in_memory().unwrap();
+        let (pod_id, _) = insert_raw_episode(&db, "Pod", "http://pod", "Ep", None, Some(false));
+
+        let eps = db.get_episodes(pod_id).unwrap();
+        assert_eq!(eps.len(), 1);
+        assert_eq!(eps[0].position, 0);
+    }
+
+    #[test]
+    fn episode_with_null_played() {
+        let db = Database::connect_in_memory().unwrap();
+        let (pod_id, _) = insert_raw_episode(&db, "Pod", "http://pod", "Ep", Some(0), None);
+
+        let eps = db.get_episodes(pod_id).unwrap();
+        assert_eq!(eps.len(), 1);
+        assert!(!eps[0].played);
+    }
+
+    #[test]
+    fn episode_with_all_nulls() {
+        let db = Database::connect_in_memory().unwrap();
+        let (pod_id, _) = insert_raw_episode(&db, "Pod", "http://pod", "Ep", None, None);
+
+        let eps = db.get_episodes(pod_id).unwrap();
+        assert_eq!(eps.len(), 1);
+        assert_eq!(eps[0].position, 0);
+        assert!(!eps[0].played);
+    }
+
+    #[test]
+    fn get_podcasts_with_null_episode_fields() {
+        let db = Database::connect_in_memory().unwrap();
+        insert_raw_episode(&db, "Pod1", "http://pod1", "Ep1", None, None);
+        insert_raw_episode(&db, "Pod2", "http://pod2", "Ep2", Some(42), Some(true));
+
+        let podcasts = db.get_podcasts().unwrap();
+        assert_eq!(podcasts.len(), 2);
+
+        let pod1 = podcasts.iter().find(|p| p.title == "Pod1").unwrap();
+        let ep1 = db.get_episodes(pod1.id).unwrap();
+        assert_eq!(ep1[0].position, 0);
+        assert!(!ep1[0].played);
+
+        let pod2 = podcasts.iter().find(|p| p.title == "Pod2").unwrap();
+        let ep2 = db.get_episodes(pod2.id).unwrap();
+        assert_eq!(ep2[0].position, 42);
+        assert!(ep2[0].played);
     }
 }
