@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
-use std::io::Read;
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use rss::{Channel, Item};
+use tokio::sync::Semaphore;
 
-use crate::threadpool::Threadpool;
 use crate::types::{EpisodeNoId, Message, PodcastNoId};
 use crate::utils::APP_USER_AGENT;
 
@@ -34,39 +34,42 @@ impl PodcastFeed {
     }
 }
 
-/// Spawns a new thread to check a feed and retrieve podcast data.
+/// Spawns a new async task to check a feed and retrieve podcast data.
 pub fn check_feed(
-    feed: PodcastFeed, max_retries: usize, threadpool: &Threadpool,
+    feed: PodcastFeed, max_retries: usize, semaphore: Arc<Semaphore>,
     tx_to_main: mpsc::Sender<Message>,
 ) {
-    threadpool.execute(move || match get_feed_data(&feed.url, max_retries) {
-        Ok(pod) => match feed.id {
-            Some(id) => {
-                tx_to_main
-                    .send(Message::Feed(FeedMsg::SyncData((id, pod))))
-                    .expect("Thread messaging error");
-            }
-            None => tx_to_main
-                .send(Message::Feed(FeedMsg::NewData(pod)))
+    tokio::spawn(async move {
+        let _permit = semaphore.acquire().await;
+        match get_feed_data(&feed.url, max_retries).await {
+            Ok(pod) => match feed.id {
+                Some(id) => {
+                    tx_to_main
+                        .send(Message::Feed(FeedMsg::SyncData((id, pod))))
+                        .expect("Thread messaging error");
+                }
+                None => tx_to_main
+                    .send(Message::Feed(FeedMsg::NewData(pod)))
+                    .expect("Thread messaging error"),
+            },
+            Err(_err) => tx_to_main
+                .send(Message::Feed(FeedMsg::Error(feed)))
                 .expect("Thread messaging error"),
-        },
-        Err(_err) => tx_to_main
-            .send(Message::Feed(FeedMsg::Error(feed)))
-            .expect("Thread messaging error"),
+        }
     });
 }
 
 /// Given a URL, this attempts to pull the data about a podcast and its
 /// episodes from an RSS feed.
-fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId> {
-    let client = reqwest::blocking::Client::builder()
+async fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId> {
+    let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let mut response = loop {
-        if let Ok(resp) = client.get(url).send() {
+    let response = loop {
+        if let Ok(resp) = client.get(url).send().await {
             if resp.status().is_success() {
                 break Ok(resp);
             }
@@ -82,8 +85,7 @@ fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId> {
         }
     }?;
 
-    let mut resp_data = Vec::new();
-    response.read_to_end(&mut resp_data)?;
+    let resp_data = response.bytes().await?;
 
     let channel = Channel::read_from(&resp_data[..])?;
     Ok(parse_feed_data(channel, url))

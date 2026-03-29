@@ -23,7 +23,6 @@ mod media_control;
 mod opml;
 mod play_file;
 mod player;
-mod threadpool;
 mod types;
 mod ui;
 mod utils;
@@ -35,10 +34,10 @@ use crate::feeds::{FeedMsg, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
 use crate::player::{PlaybackStatus, Player, PlayerMessage};
-use crate::threadpool::Threadpool;
 use crate::types::{LockVec, Message};
 use crate::ui::UiState;
 use crate::utils::{evaluate_in_shell, get_unplayed_episodes};
+use tokio::sync::Semaphore;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -69,7 +68,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// *Export subcommand:*
 /// Connects to the sqlite database, and reads all podcasts into an OPML
 /// file, with the location specified from the command line arguments.
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     #[cfg(feature = "instrument")]
     console_subscriber::init();
     // SETUP -----------------------------------------------------------
@@ -161,11 +161,10 @@ fn main() -> Result<()> {
         Some(("export", sub_args)) => export(&db_path, sub_args),
 
         // MAIN COMMAND -------------------------------------------------
-        _ => start_app(config, &db_path, lock_file),
+        _ => start_app(config, &db_path, lock_file).await,
     }
 }
 
-#[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Result<()> {
     // get connection to the database
@@ -419,13 +418,19 @@ fn sync_podcasts(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) 
         return Ok(());
     }
 
-    let threadpool = Threadpool::new(config.simultaneous_downloads);
+    let semaphore = Arc::new(Semaphore::new(config.simultaneous_downloads));
     let (tx_to_main, rx_to_main) = mpsc::channel();
 
     for pod in &podcast_list {
         let feed = PodcastFeed::new(Some(pod.id), pod.url.clone(), Some(pod.title.clone()));
-        feeds::check_feed(feed, config.max_retries, &threadpool, tx_to_main.clone());
+        feeds::check_feed(
+            feed,
+            config.max_retries,
+            Arc::clone(&semaphore),
+            tx_to_main.clone(),
+        );
     }
+    drop(tx_to_main);
 
     let mut msg_counter: usize = 0;
     let mut failure = false;
@@ -534,17 +539,18 @@ fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Resu
 
     println!("Importing {} podcasts...", podcast_list.len());
 
-    let threadpool = Threadpool::new(config.simultaneous_downloads);
+    let semaphore = Arc::new(Semaphore::new(config.simultaneous_downloads));
     let (tx_to_main, rx_to_main) = mpsc::channel();
 
     for pod in &podcast_list {
         feeds::check_feed(
             pod.clone(),
             config.max_retries,
-            &threadpool,
+            Arc::clone(&semaphore),
             tx_to_main.clone(),
         );
     }
+    drop(tx_to_main);
 
     let mut msg_counter: usize = 0;
     let mut failure = false;

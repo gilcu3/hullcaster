@@ -1,12 +1,12 @@
-use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use sanitize_filename::{Options, sanitize_with_options};
+use tokio::sync::Semaphore;
 
-use crate::threadpool::Threadpool;
 use crate::types::Message;
 use crate::utils::audio_duration_file;
 
@@ -22,7 +22,7 @@ pub enum DownloadMsg {
     FileWriteError(EpData),
 }
 
-/// Enum used to communicate relevant data to the threadpool.
+/// Enum used to communicate relevant data about an episode download.
 #[derive(Debug, Clone)]
 pub struct EpData {
     pub id: i64,
@@ -35,19 +35,20 @@ pub struct EpData {
 }
 
 /// This is the function the main controller uses to indicate new
-/// files to download. It uses the threadpool to start jobs
-/// for every episode to be downloaded. New jobs can be requested
-/// by the user while there are still ongoing jobs.
+/// files to download. It spawns async tasks for every episode to be
+/// downloaded. New jobs can be requested by the user while there are
+/// still ongoing jobs.
 pub fn download_list(
-    episodes: Vec<EpData>, dest: &Path, max_retries: usize, threadpool: &Threadpool,
+    episodes: Vec<EpData>, dest: &Path, max_retries: usize, semaphore: &Arc<Semaphore>,
     tx_to_main: &Sender<Message>,
 ) {
-    // parse episode details and push to queue
     for ep in episodes {
         let tx = tx_to_main.clone();
         let dest2 = dest.to_path_buf();
-        threadpool.execute(move || {
-            let result = download_file(ep, dest2, max_retries);
+        let sem = Arc::clone(semaphore);
+        tokio::spawn(async move {
+            let _permit = sem.acquire().await;
+            let result = download_file(ep, dest2, max_retries).await;
             tx.send(Message::Dl(result))
                 .expect("Thread messaging error");
         });
@@ -56,15 +57,15 @@ pub fn download_list(
 
 /// Downloads a file to a local filepath, returning `DownloadMsg` variant
 /// indicating success or failure.
-fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
-    let client = reqwest::blocking::Client::builder()
+async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
+    let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120))
         .build()
         .expect("Could not build reqwest::Client");
 
-    let mut response = loop {
-        if let Ok(resp) = client.get(&ep_data.url).send() {
+    let response = loop {
+        if let Ok(resp) = client.get(&ep_data.url).send().await {
             break resp;
         }
         max_retries -= 1;
@@ -98,16 +99,19 @@ fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> 
     let mut file_path = dest;
     file_path.push(format!("{file_name}.{ext}"));
 
-    let dest = File::create(&file_path);
+    let Ok(bytes) = response.bytes().await else {
+        return DownloadMsg::FileWriteError(ep_data);
+    };
 
     ep_data.file_path = Some(file_path.clone());
-    if let Ok(mut dest) = dest {
-        if response.copy_to(&mut dest).is_ok() {
-            ep_data.duration = audio_duration_file(file_path).ok();
-            DownloadMsg::Complete(ep_data)
-        } else {
-            DownloadMsg::FileWriteError(ep_data)
-        }
+
+    if tokio::fs::write(&file_path, &bytes).await.is_ok() {
+        let path = file_path.clone();
+        ep_data.duration = tokio::task::spawn_blocking(move || audio_duration_file(path))
+            .await
+            .ok()
+            .and_then(Result::ok);
+        DownloadMsg::Complete(ep_data)
     } else {
         DownloadMsg::FileCreateError(ep_data)
     }

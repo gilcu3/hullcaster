@@ -8,6 +8,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 
+use tokio::sync::Semaphore;
+
 use sanitize_filename::{Options, sanitize_with_options};
 
 use crate::gpodder::{EpisodeAction, GpodderMsg};
@@ -18,7 +20,6 @@ use crate::{
     feeds::{self, FeedMsg, PodcastFeed},
     gpodder::{Action, GpodderRequest},
     play_file,
-    threadpool::Threadpool,
     types::{
         Episode, FilterStatus, FilterType, Filters, LockVec, Menuable, Message, Podcast,
         PodcastNoId,
@@ -42,7 +43,7 @@ pub enum MainMessage {
 pub struct App {
     config: Arc<Config>,
     db: Database,
-    threadpool: Threadpool,
+    semaphore: Arc<Semaphore>,
     podcasts: LockVec<Podcast>,
     queue: LockVec<Episode>,
     unplayed: LockVec<Episode>,
@@ -68,13 +69,12 @@ impl App {
         tx_to_ui: mpsc::Sender<MainMessage>, podcast_list: LockVec<Podcast>,
         queue_items: LockVec<Episode>, unplayed_items: LockVec<Episode>,
     ) -> Self {
-        // set up threadpool
-        let threadpool = Threadpool::new(config.simultaneous_downloads);
+        let semaphore = Arc::new(Semaphore::new(config.simultaneous_downloads));
 
         Self {
             config,
             db: db_inst,
-            threadpool,
+            semaphore,
             podcasts: podcast_list,
             queue: queue_items,
             unplayed: unplayed_items,
@@ -331,7 +331,7 @@ impl App {
         feeds::check_feed(
             feed,
             self.config.max_retries,
-            &self.threadpool,
+            Arc::clone(&self.semaphore),
             self.tx_to_main.clone(),
         );
     }
@@ -369,7 +369,7 @@ impl App {
             feeds::check_feed(
                 feed,
                 self.config.max_retries,
-                &self.threadpool,
+                Arc::clone(&self.semaphore),
                 self.tx_to_main.clone(),
             );
         }
@@ -871,7 +871,7 @@ impl App {
     }
 
     /// Given a podcast index (and not an episode index), this will send a
-    /// vector of jobs to the threadpool to download all episodes in the
+    /// vector of jobs to download all episodes in the
     /// podcast. If given an episode index as well, it will download just that
     /// episode.
     pub fn download(&mut self, pod_id: i64, ep_id: Option<i64>) -> Result<()> {
@@ -956,7 +956,7 @@ impl App {
                         ep_data,
                         &path,
                         self.config.max_retries,
-                        &self.threadpool,
+                        &self.semaphore,
                         &self.tx_to_main,
                     );
                 }
