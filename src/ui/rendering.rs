@@ -42,6 +42,21 @@ impl UiState {
             *self.elapsed.read().expect("RwLock read should not fail"),
             &self.colors,
         );
+        {
+            let sp = self
+                .sync_progress
+                .read()
+                .expect("RwLock read should not fail");
+            let active = sp.is_active();
+            let completed = sp.completed;
+            let total = sp.total;
+            drop(sp);
+            self.podcasts.title = if active {
+                format!("Podcasts (syncing {completed}/{total})")
+            } else {
+                "Podcasts".to_string()
+            };
+        }
         match self.left_panel {
             Panel::Podcasts => render_menuable_area(
                 frame,

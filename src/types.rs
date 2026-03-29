@@ -587,6 +587,23 @@ impl Default for Filters {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SyncProgress {
+    pub total: usize,
+    pub completed: usize,
+}
+
+impl SyncProgress {
+    pub const fn is_active(&self) -> bool {
+        self.total > 0 && self.completed < self.total
+    }
+
+    pub const fn reset(&mut self) {
+        self.total = 0;
+        self.completed = 0;
+    }
+}
+
 /// Overarching Message enum that allows multiple threads to communicate
 /// back to the main thread with a single enum type.
 #[derive(Debug)]

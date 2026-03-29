@@ -10,7 +10,7 @@ use crate::{
     keymap::Keybindings,
     media_control::ControlMessage,
     player::{PlaybackStatus, PlayerMessage},
-    types::{Episode, LockVec, Menuable, Message, Podcast, ShareableRwLock},
+    types::{Episode, LockVec, Menuable, Message, Podcast, ShareableRwLock, SyncProgress},
 };
 
 use self::colors::AppColors;
@@ -84,6 +84,7 @@ pub struct UiState {
     pub tx_to_player: mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
+    sync_progress: Arc<RwLock<SyncProgress>>,
     pub rx_from_control: mpsc::Receiver<ControlMessage>,
 }
 
@@ -117,6 +118,7 @@ impl UiState {
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
+        sync_progress: ShareableRwLock<SyncProgress>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             let mut ui = Self::new(
@@ -129,6 +131,7 @@ impl UiState {
                 current_episode,
                 elapsed,
                 playing,
+                sync_progress,
             );
             let mut terminal = ratatui::init();
             let mut main_message_iter = rx_from_main.try_iter();
@@ -239,6 +242,7 @@ impl UiState {
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
+        sync_progress: ShareableRwLock<SyncProgress>,
     ) -> Self {
         let active_popup = if podcast_items.is_empty() {
             Some(Popup::Welcome)
@@ -286,6 +290,7 @@ impl UiState {
             tx_to_player,
             elapsed,
             playing,
+            sync_progress,
             rx_from_control,
         }
     }

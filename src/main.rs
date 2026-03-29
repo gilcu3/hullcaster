@@ -35,7 +35,7 @@ use crate::feeds::{FeedMsg, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
 use crate::player::{PlaybackStatus, Player, PlayerMessage};
-use crate::types::{LockVec, Message};
+use crate::types::{LockVec, Message, SyncProgress};
 use crate::ui::UiState;
 use crate::utils::{evaluate_in_shell, get_unplayed_episodes};
 use tokio::sync::Semaphore;
@@ -216,6 +216,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let (tx_to_player, rx_from_ui) = mpsc::channel();
     let elapsed = Arc::new(RwLock::new(0));
     let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
+    let sync_progress = Arc::new(RwLock::new(SyncProgress::default()));
     blocking_tasks.push({
         let playing_clone = playing.clone();
         let elapsed_clone = elapsed.clone();
@@ -273,6 +274,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         current_episode,
         elapsed,
         playing,
+        sync_progress.clone(),
     ));
 
     let mut app = App::new(
@@ -285,6 +287,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         podcast_list,
         queue_items,
         unplayed_items,
+        sync_progress,
     );
 
     let app_task = tokio::task::spawn_blocking(move || {

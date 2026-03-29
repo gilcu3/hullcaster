@@ -20,7 +20,7 @@ use crate::{
     play_file,
     types::{
         Episode, FilterStatus, FilterType, Filters, LockVec, Menuable, Message, Podcast,
-        PodcastNoId,
+        PodcastNoId, ShareableRwLock, SyncProgress,
     },
     ui::UiMsg,
     utils::{current_time_ms, get_unplayed_episodes, resolve_redirection},
@@ -51,6 +51,7 @@ pub struct App {
     unplayed: LockVec<Episode>,
     filters: Filters,
     sync_counter: usize,
+    sync_progress: ShareableRwLock<SyncProgress>,
     sync_tracker: Vec<SyncResult>,
     download_tracker: HashSet<i64>,
     last_filter_time_ms: Cell<u128>,
@@ -70,6 +71,7 @@ impl App {
         rx_to_main: mpsc::Receiver<Message>, tx_to_gpodder: mpsc::Sender<GpodderRequest>,
         tx_to_ui: mpsc::Sender<MainMessage>, podcast_list: LockVec<Podcast>,
         queue_items: LockVec<Episode>, unplayed_items: LockVec<Episode>,
+        sync_progress: ShareableRwLock<SyncProgress>,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.simultaneous_downloads));
 
@@ -82,6 +84,7 @@ impl App {
             unplayed: unplayed_items,
             filters: Filters::default(),
             sync_counter: 0,
+            sync_progress,
             sync_tracker: Vec::new(),
             download_tracker: HashSet::new(),
             last_filter_time_ms: 0.into(),
@@ -133,6 +136,10 @@ impl App {
                     match feed.title {
                         Some(t) => {
                             self.sync_counter -= 1;
+                            self.sync_progress
+                                .write()
+                                .expect("RwLock write should not fail")
+                                .completed += 1;
                             self.update_tracker_notif();
                             if self.sync_counter == 0 {
                                 self.pos_sync_counter();
@@ -327,23 +334,12 @@ impl App {
         }
     }
 
-    /// Updates the persistent notification about syncing podcasts and
-    /// downloading files.
+    /// Updates the persistent notification about downloading files.
     pub fn update_tracker_notif(&self) {
-        let sync_len = self.sync_counter;
         let dl_len = self.download_tracker.len();
-        let sync_plural = if sync_len > 1 { "s" } else { "" };
         let dl_plural = if dl_len > 1 { "s" } else { "" };
 
-        if sync_len > 0 && dl_len > 0 {
-            let notif = format!(
-                "Syncing {sync_len} podcast{sync_plural}, downloading {dl_len} episode{dl_plural}..."
-            );
-            self.persistent_notif_to_ui(notif, false);
-        } else if sync_len > 0 {
-            let notif = format!("Syncing {sync_len} podcast{sync_plural}...");
-            self.persistent_notif_to_ui(notif, false);
-        } else if dl_len > 0 {
+        if dl_len > 0 {
             let notif = format!("Downloading {dl_len} episode{dl_plural}...");
             self.persistent_notif_to_ui(notif, false);
         } else {

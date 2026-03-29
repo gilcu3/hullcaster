@@ -43,6 +43,13 @@ impl App {
                 );
             }
         }
+        {
+            let mut sp = self
+                .sync_progress
+                .write()
+                .expect("RwLock write should not fail");
+            sp.total += pod_data.len();
+        }
         for feed in pod_data {
             self.sync_counter += 1;
             feeds::check_feed(
@@ -93,6 +100,10 @@ impl App {
                 if pod_id.is_some() {
                     self.sync_tracker.push(result);
                     self.sync_counter -= 1;
+                    self.sync_progress
+                        .write()
+                        .expect("RwLock write should not fail")
+                        .completed += 1;
                     self.update_tracker_notif();
 
                     if self.sync_counter == 0 {
@@ -245,6 +256,10 @@ impl App {
         }
 
         self.sync_tracker = Vec::new();
+        self.sync_progress
+            .write()
+            .expect("RwLock write should not fail")
+            .reset();
         self.notif_to_ui(
             format!("Sync complete: Added {added}, updated {updated} episodes."),
             false,
