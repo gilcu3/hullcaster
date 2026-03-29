@@ -1,6 +1,3 @@
-// TODO: remove this exception
-// #![allow(clippy::unwrap_used)]
-
 use anyhow::{Result, anyhow};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -16,7 +13,7 @@ use crate::gpodder::{EpisodeAction, GpodderMsg};
 use crate::{
     config::{Config, MAX_DURATION},
     db::{Database, SyncResult},
-    downloads::{self, DownloadMsg, EpData},
+    downloads::{self, DownloadError, DownloadMsg, EpData},
     feeds::{self, FeedMsg, PodcastFeed},
     gpodder::{Action, GpodderRequest},
     play_file,
@@ -168,25 +165,21 @@ impl App {
 
                 Message::Ui(UiMsg::DownloadAll(pod_id)) => self.download(pod_id, None),
 
-                // downloading can produce any one of these responses
                 Message::Dl(msg) => match msg {
                     DownloadMsg::Complete(ep_data) => self.download_complete(ep_data),
-                    DownloadMsg::ResponseError(ep) => {
-                        self.notif_to_ui(
-                            "Error sending download request. ".to_string() + &ep.url,
-                            true,
-                        );
-                        Ok(())
-                    }
-                    DownloadMsg::FileCreateError(ep) => {
-                        self.notif_to_ui("Error creating file. ".to_string() + &ep.title, true);
-                        Ok(())
-                    }
-                    DownloadMsg::FileWriteError(ep) => {
-                        self.notif_to_ui(
-                            "Error downloading episode. ".to_string() + &ep.title,
-                            true,
-                        );
+                    DownloadMsg::Error(ep, err) => {
+                        let msg = match err {
+                            DownloadError::Response => {
+                                format!("Error sending download request. {}", ep.url)
+                            }
+                            DownloadError::FileCreate => {
+                                format!("Error creating file. {}", ep.title)
+                            }
+                            DownloadError::FileWrite => {
+                                format!("Error downloading episode. {}", ep.title)
+                            }
+                        };
+                        self.notif_to_ui(msg, true);
                         Ok(())
                     }
                 },
@@ -243,7 +236,9 @@ impl App {
                             self.filters.downloaded = new_filter;
                         }
                     }
-                    // TODO: "Use filters"
+                    // TODO: filters update filtered_order in LockVec but the UI
+                    // renders using the unfiltered order (map(..., false)). The UI
+                    // needs to use map(..., true) and len(true) to actually apply filters.
                     self.notif_to_ui(format!("Filter: {message}"), false);
                     self.update_filters(self.filters, false);
                     Ok(())

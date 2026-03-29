@@ -10,16 +10,18 @@ use tokio::sync::Semaphore;
 use crate::types::Message;
 use crate::utils::audio_duration_file;
 
-/// Enum used for communicating back to the main controller upon
-/// successful or unsuccessful downloading of a file. i32 value
-/// represents the episode ID, and `PathBuf` the location of the new file.
-// TODO: this type needs to be more idiomatic
+/// Enum used for communicating download results back to the main controller.
 #[derive(Debug)]
 pub enum DownloadMsg {
     Complete(EpData),
-    ResponseError(EpData),
-    FileCreateError(EpData),
-    FileWriteError(EpData),
+    Error(EpData, DownloadError),
+}
+
+#[derive(Debug)]
+pub enum DownloadError {
+    Response,
+    FileCreate,
+    FileWrite,
 }
 
 /// Enum used to communicate relevant data about an episode download.
@@ -64,7 +66,7 @@ async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usiz
         .timeout(Duration::from_secs(120))
         .build()
     else {
-        return DownloadMsg::ResponseError(ep_data);
+        return DownloadMsg::Error(ep_data, DownloadError::Response);
     };
 
     let response = loop {
@@ -73,7 +75,7 @@ async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usiz
         }
         max_retries -= 1;
         if max_retries == 0 {
-            return DownloadMsg::ResponseError(ep_data);
+            return DownloadMsg::Error(ep_data, DownloadError::Response);
         }
     };
     let default_header: &str = "audio/mpeg";
@@ -103,7 +105,7 @@ async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usiz
     file_path.push(format!("{file_name}.{ext}"));
 
     let Ok(bytes) = response.bytes().await else {
-        return DownloadMsg::FileWriteError(ep_data);
+        return DownloadMsg::Error(ep_data, DownloadError::FileWrite);
     };
 
     ep_data.file_path = Some(file_path.clone());
@@ -116,7 +118,7 @@ async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usiz
             .and_then(Result::ok);
         DownloadMsg::Complete(ep_data)
     } else {
-        DownloadMsg::FileCreateError(ep_data)
+        DownloadMsg::Error(ep_data, DownloadError::FileCreate)
     }
 }
 

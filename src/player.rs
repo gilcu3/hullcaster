@@ -227,8 +227,8 @@ impl Player {
         let elapsed = self.sink.get_pos();
         if self.sink.empty() {
             *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
-            // Allow for tiny error in duration
-            // TODO: this is a hack that should be done better
+            // Snap elapsed to duration on natural finish (1s tolerance for
+            // rounding between sink position and RSS/symphonia duration)
             if self.duration > 0 && self.duration <= elapsed.as_secs() + 1 {
                 *self.elapsed.write().expect("RwLock write should not fail") = self.duration;
             }
