@@ -45,25 +45,27 @@ pub struct Player {
 }
 
 impl Player {
-    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
-        let stream_handle = DeviceSinkBuilder::open_default_sink()
-            .expect("rodio default stream should be available");
+    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Result<Self> {
+        let stream_handle = DeviceSinkBuilder::open_default_sink()?;
         let sink = RodioPlayer::connect_new(stream_handle.mixer());
-        Self {
+        Ok(Self {
             stream_handle,
             sink,
             elapsed,
             duration: 0,
             playing,
-        }
+        })
     }
 
     fn reset(&mut self) {
-        let stream_handle = DeviceSinkBuilder::open_default_sink()
-            .expect("rodio default stream should be available");
-        let sink = RodioPlayer::connect_new(stream_handle.mixer());
-        self.stream_handle = stream_handle;
-        self.sink = sink;
+        match DeviceSinkBuilder::open_default_sink() {
+            Ok(stream_handle) => {
+                let sink = RodioPlayer::connect_new(stream_handle.mixer());
+                self.stream_handle = stream_handle;
+                self.sink = sink;
+            }
+            Err(err) => log::error!("Failed to reset audio sink: {err}"),
+        }
         *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
         *self.elapsed.write().expect("RwLock write should not fail") = 0;
     }
@@ -72,7 +74,14 @@ impl Player {
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
     ) {
-        let mut player = Self::new(elapsed, playing);
+        let mut player = match Self::new(elapsed, playing) {
+            Ok(player) => player,
+            Err(err) => {
+                log::error!("No audio device available: {err}");
+                Self::drain_messages(rx_from_ui).await;
+                return;
+            }
+        };
         let mut last_time = Instant::now();
         loop {
             if let Ok(message) = rx_from_ui.try_recv() {
@@ -224,6 +233,15 @@ impl Player {
         tokio::time::sleep(std::time::Duration::from_millis(FADING_TIME)).await;
         self.sink.set_volume(1.0);
         self.set_elapsed();
+    }
+
+    async fn drain_messages(rx_from_ui: Receiver<PlayerMessage>) {
+        loop {
+            if matches!(rx_from_ui.try_recv(), Ok(PlayerMessage::Quit)) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
+        }
     }
 
     fn set_elapsed(&self) {
