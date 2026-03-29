@@ -239,3 +239,127 @@ fn config_with_defaults(config_toml: ConfigFromToml) -> Result<Config> {
         confirm_quit,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_config(toml_str: &str) -> Result<Config> {
+        let config_toml: ConfigFromToml = toml::from_str(toml_str)?;
+        config_with_defaults(config_toml)
+    }
+
+    #[test]
+    fn empty_config_uses_defaults() {
+        let config = parse_config("").unwrap();
+        assert_eq!(config.play_command, "vlc %s");
+        assert_eq!(config.simultaneous_downloads, 3);
+        assert_eq!(config.max_retries, 3);
+        assert!(config.mark_as_played_on_play);
+        assert!(!config.enable_sync);
+        assert!(config.sync_on_start);
+        assert!(config.confirm_quit);
+        assert!(config.sync_server.is_empty());
+        assert!(config.sync_username.is_empty());
+        assert!(config.sync_password.is_empty());
+    }
+
+    #[test]
+    fn custom_play_command() {
+        let config = parse_config(r#"play_command = "mpv %s""#).unwrap();
+        assert_eq!(config.play_command, "mpv %s");
+    }
+
+    #[test]
+    fn simultaneous_downloads_zero_falls_back() {
+        let config = parse_config("simultaneous_downloads = 0").unwrap();
+        assert_eq!(config.simultaneous_downloads, 3);
+    }
+
+    #[test]
+    fn simultaneous_downloads_custom() {
+        let config = parse_config("simultaneous_downloads = 10").unwrap();
+        assert_eq!(config.simultaneous_downloads, 10);
+    }
+
+    #[test]
+    fn max_retries_zero_falls_back() {
+        let config = parse_config("max_retries = 0").unwrap();
+        assert_eq!(config.max_retries, 3);
+    }
+
+    #[test]
+    fn max_retries_custom() {
+        let config = parse_config("max_retries = 5").unwrap();
+        assert_eq!(config.max_retries, 5);
+    }
+
+    #[test]
+    fn mark_as_played_on_play_false() {
+        let config = parse_config("mark_as_played_on_play = false").unwrap();
+        assert!(!config.mark_as_played_on_play);
+    }
+
+    #[test]
+    fn sync_settings() {
+        let config = parse_config(
+            r#"
+            enable_sync = true
+            sync_server = "https://gpodder.net"
+            sync_username = "user1"
+            sync_password = "secret"
+            sync_on_start = false
+            "#,
+        )
+        .unwrap();
+        assert!(config.enable_sync);
+        assert_eq!(config.sync_server, "https://gpodder.net");
+        assert_eq!(config.sync_username, "user1");
+        assert_eq!(config.sync_password, "secret");
+        assert!(!config.sync_on_start);
+    }
+
+    #[test]
+    fn sync_password_eval() {
+        let config = parse_config(r#"sync_password_eval = "echo hunter2""#).unwrap();
+        assert_eq!(config.sync_password, "hunter2");
+    }
+
+    #[test]
+    fn sync_password_takes_precedence_over_eval() {
+        let config = parse_config(
+            r#"
+            sync_password = "direct"
+            sync_password_eval = "echo evaluated"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.sync_password, "direct");
+    }
+
+    #[test]
+    fn confirm_quit_false() {
+        let config = parse_config("confirm_quit = false").unwrap();
+        assert!(!config.confirm_quit);
+    }
+
+    #[test]
+    fn invalid_toml_errors() {
+        assert!(parse_config("not valid toml [[[").is_err());
+    }
+
+    #[test]
+    fn unknown_keys_ignored() {
+        let config = parse_config(r#"unknown_key = "value""#);
+        // toml deserialization with deny_unknown_fields would fail,
+        // but ConfigFromToml doesn't use it, so this should succeed
+        assert!(config.is_ok());
+    }
+
+    #[test]
+    fn download_path_with_tilde() {
+        let config = parse_config(r#"download_path = "~/podcasts""#).unwrap();
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(config.download_path, home.join("podcasts"));
+    }
+}
