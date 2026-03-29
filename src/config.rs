@@ -367,4 +367,42 @@ mod tests {
         let home = dirs::home_dir().unwrap();
         assert_eq!(config.download_path, home.join("podcasts"));
     }
+
+    #[test]
+    fn sync_enabled_without_server() {
+        let config = parse_config(
+            r#"
+            enable_sync = true
+            sync_username = "user"
+            "#,
+        )
+        .unwrap();
+        assert!(config.enable_sync);
+        assert!(config.sync_server.is_empty());
+    }
+
+    #[test]
+    fn sync_enabled_without_username() {
+        let config = parse_config(
+            r#"
+            enable_sync = true
+            sync_server = "https://gpodder.net"
+            "#,
+        )
+        .unwrap();
+        assert!(config.enable_sync);
+        assert!(config.sync_username.is_empty());
+    }
+
+    #[test]
+    fn sync_interval_minutes() {
+        let config = parse_config("sync_interval_minutes = 30").unwrap();
+        assert_eq!(config.sync_interval_minutes, Some(30));
+    }
+
+    #[test]
+    fn sync_interval_minutes_default() {
+        let config = parse_config("").unwrap();
+        assert_eq!(config.sync_interval_minutes, None);
+    }
 }

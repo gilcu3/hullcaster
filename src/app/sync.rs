@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{
     Action, App, Arc, EpisodeAction, GpodderRequest, HashMap, PodcastFeed, PodcastNoId, Result,
     feeds, resolve_redirection,
@@ -139,40 +141,63 @@ impl App {
         Ok(())
     }
 
+    /// Processes subscription changes: adds server-only podcasts locally,
+    /// uploads local-only podcasts to server, returns IDs of podcasts to remove.
+    fn process_subscription_changes(&self, added: Vec<String>, deleted: Vec<String>) -> Vec<i64> {
+        let pod_map: HashMap<String, i64> = self
+            .podcasts
+            .borrow_map()
+            .iter()
+            .map(|(id, pod)| {
+                let rpod = pod.read().expect("Failed to acquire read lock");
+                (rpod.url.clone(), *id)
+            })
+            .collect();
+
+        // Add server podcasts not in local
+        let mut server_urls = HashSet::new();
+        for url in added {
+            let url_resolved = resolve_redirection(&url).unwrap_or(url);
+            server_urls.insert(url_resolved.clone());
+            if !pod_map.contains_key(&url_resolved) {
+                self.add_podcast(url_resolved);
+            }
+        }
+
+        // Upload local podcasts not on server
+        let local_only: Vec<String> = pod_map
+            .keys()
+            .filter(|url| !server_urls.contains(*url))
+            .cloned()
+            .collect();
+        if !local_only.is_empty() {
+            log::info!("Uploading {} local podcasts to gpodder", local_only.len());
+            for url in local_only {
+                self.tx_to_gpodder
+                    .send(GpodderRequest::AddPodcast(url))
+                    .inspect_err(|err| {
+                        log::error!("Failed to upload podcast to gpodder: {err}");
+                    })
+                    .ok();
+            }
+        }
+
+        // Resolve deleted URLs and find matching local podcast IDs
+        deleted
+            .into_iter()
+            .filter_map(|url| {
+                let url_resolved = resolve_redirection(&url).unwrap_or(url);
+                pod_map.get(&url_resolved).copied()
+            })
+            .collect()
+    }
+
     pub(super) fn gpodder_sync_pos(
         &mut self, subscription_changes: (Vec<String>, Vec<String>),
         episode_actions: Vec<EpisodeAction>, timestamp: u64,
     ) -> Result<()> {
-        let removed_pods = {
-            let (added, deleted) = subscription_changes;
-            let pod_map = self
-                .podcasts
-                .borrow_map()
-                .iter()
-                .map(|(id, pod)| {
-                    let rpod = pod.read().expect("Failed to acquire read lock");
-                    (rpod.url.clone(), *id)
-                })
-                .collect::<HashMap<String, i64>>();
-            for url in added {
-                let url_resolved = resolve_redirection(&url).unwrap_or(url);
-                if !pod_map.contains_key(&url_resolved) {
-                    self.add_podcast(url_resolved);
-                }
-            }
-            let mut resolve_deleted = Vec::new();
-            for url in deleted {
-                let url_resolved = resolve_redirection(&url).unwrap_or(url);
-                resolve_deleted.push(url_resolved);
-            }
-            let mut removed_pods = Vec::new();
-            for url in resolve_deleted {
-                if let Some(id) = pod_map.get(&url) {
-                    removed_pods.push(*id);
-                }
-            }
-            removed_pods
-        };
+        let (added, deleted) = subscription_changes;
+        let removed_pods = self.process_subscription_changes(added, deleted);
 
         let pod_data = self
             .podcasts

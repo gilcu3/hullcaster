@@ -1014,4 +1014,67 @@ mod tests {
             "Expected SubscriptionChanges, got: {messages:?}"
         );
     }
+
+    #[tokio::test]
+    async fn spawn_initial_sync_returns_all_subscriptions() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        // timestamp 0 triggers get_all_subscriptions path
+        Mock::given(method("GET"))
+            .and(path("/subscriptions/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"feed": "https://example.com/feed1.xml", "title": "Feed 1"},
+                {"feed": "https://example.com/feed2.xml", "title": "Feed 2"},
+                {"feed": "https://example.com/feed3.xml", "title": "Feed 3"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 100,
+                "actions": []
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages =
+            run_spawn_and_collect(config, Some(0), GpodderRequest::GetSubscriptionChanges).await;
+
+        let sub_changes = messages.iter().find_map(|m| {
+            if let Message::Gpodder(GpodderMsg::SubscriptionChanges(changes, _, _)) = m {
+                Some(changes)
+            } else {
+                None
+            }
+        });
+        assert!(sub_changes.is_some(), "Expected SubscriptionChanges");
+        let (added, removed) = sub_changes.unwrap();
+        assert_eq!(added.len(), 3);
+        assert!(removed.is_empty());
+        assert!(added.contains(&"https://example.com/feed1.xml".to_string()));
+    }
+
+    #[tokio::test]
+    async fn spawn_login_error_on_sync_sends_error() {
+        let server = MockServer::start().await;
+
+        // Login fails with 401
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages =
+            run_spawn_and_collect(config, Some(0), GpodderRequest::GetSubscriptionChanges).await;
+
+        let has_error = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::Error(_))));
+        assert!(has_error, "Expected error on login failure: {messages:?}");
+    }
 }

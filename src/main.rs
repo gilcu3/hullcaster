@@ -179,38 +179,44 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let mut blocking_tasks = Vec::new();
 
     if config.enable_sync {
-        let timestamp = db_inst
-            .get_param("timestamp")
-            .and_then(|s| Ok(s.parse::<u64>()?));
-        let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
-            let res = evaluate_in_shell("hostname")
-                .expect("Failed to get hostname")
-                .trim()
-                .to_string();
-            db_inst
-                .set_param("device_id", &res)
-                .expect("Failed to store device_id in db");
-            res
-        });
-        tasks.push(tokio::task::spawn({
-            let tx_to_main = tx_to_main.clone();
-            let gpodder_config = crate::gpodder::Config::new(
-                config.max_retries,
-                config.sync_server.clone(),
-                device_id,
-                config.sync_username.clone(),
-                &config.sync_password,
+        if config.sync_server.is_empty() || config.sync_username.is_empty() {
+            log::error!(
+                "Gpodder sync enabled but sync_server or sync_username not set. Disabling sync."
             );
-            async move {
-                GpodderController::spawn_async(
-                    rx_from_app,
-                    tx_to_main,
-                    gpodder_config,
-                    timestamp.ok(),
-                )
-                .await;
-            }
-        }));
+        } else {
+            let timestamp = db_inst
+                .get_param("timestamp")
+                .and_then(|s| Ok(s.parse::<u64>()?));
+            let device_id = db_inst.get_param("device_id").unwrap_or_else(|_| {
+                let res = evaluate_in_shell("hostname")
+                    .unwrap_or_else(|_| "hullcaster".to_string())
+                    .trim()
+                    .to_string();
+                db_inst
+                    .set_param("device_id", &res)
+                    .unwrap_or_else(|err| log::error!("Failed to store device_id: {err}"));
+                res
+            });
+            tasks.push(tokio::task::spawn({
+                let tx_to_main = tx_to_main.clone();
+                let gpodder_config = crate::gpodder::Config::new(
+                    config.max_retries,
+                    config.sync_server.clone(),
+                    device_id,
+                    config.sync_username.clone(),
+                    &config.sync_password,
+                );
+                async move {
+                    GpodderController::spawn_async(
+                        rx_from_app,
+                        tx_to_main,
+                        gpodder_config,
+                        timestamp.ok(),
+                    )
+                    .await;
+                }
+            }));
+        }
     }
 
     let (tx_to_player, rx_from_ui) = tokio::sync::mpsc::channel(32);

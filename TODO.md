@@ -35,7 +35,7 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [x] Make gpodder synchronization async, cope with bad network conditions
 - [x] Support streaming play
 - [x] Fix gpodder sync not working when episode link needs redirects
-- [ ] Fix initial setup issues when using gpodder
+- [x] Fix initial setup issues when using gpodder
 - [x] Revise threadpool implementation, convert it to async
 - [x] Revise player implementation, make it truly async
 - [x] Revise media_control implementation, make it async
