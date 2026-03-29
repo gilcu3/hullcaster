@@ -309,6 +309,7 @@ impl GpodderController {
     }
 
     pub async fn get_subscription_changes(&self) -> Result<(Vec<String>, Vec<String>)> {
+        self.require_login().await?;
         if *self
             .state
             .subscriptions_timestamp
@@ -360,6 +361,7 @@ impl GpodderController {
     pub async fn upload_subscription_changes(
         &self, changes: (Vec<&String>, Vec<&String>),
     ) -> Result<()> {
+        self.require_login().await?;
         let url_upload_subscriptions = format!(
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.server, self.config.username, self.config.device
@@ -516,90 +518,328 @@ impl GpodderController {
             self.config.max_retries,
         );
     }
-
-    #[cfg(test)]
-    pub async fn test_gpodder_api(&self) -> Result<()> {
-        let devices = self.get_devices().await?;
-        let mut exists = false;
-        for dev in devices {
-            println!("{dev:?}");
-            if dev.id == self.config.device {
-                exists = true;
-                break;
-            }
-        }
-        if exists {
-            println!("Device already exists");
-        } else {
-            self.register_device().await?;
-        }
-
-        // Not implemented in opodsync
-        // get_sync_status();
-        // set_sync_status();
-        // get_device_updates();
-
-        let actions = self.get_episode_action_changes().await?;
-        for a in actions {
-            match a.action {
-                Action::Play => {
-                    println!(
-                        "Play: {} - {} -> {} {} {}",
-                        a.podcast,
-                        a.episode,
-                        a.position.unwrap(),
-                        a.total.unwrap(),
-                        a.started.unwrap()
-                    );
-                }
-                Action::Download => {
-                    println!("Download: {} - {}", a.podcast, a.episode);
-                }
-                Action::Delete => {
-                    println!("Delete: {} - {}", a.podcast, a.episode);
-                }
-                Action::New => {
-                    println!("New: {} - {}", a.podcast, a.episode);
-                }
-            }
-        }
-
-        let (added, removed) = self.get_subscription_changes().await?;
-
-        for sub in added {
-            println!("Added: {sub}");
-        }
-
-        for sub in removed {
-            println!("Removed: {sub}");
-        }
-
-        let subs = self.get_all_subscriptions().await?;
-        for sub in subs {
-            println!("Subscription: {sub}");
-        }
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    #[ignore = "test is server dependent"]
+    fn test_config(server_url: &str) -> Config {
+        Config::new(
+            1,
+            server_url.to_string(),
+            "testdevice".to_string(),
+            "testuser".to_string(),
+            "testpass",
+        )
+    }
+
+    /// Sets up login + device registration mocks (required by `require_login`/`init`).
+    async fn mock_login_and_init(server: &MockServer) {
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
+            .mount(server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/2/devices/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "id": "testdevice",
+                    "caption": "Test",
+                    "type": "laptop",
+                    "subscriptions": 0
+                }
+            ])))
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
     #[tokio::test]
-    async fn gpodder() {
-        let config = Config::new(
-            3,
-            "http://localhost".to_string(),
-            "device".to_string(),
-            "user".to_string(),
-            "pass",
+    async fn login_and_init_existing_device() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(100));
+
+        controller.require_login().await.unwrap();
+        assert!(
+            *controller
+                .state
+                .logged_in
+                .read()
+                .expect("RwLock read should not fail")
         );
-        // pull changes from last week
-        let timestamp = current_time().unwrap() - 7 * 24 * 60 * 60;
-        let sync_client = GpodderController::new(config, Some(timestamp));
-        assert!(sync_client.test_gpodder_api().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn init_registers_missing_device() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        // Return empty device list so registration is triggered
+        Mock::given(method("GET"))
+            .and(path("/api/2/devices/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/devices/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(100));
+        controller.require_login().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_subscription_changes_incremental() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "add": ["https://example.com/feed1.xml"],
+                "remove": ["https://example.com/old.xml"],
+                "timestamp": 2000
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let (added, removed) = controller.get_subscription_changes().await.unwrap();
+        assert_eq!(added, vec!["https://example.com/feed1.xml"]);
+        assert_eq!(removed, vec!["https://example.com/old.xml"]);
+
+        // Timestamp should be updated to response timestamp + 1
+        assert_eq!(
+            *controller
+                .state
+                .subscriptions_timestamp
+                .read()
+                .expect("RwLock read should not fail"),
+            2001
+        );
+    }
+
+    #[tokio::test]
+    async fn get_subscription_changes_initial_sync() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        // When timestamp is 0, get_all_subscriptions is called instead
+        Mock::given(method("GET"))
+            .and(path("/subscriptions/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"feed": "https://example.com/feed1.xml", "title": "Feed 1"},
+                {"feed": "https://example.com/feed2.xml", "title": "Feed 2"}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        // timestamp 0 triggers initial sync path
+        let controller = GpodderController::new(config, Some(0));
+
+        let (added, removed) = controller.get_subscription_changes().await.unwrap();
+        assert_eq!(added.len(), 2);
+        assert!(removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_episode_action_changes() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 5000,
+                "actions": [
+                    {
+                        "podcast": "https://example.com/feed.xml",
+                        "episode": "https://example.com/ep1.mp3",
+                        "action": "play",
+                        "timestamp": "2024-01-15T10:30:00Z",
+                        "started": 0,
+                        "position": 300,
+                        "total": 3600
+                    },
+                    {
+                        "podcast": "https://example.com/feed.xml",
+                        "episode": "https://example.com/ep2.mp3",
+                        "action": "download",
+                        "timestamp": "2024-01-15T11:00:00Z"
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let actions = controller.get_episode_action_changes().await.unwrap();
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(actions[0].action, Action::Play));
+        assert_eq!(actions[0].position, Some(300));
+        assert!(matches!(actions[1].action, Action::Download));
+
+        // Timestamp should be updated to response timestamp + 1
+        assert_eq!(
+            *controller
+                .state
+                .actions_timestamp
+                .read()
+                .expect("RwLock read should not fail"),
+            5001
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_played_single() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/episodes/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let result = controller
+            .mark_played(
+                "https://example.com/feed.xml",
+                "https://example.com/ep1.mp3",
+                120,
+                3600,
+            )
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn mark_played_batch() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/episodes/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let episodes = vec![
+            (
+                "https://example.com/feed.xml".into(),
+                "https://example.com/ep1.mp3".into(),
+                60,
+                1800,
+            ),
+            (
+                "https://example.com/feed.xml".into(),
+                "https://example.com/ep2.mp3".into(),
+                120,
+                3600,
+            ),
+        ];
+        let result = controller.mark_played_batch(episodes).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn upload_subscription_changes() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "update_urls": [],
+                "timestamp": 3000
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let url = "https://example.com/new_feed.xml".to_string();
+        let result = controller.add_podcast(&url).await;
+        assert!(result.is_ok());
+
+        assert_eq!(
+            *controller
+                .state
+                .subscriptions_timestamp
+                .read()
+                .expect("RwLock read should not fail"),
+            3001
+        );
+    }
+
+    #[tokio::test]
+    async fn login_failure_propagates() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(100));
+
+        assert!(controller.require_login().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_timestamp_returns_min() {
+        let config = test_config("http://unused");
+        let controller = GpodderController::new(config, Some(500));
+
+        // Both timestamps start at 500
+        assert_eq!(controller.get_timestamp(), 500);
+
+        // Modify one to be lower
+        *controller
+            .state
+            .actions_timestamp
+            .write()
+            .expect("RwLock write should not fail") = 100;
+        assert_eq!(controller.get_timestamp(), 100);
     }
 }

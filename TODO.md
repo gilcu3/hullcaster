@@ -22,7 +22,7 @@ Tasks that I plan to do. PRs solving any of them are also welcome.
 - [ ] Add history of episode actions. It seems that `AntennaPod` does not do this.
 - [x] Avoid repeated elements in queue
 - [x] Fix bug where queue actions are not persistent, hard to reproduce
-- [ ] Fix gpodder test, it should use local files or local server
+- [x] Fix gpodder test, it should use local files or local server
 - [x] Add panel for unplayed episodes across podcasts
 - [x] Fix bug in two-column state, going to/from queue from/to episode/unplayed panel does not work
 - [x] Unplayed items not sorted correctly

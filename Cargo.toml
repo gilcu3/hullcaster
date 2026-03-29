@@ -73,3 +73,6 @@ future_not_send = "allow"
 
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+
+[dev-dependencies]
+wiremock = "0.6.5"
