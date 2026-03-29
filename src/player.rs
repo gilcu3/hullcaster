@@ -117,7 +117,10 @@ impl Player {
                             player.seek(shift, direction).await;
                         }
                     }
-                    PlayerMessage::Quit => break,
+                    PlayerMessage::Quit => {
+                        player.sink.stop();
+                        break;
+                    }
                     PlayerMessage::ResetSink => player.reset(),
                 }
             }

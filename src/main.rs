@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::{RwLock, mpsc};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Arg, ArgAction, Command};
@@ -286,29 +287,29 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         unplayed_items,
     );
 
-    blocking_tasks.push(tokio::task::spawn_blocking(move || {
+    let app_task = tokio::task::spawn_blocking(move || {
         log::info!("Starting app");
         app.run();
 
         // Send closing signals
-        tx_to_ui
-            .send(MainMessage::TearDown)
-            .expect("Failed to send MainMessage::TearDown message");
-        tx_to_gpodder
-            .send(GpodderRequest::Quit)
-            .expect("Failed to send GpodderRequest::Quit message");
-        tx_to_player
-            .send(PlayerMessage::Quit)
-            .expect("Failed to send PlayerMessage::Quit message");
-        tx_to_controls
-            .send(())
-            .expect("Failed to send message to quit media controls");
+        if tx_to_ui.send(MainMessage::TearDown).is_err() {
+            log::error!("Failed to send MainMessage::TearDown message");
+        }
+        if tx_to_gpodder.send(GpodderRequest::Quit).is_err() {
+            log::error!("Failed to send GpodderRequest::Quit message");
+        }
+        if tx_to_player.send(PlayerMessage::Quit).is_err() {
+            log::error!("Failed to send PlayerMessage::Quit message");
+        }
+        if tx_to_controls.send(()).is_err() {
+            log::error!("Failed to send message to quit media controls");
+        }
 
         fs2::FileExt::unlock(&lock_file)
             .unwrap_or_else(|err| log::error!("Failed to release lock file: {err}"));
 
         log::info!("Closing app");
-    }));
+    });
 
     // the winit's event loop must be run in the main thread
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -324,12 +325,24 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         event_loop.run(move |_, _| {})?;
     }
 
-    for task in tasks {
-        task.await?;
-    }
+    app_task.await?;
 
-    for task in blocking_tasks {
-        task.await?;
+    let shutdown = async {
+        for task in tasks {
+            task.await?;
+        }
+        for task in blocking_tasks {
+            task.await?;
+        }
+        Ok::<(), anyhow::Error>(())
+    };
+
+    if tokio::time::timeout(Duration::from_secs(3), shutdown)
+        .await
+        .is_err()
+    {
+        log::warn!("Shutdown timed out after 3s, forcing exit");
+        process::exit(0);
     }
 
     Ok(())
