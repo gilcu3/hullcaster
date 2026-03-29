@@ -78,14 +78,12 @@ impl App {
         match db_result {
             Ok(result) => {
                 if !result.added.is_empty() || !result.updated.is_empty() {
-                    // TODO: this is quite inefficient, and currently only necessary
-                    // to keep the order
-                    {
-                        self.podcasts.replace_all(
-                            self.db
-                                .get_podcasts()
-                                .expect("Error retrieving info from database."),
-                        );
+                    if let Some(id) = pod_id {
+                        // Existing podcast: refresh only its episodes
+                        self.refresh_podcast_episodes(id)?;
+                    } else {
+                        // New podcast: re-fetch all to get DB-assigned ID and sort order
+                        self.podcasts.replace_all(self.db.get_podcasts()?);
                     }
                     self.update_unplayed(true);
                     self.update_queue();
@@ -108,6 +106,16 @@ impl App {
                 }
             }
             Err(_err) => self.notif_to_ui(failure, true),
+        }
+        Ok(())
+    }
+
+    /// Refreshes the episode list for a single podcast from the database.
+    fn refresh_podcast_episodes(&self, pod_id: i64) -> Result<()> {
+        let episodes = self.db.get_episodes(pod_id)?;
+        if let Some(podcast) = self.podcasts.get(pod_id) {
+            let pod = podcast.read().expect("RwLock read should not fail");
+            pod.episodes.replace_all(episodes);
         }
         Ok(())
     }
