@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, RwLock, mpsc::Receiver},
-    time::{Duration, Instant},
+    sync::{Arc, RwLock},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -12,11 +12,9 @@ use stream_download::{
     http::{HttpStream, reqwest::Client},
     storage::temp::TempStorageProvider,
 };
+use tokio::sync::mpsc::Receiver;
 
-use crate::{
-    config::{FADING_TIME, TICK_RATE},
-    utils::resolve_redirection_async,
-};
+use crate::{config::FADING_TIME, utils::resolve_redirection_async};
 
 pub enum PlayerMessage {
     PlayPause,
@@ -71,77 +69,78 @@ impl Player {
     }
 
     pub async fn spawn_async(
-        rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
+        mut rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
         playing: Arc<RwLock<PlaybackStatus>>,
     ) {
         let mut player = match Self::new(elapsed, playing) {
             Ok(player) => player,
             Err(err) => {
                 log::error!("No audio device available: {err}");
-                Self::drain_messages(rx_from_ui).await;
+                Self::drain_messages(&mut rx_from_ui).await;
                 return;
             }
         };
-        let mut last_time = Instant::now();
-        loop {
-            if let Ok(message) = rx_from_ui.try_recv() {
-                match message {
-                    PlayerMessage::PlayPause => {
-                        if !player.sink.empty() {
-                            player.play_pause();
-                        }
-                    }
-                    PlayerMessage::PlayFile(path, position, duration) => {
-                        player.duration = duration;
-                        *player
-                            .elapsed
-                            .write()
-                            .expect("RwLock write should not fail") = position;
-                        *player
-                            .playing
-                            .write()
-                            .expect("RwLock write should not fail") = PlaybackStatus::Playing;
-                        player
-                            .play_file(&path)
-                            .await
-                            .unwrap_or_else(|err| log::error!("Error playing file: {err}"));
-                    }
-                    PlayerMessage::PlayUrl(url, position, duration) => {
-                        player.duration = duration;
-                        *player
-                            .elapsed
-                            .write()
-                            .expect("RwLock write should not fail") = position;
-                        *player
-                            .playing
-                            .write()
-                            .expect("RwLock write should not fail") = PlaybackStatus::Playing;
-                        player
-                            .play_url(&url)
-                            .await
-                            .unwrap_or_else(|err| log::error!("Error playing url: {err}"));
-                    }
-                    PlayerMessage::Seek(shift, direction) => {
-                        if !player.sink.empty() {
-                            player.seek(shift, direction).await;
-                        }
-                    }
-                    PlayerMessage::Quit => {
-                        player.sink.stop();
-                        break;
-                    }
-                    PlayerMessage::ResetSink => player.reset(),
-                }
-            }
-            tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
+        let mut elapsed_interval = tokio::time::interval(Duration::from_secs(1));
+        elapsed_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            if *player.playing.read().expect("RwLock read should not fail")
-                == PlaybackStatus::Playing
-            {
-                let now = Instant::now();
-                if now.duration_since(last_time) >= Duration::from_secs(1) {
-                    player.set_elapsed();
-                    last_time = now;
+        loop {
+            tokio::select! {
+                msg = rx_from_ui.recv() => {
+                    let Some(message) = msg else { break };
+                    match message {
+                        PlayerMessage::PlayPause => {
+                            if !player.sink.empty() {
+                                player.play_pause();
+                            }
+                        }
+                        PlayerMessage::PlayFile(path, position, duration) => {
+                            player.duration = duration;
+                            *player
+                                .elapsed
+                                .write()
+                                .expect("RwLock write should not fail") = position;
+                            *player
+                                .playing
+                                .write()
+                                .expect("RwLock write should not fail") = PlaybackStatus::Playing;
+                            player
+                                .play_file(&path)
+                                .await
+                                .unwrap_or_else(|err| log::error!("Error playing file: {err}"));
+                        }
+                        PlayerMessage::PlayUrl(url, position, duration) => {
+                            player.duration = duration;
+                            *player
+                                .elapsed
+                                .write()
+                                .expect("RwLock write should not fail") = position;
+                            *player
+                                .playing
+                                .write()
+                                .expect("RwLock write should not fail") = PlaybackStatus::Playing;
+                            player
+                                .play_url(&url)
+                                .await
+                                .unwrap_or_else(|err| log::error!("Error playing url: {err}"));
+                        }
+                        PlayerMessage::Seek(shift, direction) => {
+                            if !player.sink.empty() {
+                                player.seek(shift, direction).await;
+                            }
+                        }
+                        PlayerMessage::Quit => {
+                            player.sink.stop();
+                            break;
+                        }
+                        PlayerMessage::ResetSink => player.reset(),
+                    }
+                }
+                _ = elapsed_interval.tick() => {
+                    if *player.playing.read().expect("RwLock read should not fail")
+                        == PlaybackStatus::Playing
+                    {
+                        player.set_elapsed();
+                    }
                 }
             }
         }
@@ -235,12 +234,11 @@ impl Player {
         self.set_elapsed();
     }
 
-    async fn drain_messages(rx_from_ui: Receiver<PlayerMessage>) {
-        loop {
-            if matches!(rx_from_ui.try_recv(), Ok(PlayerMessage::Quit)) {
+    async fn drain_messages(rx_from_ui: &mut Receiver<PlayerMessage>) {
+        while let Some(msg) = rx_from_ui.recv().await {
+            if matches!(msg, PlayerMessage::Quit) {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(TICK_RATE)).await;
         }
     }
 

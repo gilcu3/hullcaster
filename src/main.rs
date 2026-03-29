@@ -213,10 +213,11 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         }));
     }
 
-    let (tx_to_player, rx_from_ui) = mpsc::channel();
+    let (tx_to_player, rx_from_ui) = tokio::sync::mpsc::channel(32);
     let elapsed = Arc::new(RwLock::new(0));
     let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
     let sync_progress = Arc::new(RwLock::new(SyncProgress::default()));
+    // spawn_blocking + block_on because rodio types aren't Send on macOS
     blocking_tasks.push({
         let playing_clone = playing.clone();
         let elapsed_clone = elapsed.clone();
@@ -301,7 +302,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         if tx_to_gpodder.send(GpodderRequest::Quit).is_err() {
             log::error!("Failed to send GpodderRequest::Quit message");
         }
-        if tx_to_player.send(PlayerMessage::Quit).is_err() {
+        if tx_to_player.blocking_send(PlayerMessage::Quit).is_err() {
             log::error!("Failed to send PlayerMessage::Quit message");
         }
         if tx_to_controls.send(()).is_err() {

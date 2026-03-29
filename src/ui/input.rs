@@ -100,7 +100,7 @@ impl UiState {
 
                     Some(UserAction::Left) => {
                         self.tx_to_player
-                            .send(PlayerMessage::Seek(SEEK_LENGTH, false))
+                            .blocking_send(PlayerMessage::Seek(SEEK_LENGTH, false))
                             .inspect_err(|err| {
                                 log::error!("Failed to send PlayerMessage::Seek to player: {err}");
                             })
@@ -109,7 +109,7 @@ impl UiState {
 
                     Some(UserAction::Right) => {
                         self.tx_to_player
-                            .send(PlayerMessage::Seek(SEEK_LENGTH, true))
+                            .blocking_send(PlayerMessage::Seek(SEEK_LENGTH, true))
                             .inspect_err(|err| {
                                 log::error!("Failed to send PlayerMessage::Seek to player: {err}");
                             })
@@ -118,7 +118,7 @@ impl UiState {
 
                     Some(UserAction::ResetPlayer) => {
                         self.tx_to_player
-                            .send(PlayerMessage::ResetSink)
+                            .blocking_send(PlayerMessage::ResetSink)
                             .inspect_err(|err| {
                                 log::error!(
                                     "Failed to send PlayerMessage::ResetSink to player: {err}"

@@ -81,7 +81,7 @@ pub struct UiState {
     current_podcast_title: Option<String>,
     current_details: Option<Details>,
     input: Input,
-    pub tx_to_player: mpsc::Sender<PlayerMessage>,
+    pub tx_to_player: tokio::sync::mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
     sync_progress: Arc<RwLock<SyncProgress>>,
@@ -114,7 +114,7 @@ impl UiState {
     pub fn spawn_blocking(
         config: Arc<Config>, items: LockVec<Podcast>, queue_items: LockVec<Episode>,
         unplayed_items: LockVec<Episode>, rx_from_main: mpsc::Receiver<MainMessage>,
-        tx_to_main: mpsc::Sender<Message>, tx_to_player: mpsc::Sender<PlayerMessage>,
+        tx_to_main: mpsc::Sender<Message>, tx_to_player: tokio::sync::mpsc::Sender<PlayerMessage>,
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
@@ -238,7 +238,7 @@ impl UiState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: &Arc<Config>, podcast_items: &LockVec<Podcast>, queue_items: &LockVec<Episode>,
-        unplayed_items: &LockVec<Episode>, tx_to_player: mpsc::Sender<PlayerMessage>,
+        unplayed_items: &LockVec<Episode>, tx_to_player: tokio::sync::mpsc::Sender<PlayerMessage>,
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,

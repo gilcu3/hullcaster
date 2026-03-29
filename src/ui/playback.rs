@@ -31,10 +31,10 @@ impl UiState {
         *self.elapsed.write().expect("RwLock write should not fail") = position;
         if let Some(path) = path {
             self.tx_to_player
-                .send(PlayerMessage::PlayFile(path, position, duration))?;
+                .blocking_send(PlayerMessage::PlayFile(path, position, duration))?;
         } else {
             self.tx_to_player
-                .send(PlayerMessage::PlayUrl(url, position, duration))?;
+                .blocking_send(PlayerMessage::PlayUrl(url, position, duration))?;
         }
         Ok(())
     }
@@ -63,7 +63,9 @@ impl UiState {
 
     pub(super) fn play_pause(&self) -> Option<UiMsg> {
         let playing = self.playing.read().expect("RwLock read should not fail");
-        self.tx_to_player.send(PlayerMessage::PlayPause).ok()?;
+        self.tx_to_player
+            .blocking_send(PlayerMessage::PlayPause)
+            .ok()?;
         // only updates position after Pause
         match *playing {
             PlaybackStatus::Playing => self.update_position(),
@@ -109,7 +111,7 @@ impl UiState {
             == PlaybackStatus::Paused
         {
             self.tx_to_player
-                .send(PlayerMessage::PlayPause)
+                .blocking_send(PlayerMessage::PlayPause)
                 .inspect_err(|err| {
                     log::error!("Failed to send PlayerMessage::PlayPause to player: {err}");
                 })
