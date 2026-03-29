@@ -51,6 +51,8 @@ pub enum UserAction {
     PlayExternal,
 
     ResetPlayer,
+    SpeedUp,
+    SpeedDown,
 }
 
 /// Wrapper around a hash map that keeps track of all keybindings. Multiple
@@ -117,6 +119,8 @@ impl Keybindings {
             (config.switch, UserAction::Switch),
             (config.play_external, UserAction::PlayExternal),
             (config.reset_player, UserAction::ResetPlayer),
+            (config.speed_up, UserAction::SpeedUp),
+            (config.speed_down, UserAction::SpeedDown),
         ];
 
         let mut keymap = Self::default();
@@ -189,6 +193,8 @@ impl Keybindings {
             (UserAction::Switch, vec!["Tab".to_string()]),
             (UserAction::PlayExternal, vec!["P".to_string()]),
             (UserAction::ResetPlayer, vec!["R".to_string()]),
+            (UserAction::SpeedUp, vec!["+".to_string()]),
+            (UserAction::SpeedDown, vec!["-".to_string()]),
         ]
     }
 }
@@ -295,6 +301,8 @@ mod tests {
             UserAction::Switch,
             UserAction::PlayExternal,
             UserAction::ResetPlayer,
+            UserAction::SpeedUp,
+            UserAction::SpeedDown,
         ];
         for action in actions {
             assert!(
