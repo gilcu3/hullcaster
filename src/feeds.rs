@@ -298,4 +298,56 @@ mod tests {
         let duration = String::from("8");
         assert_eq!(parse_duration(&duration).ok(), Some(8));
     }
+
+    #[test]
+    fn duration_too_many_parts() {
+        let duration = String::from("1:2:3:4");
+        assert!(parse_duration(&duration).is_err());
+    }
+
+    #[test]
+    fn duration_empty() {
+        assert!(parse_duration("").is_err());
+    }
+
+    #[test]
+    fn full_feed_parsing() {
+        let path = "./tests/test.xml";
+        let channel = Channel::read_from(open_file(path)).unwrap();
+        let data = parse_feed_data(channel, "https://example.com/feed.xml");
+
+        assert_eq!(data.title, "Reply All");
+        assert_eq!(data.url, "https://example.com/feed.xml");
+        assert_eq!(data.author.as_deref(), Some("Gimlet"));
+        assert_eq!(data.explicit, Some(true));
+        assert!(data.description.is_some());
+        assert!(!data.episodes.is_empty());
+    }
+
+    #[test]
+    fn episode_fields_parsed() {
+        let path = "./tests/test.xml";
+        let channel = Channel::read_from(open_file(path)).unwrap();
+        let data = parse_feed_data(channel, "dummy");
+
+        let ep = &data.episodes[0];
+        assert_eq!(ep.title, "#20 I Want To Break Free");
+        assert!(!ep.url.is_empty());
+        assert!(!ep.guid.is_empty());
+        assert!(!ep.description.is_empty());
+        assert!(ep.pubdate.is_some());
+        assert_eq!(ep.duration, Some(1824));
+    }
+
+    #[test]
+    fn parse_episode_missing_all_optional() {
+        let item = Item::default();
+        let ep = parse_episode_data(&item);
+        assert!(ep.title.is_empty());
+        assert!(ep.url.is_empty());
+        assert!(ep.guid.is_empty());
+        assert!(ep.description.is_empty());
+        assert!(ep.pubdate.is_none());
+        assert!(ep.duration.is_none());
+    }
 }
