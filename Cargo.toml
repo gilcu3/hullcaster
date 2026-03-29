@@ -17,10 +17,10 @@ readme = "README.md"
 instrument = ["tokio/tracing", "console-subscriber"]
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 base64 = "0.22.1"
-chrono = "0.4.43"
-clap = { version = "4.5.55", features = ["cargo", "env"] }
+chrono = "0.4.44"
+clap = { version = "4.6.0", features = ["cargo", "env"] }
 console-subscriber = { version = "0.5.0", optional = true }
 derive_more = { version = "2.0.0", features = ["constructor"] }
 dirs = { package = "dirs-next", version = "2.0.0" }
@@ -30,31 +30,31 @@ gag = "1.0.0"
 log = "0.4.29"
 opml = "1.1.6"
 ratatui = "0.30.0"
-regex = "1.12.2"
-reqwest = { version = "0.13.1", default-features = false, features = [
+regex = "1.12.3"
+reqwest = { version = "0.13.2", default-features = false, features = [
   "cookies",
   "blocking",
   "query",
 ] }
 rodio = { version = "0.21.1", features = ["tracing"] }
 rss = "2.0.12"
-rusqlite = "0.38.0"
+rusqlite = "0.39.0"
 sanitize-filename = "0.6.0"
 semver = "1.0.27"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-shellexpand = "3.1.1"
+shellexpand = "3.1.2"
 simplelog = { version = "0.12.2", features = ["local-offset"] }
 souvlaki = "0.8.3"
-stream-download = { version = "0.23.0", features = ["reqwest-rustls"] }
+stream-download = { version = "0.24.0", features = ["reqwest-rustls"] }
 symphonia = { version = "0.5.5", features = ["mp3"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
-toml = "0.9.8"
+tokio = { version = "1.50.0", features = ["rt-multi-thread"] }
+toml = "0.9.12"
 tui-input = "0.15.0"
-unicode-segmentation = "1.12.0"
+unicode-segmentation = "1.13.2"
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-winit = "0.30.12"
+winit = "0.30.13"
 
 [profile.reproducible]
 inherits = "release"
