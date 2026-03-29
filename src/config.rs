@@ -112,6 +112,8 @@ pub struct KeybindingsFromToml {
     pub switch: Option<Vec<String>>,
     pub play_external: Option<Vec<String>>,
     pub reset_player: Option<Vec<String>>,
+    pub speed_up: Option<Vec<String>>,
+    pub speed_down: Option<Vec<String>>,
 }
 
 /// A temporary struct used to deserialize colors data from the TOML

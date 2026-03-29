@@ -95,6 +95,7 @@ pub struct UiState {
     pub tx_to_player: mpsc::Sender<PlayerMessage>,
     elapsed: Arc<RwLock<u64>>,
     playing: Arc<RwLock<PlaybackStatus>>,
+    speed: Arc<RwLock<f32>>,
     pub rx_from_control: mpsc::Receiver<ControlMessage>,
 }
 
@@ -128,6 +129,7 @@ impl UiState {
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
+        speed: ShareableRwLock<f32>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             let mut ui = Self::new(
@@ -140,6 +142,7 @@ impl UiState {
                 current_episode,
                 elapsed,
                 playing,
+                speed,
             );
             let mut terminal = ratatui::init();
             let mut main_message_iter = rx_from_main.try_iter();
@@ -250,6 +253,7 @@ impl UiState {
         rx_from_control: mpsc::Receiver<ControlMessage>,
         current_episode: ShareableRwLock<Option<ShareableRwLock<Episode>>>,
         elapsed: ShareableRwLock<u64>, playing: ShareableRwLock<PlaybackStatus>,
+        speed: ShareableRwLock<f32>,
     ) -> Self {
         let active_popup = if podcast_items.is_empty() {
             Some(Popup::Welcome)
@@ -297,6 +301,7 @@ impl UiState {
             tx_to_player,
             elapsed,
             playing,
+            speed,
             rx_from_control,
         }
     }
@@ -322,6 +327,7 @@ impl UiState {
             &self.current_episode,
             self.current_podcast_title.as_ref(),
             *self.elapsed.read().expect("RwLock read should not fail"),
+            *self.speed.read().expect("RwLock read should not fail"),
             &self.colors,
         );
         match self.left_panel {
@@ -659,6 +665,24 @@ impl UiState {
                                 log::error!(
                                     "Failed to send PlayerMessage::ResetSink to player: {err}"
                                 );
+                            })
+                            .ok();
+                    }
+
+                    Some(UserAction::SpeedUp) => {
+                        self.tx_to_player
+                            .send(PlayerMessage::SpeedUp)
+                            .inspect_err(|err| {
+                                log::error!("Failed to send SpeedUp to player: {err}");
+                            })
+                            .ok();
+                    }
+
+                    Some(UserAction::SpeedDown) => {
+                        self.tx_to_player
+                            .send(PlayerMessage::SpeedDown)
+                            .inspect_err(|err| {
+                                log::error!("Failed to send SpeedDown to player: {err}");
                             })
                             .ok();
                     }
@@ -1550,10 +1574,11 @@ fn compute_ratio(elapsed: u64, total: u64) -> f64 {
 
 fn render_play_area(
     frame: &mut Frame, area: Rect, ep: &ShareableRwLock<Option<ShareableRwLock<Episode>>>,
-    pod_title: Option<&String>, elapsed: u64, colors: &AppColors,
+    pod_title: Option<&String>, elapsed: u64, speed: f32, colors: &AppColors,
 ) {
+    let title = format!(" Playing [{speed:.2}x] ");
     let block = Block::bordered()
-        .title(Line::from(" Playing "))
+        .title(Line::from(title))
         .style(colors.normal);
     let mut ratio = 0.0;
     let mut title = String::new();

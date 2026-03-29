@@ -23,6 +23,8 @@ pub enum PlayerMessage {
     PlayFile(PathBuf, u64, u64),
     PlayUrl(String, u64, u64),
     Seek(Duration, bool),
+    SpeedUp,
+    SpeedDown,
     Quit,
     /// Workaround for sound not working after resume
     ResetSink,
@@ -36,16 +38,23 @@ pub enum PlaybackStatus {
     Finished,
 }
 
+const SPEED_STEPS: [f32; 9] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+const DEFAULT_SPEED_INDEX: usize = 2; // 1.0x
+
 pub struct Player {
     stream_handle: MixerDeviceSink, // else the sink stops working
     sink: RodioPlayer,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
     playing: Arc<RwLock<PlaybackStatus>>,
+    speed: Arc<RwLock<f32>>,
+    speed_index: usize,
 }
 
 impl Player {
-    fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
+    fn new(
+        elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>, speed: Arc<RwLock<f32>>,
+    ) -> Self {
         let stream_handle = DeviceSinkBuilder::open_default_sink()
             .expect("rodio default stream should be available");
         let sink = RodioPlayer::connect_new(stream_handle.mixer());
@@ -55,6 +64,8 @@ impl Player {
             elapsed,
             duration: 0,
             playing,
+            speed,
+            speed_index: DEFAULT_SPEED_INDEX,
         }
     }
 
@@ -64,15 +75,18 @@ impl Player {
         let sink = RodioPlayer::connect_new(stream_handle.mixer());
         self.stream_handle = stream_handle;
         self.sink = sink;
+        self.speed_index = DEFAULT_SPEED_INDEX;
+        *self.speed.write().expect("RwLock write should not fail") =
+            SPEED_STEPS[DEFAULT_SPEED_INDEX];
         *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
         *self.elapsed.write().expect("RwLock write should not fail") = 0;
     }
 
     pub async fn spawn_async(
         rx_from_ui: Receiver<PlayerMessage>, elapsed: Arc<RwLock<u64>>,
-        playing: Arc<RwLock<PlaybackStatus>>,
+        playing: Arc<RwLock<PlaybackStatus>>, speed: Arc<RwLock<f32>>,
     ) {
-        let mut player = Self::new(elapsed, playing);
+        let mut player = Self::new(elapsed, playing, speed);
         let mut last_time = Instant::now();
         loop {
             if let Ok(message) = rx_from_ui.try_recv() {
@@ -117,6 +131,8 @@ impl Player {
                             player.seek(shift, direction).await;
                         }
                     }
+                    PlayerMessage::SpeedUp => player.change_speed(true),
+                    PlayerMessage::SpeedDown => player.change_speed(false),
                     PlayerMessage::Quit => break,
                     PlayerMessage::ResetSink => player.reset(),
                 }
@@ -196,6 +212,19 @@ impl Player {
             self.sink.pause();
             *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Paused;
         }
+    }
+
+    fn change_speed(&mut self, increase: bool) {
+        if increase {
+            if self.speed_index < SPEED_STEPS.len() - 1 {
+                self.speed_index += 1;
+            }
+        } else if self.speed_index > 0 {
+            self.speed_index -= 1;
+        }
+        let new_speed = SPEED_STEPS[self.speed_index];
+        self.sink.set_speed(new_speed);
+        *self.speed.write().expect("RwLock write should not fail") = new_speed;
     }
 
     async fn seek(&self, shift: Duration, direction: bool) {

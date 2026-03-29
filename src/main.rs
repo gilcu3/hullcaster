@@ -215,14 +215,17 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
     let (tx_to_player, rx_from_ui) = mpsc::channel();
     let elapsed = Arc::new(RwLock::new(0));
     let playing = Arc::new(RwLock::new(PlaybackStatus::Ready));
+    let speed = Arc::new(RwLock::new(1.0_f32));
     blocking_tasks.push({
         let playing_clone = playing.clone();
         let elapsed_clone = elapsed.clone();
+        let speed_clone = speed.clone();
         tokio::task::spawn_blocking(move || {
             tokio::runtime::Handle::current().block_on(Player::spawn_async(
                 rx_from_ui,
                 elapsed_clone,
                 playing_clone,
+                speed_clone,
             ));
         })
     });
@@ -272,6 +275,7 @@ async fn start_app(config: Arc<Config>, db_path: &Path, lock_file: File) -> Resu
         current_episode,
         elapsed,
         playing,
+        speed,
     ));
 
     let mut app = App::new(
