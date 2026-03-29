@@ -17,6 +17,7 @@ pub enum GpodderRequest {
 #[derive(Debug)]
 pub enum GpodderMsg {
     SubscriptionChanges((Vec<String>, Vec<String>), Vec<EpisodeAction>, u64),
+    Error(String),
 }
 
 #[derive(Clone, Debug)]

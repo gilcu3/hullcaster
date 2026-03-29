@@ -19,6 +19,12 @@ fn current_time() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
 
+fn send_error(tx: &Sender<Message>, msg: String) {
+    if tx.send(Message::Gpodder(GpodderMsg::Error(msg))).is_err() {
+        log::error!("Failed to send gpodder error: channel closed");
+    }
+}
+
 #[derive(Debug)]
 pub struct GpodderController {
     config: Config,
@@ -56,11 +62,14 @@ impl GpodderController {
             if let Ok(message) = rx_from_app.try_recv() {
                 match message {
                     GpodderRequest::GetSubscriptionChanges => {
+                        let mut had_error = false;
                         let subscription_changes = sync_client
                             .get_subscription_changes()
                             .await
                             .unwrap_or_else(|err| {
                                 log::error!("Failed to get subscription changes: {err}");
+                                send_error(&tx_to_app, format!("Gpodder sync failed: {err}"));
+                                had_error = true;
                                 (Vec::new(), Vec::new())
                             });
                         let episode_actions = sync_client
@@ -68,6 +77,12 @@ impl GpodderController {
                             .await
                             .unwrap_or_else(|err| {
                                 log::error!("Failed to get episode action changes: {err:?}");
+                                if !had_error {
+                                    send_error(
+                                        &tx_to_app,
+                                        format!("Gpodder episode sync failed: {err}"),
+                                    );
+                                }
                                 Vec::new()
                             });
                         let timestamp = sync_client.get_timestamp();
@@ -84,29 +99,38 @@ impl GpodderController {
                         }
                     }
                     GpodderRequest::AddPodcast(url) => {
-                        if sync_client.add_podcast(&url).await.is_err() {
-                            log::error!("Failed to add podcast with url {url}");
+                        if let Err(err) = sync_client.add_podcast(&url).await {
+                            log::error!("Failed to add podcast with url {url}: {err}");
+                            send_error(&tx_to_app, format!("Gpodder: failed to add {url}"));
                         }
                     }
                     GpodderRequest::RemovePodcast(url) => {
-                        if sync_client.remove_podcast(&url).await.is_err() {
-                            log::error!("Failed to remove podcast with url {url}");
+                        if let Err(err) = sync_client.remove_podcast(&url).await {
+                            log::error!("Failed to remove podcast with url {url}: {err}");
+                            send_error(&tx_to_app, format!("Gpodder: failed to remove {url}"));
                         }
                     }
                     GpodderRequest::MarkPlayed(pod_url, ep_url, position, duration) => {
-                        if sync_client
+                        if let Err(err) = sync_client
                             .mark_played(&pod_url, &ep_url, position, duration)
                             .await
-                            .is_err()
                         {
                             log::error!(
-                                "Failed to mark episode as played {ep_url} {position} {duration}"
+                                "Failed to mark played {ep_url} {position} {duration}: {err}"
+                            );
+                            send_error(
+                                &tx_to_app,
+                                format!("Gpodder: failed to sync position for {ep_url}"),
                             );
                         }
                     }
                     GpodderRequest::MarkPlayedBatch(episodes) => {
-                        if sync_client.mark_played_batch(episodes).await.is_err() {
-                            log::error!("Failed to mark episodes as played");
+                        if let Err(err) = sync_client.mark_played_batch(episodes).await {
+                            log::error!("Failed to mark episodes as played: {err}");
+                            send_error(
+                                &tx_to_app,
+                                "Gpodder: failed to sync episode positions".to_string(),
+                            );
                         }
                     }
                     GpodderRequest::Quit => break,
@@ -845,5 +869,149 @@ mod tests {
             .write()
             .expect("RwLock write should not fail") = 100;
         assert_eq!(controller.get_timestamp(), 100);
+    }
+
+    /// Helper to run `spawn_async`, send a request, collect messages, and quit.
+    async fn run_spawn_and_collect(
+        config: Config, timestamp: Option<u64>, request: GpodderRequest,
+    ) -> Vec<Message> {
+        let (tx_req, rx_req) = std::sync::mpsc::channel();
+        let (tx_msg, rx_msg) = std::sync::mpsc::channel();
+
+        let handle = tokio::spawn(GpodderController::spawn_async(
+            rx_req, tx_msg, config, timestamp,
+        ));
+
+        tx_req.send(request).unwrap();
+        // Give spawn_async time to process (it polls every TICK_RATE ms)
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tx_req.send(GpodderRequest::Quit).unwrap();
+        handle.await.unwrap();
+
+        let mut messages = Vec::new();
+        while let Ok(msg) = rx_msg.try_recv() {
+            messages.push(msg);
+        }
+        messages
+    }
+
+    #[tokio::test]
+    async fn spawn_sync_error_sends_error_message() {
+        let server = MockServer::start().await;
+
+        // Login succeeds but subscription fetch returns 500
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/devices/testuser.json"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!([{
+                    "id": "testdevice",
+                    "caption": "Test",
+                    "type": "laptop",
+                    "subscriptions": 0
+                }])),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages =
+            run_spawn_and_collect(config, Some(1000), GpodderRequest::GetSubscriptionChanges).await;
+
+        let has_error = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::Error(_))));
+        assert!(has_error, "Expected GpodderMsg::Error, got: {messages:?}");
+    }
+
+    #[tokio::test]
+    async fn spawn_add_podcast_error_sends_error_message() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/2/auth/testuser/login.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/devices/testuser.json"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!([{
+                    "id": "testdevice",
+                    "caption": "Test",
+                    "type": "laptop",
+                    "subscriptions": 0
+                }])),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages = run_spawn_and_collect(
+            config,
+            Some(1000),
+            GpodderRequest::AddPodcast("https://example.com/feed.xml".to_string()),
+        )
+        .await;
+
+        let has_error = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::Error(_))));
+        assert!(has_error, "Expected GpodderMsg::Error, got: {messages:?}");
+    }
+
+    #[tokio::test]
+    async fn spawn_success_no_error_message() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "add": [],
+                "remove": [],
+                "timestamp": 2000
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 2000,
+                "actions": []
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages =
+            run_spawn_and_collect(config, Some(1000), GpodderRequest::GetSubscriptionChanges).await;
+
+        let has_error = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::Error(_))));
+        assert!(!has_error, "Expected no errors, got: {messages:?}");
+
+        let has_changes = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::SubscriptionChanges(..))));
+        assert!(
+            has_changes,
+            "Expected SubscriptionChanges, got: {messages:?}"
+        );
     }
 }

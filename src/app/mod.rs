@@ -270,6 +270,10 @@ impl App {
                     episode_actions,
                     timestamp,
                 )) => self.gpodder_sync_pos(subscription_changes, episode_actions, timestamp),
+                Message::Gpodder(GpodderMsg::Error(msg)) => {
+                    self.notif_to_ui(msg, true);
+                    Ok(())
+                }
             };
             match result {
                 Ok(()) => {}
