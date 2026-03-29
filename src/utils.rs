@@ -211,3 +211,122 @@ pub fn format_duration(duration: Option<u64>) -> String {
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn convert_date_valid() {
+        let dt = convert_date(1_704_067_200).unwrap();
+        assert_eq!(dt.to_rfc3339(), "2024-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn convert_date_zero() {
+        let dt = convert_date(0).unwrap();
+        assert_eq!(dt.to_rfc3339(), "1970-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn convert_date_negative() {
+        // Negative timestamps are valid (before epoch)
+        let dt = convert_date(-86400).unwrap();
+        assert_eq!(dt.to_rfc3339(), "1969-12-31T00:00:00+00:00");
+    }
+
+    #[test]
+    fn format_duration_none() {
+        assert_eq!(format_duration(None), "--:--:--");
+    }
+
+    #[test]
+    fn format_duration_zero() {
+        assert_eq!(format_duration(Some(0)), "00:00:00");
+    }
+
+    #[test]
+    fn format_duration_seconds_only() {
+        assert_eq!(format_duration(Some(45)), "00:00:45");
+    }
+
+    #[test]
+    fn format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(Some(125)), "00:02:05");
+    }
+
+    #[test]
+    fn format_duration_hours() {
+        assert_eq!(format_duration(Some(3661)), "01:01:01");
+    }
+
+    #[test]
+    fn format_duration_large() {
+        assert_eq!(format_duration(Some(36000)), "10:00:00");
+    }
+
+    #[test]
+    fn clean_html_strips_tags() {
+        assert_eq!(clean_html("<p>hello <b>world</b></p>"), "hello world");
+    }
+
+    #[test]
+    fn clean_html_br_to_newline() {
+        assert_eq!(clean_html("line1<br/>line2"), "line1\nline2");
+        assert_eq!(clean_html("line1<br>line2"), "line1\nline2");
+        assert_eq!(clean_html("line1<br />line2"), "line1\nline2");
+    }
+
+    #[test]
+    fn clean_html_decodes_entities() {
+        assert_eq!(clean_html("&amp; &lt; &gt;"), "& < >");
+    }
+
+    #[test]
+    fn clean_html_collapses_line_breaks() {
+        assert_eq!(clean_html("a\n\n\n\n\nb"), "a\n\nb");
+    }
+
+    #[test]
+    fn clean_html_empty() {
+        assert_eq!(clean_html(""), "");
+    }
+
+    #[test]
+    fn clean_html_plain_text() {
+        assert_eq!(clean_html("no html here"), "no html here");
+    }
+
+    #[test]
+    fn substr_ascii() {
+        let s = "hello world".to_string();
+        assert_eq!(s.substr(0, 5), "hello");
+        assert_eq!(s.substr(6, 5), "world");
+    }
+
+    #[test]
+    fn substr_unicode() {
+        let s = "café".to_string();
+        assert_eq!(s.substr(0, 4), "café");
+        assert_eq!(s.grapheme_len(), 4);
+    }
+
+    #[test]
+    fn substr_emoji() {
+        let s = "👋🌍".to_string();
+        assert_eq!(s.grapheme_len(), 2);
+        assert_eq!(s.substr(0, 1), "👋");
+        assert_eq!(s.substr(1, 1), "🌍");
+    }
+
+    #[test]
+    fn substr_beyond_length() {
+        let s = "hi".to_string();
+        assert_eq!(s.substr(0, 100), "hi");
+    }
+
+    #[test]
+    fn grapheme_len_empty() {
+        assert_eq!(String::new().grapheme_len(), 0);
+    }
+}
