@@ -596,3 +596,192 @@ pub enum Message {
     Dl(DownloadMsg),
     Gpodder(GpodderMsg),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_episode(id: i64, played: bool, downloaded: bool) -> Episode {
+        Episode {
+            id,
+            pod_id: 1,
+            title: format!("Episode {id}"),
+            url: format!("https://example.com/ep{id}.mp3"),
+            guid: format!("guid-{id}"),
+            description: String::new(),
+            pubdate: None,
+            duration: Some(100),
+            position: 0,
+            path: if downloaded {
+                Some(PathBuf::from(format!("/tmp/ep{id}.mp3")))
+            } else {
+                None
+            },
+            played,
+        }
+    }
+
+    #[test]
+    fn lockvec_new_and_len() {
+        let episodes = vec![make_episode(1, false, false), make_episode(2, true, false)];
+        let lv = LockVec::new(episodes);
+        assert_eq!(lv.len(false), 2);
+        assert_eq!(lv.len(true), 2);
+        assert!(!lv.is_empty());
+    }
+
+    #[test]
+    fn lockvec_empty() {
+        let lv: LockVec<Episode> = LockVec::new(vec![]);
+        assert_eq!(lv.len(false), 0);
+        assert!(lv.is_empty());
+    }
+
+    #[test]
+    fn lockvec_get_and_contains() {
+        let lv = LockVec::new(vec![make_episode(10, false, false)]);
+        assert!(lv.contains_key(10));
+        assert!(!lv.contains_key(99));
+        assert!(lv.get(10).is_some());
+        assert!(lv.get(99).is_none());
+    }
+
+    #[test]
+    fn lockvec_remove() {
+        let lv = LockVec::new(vec![
+            make_episode(1, false, false),
+            make_episode(2, false, false),
+        ]);
+        lv.remove(1);
+        assert_eq!(lv.len(false), 1);
+        assert!(!lv.contains_key(1));
+        assert!(lv.contains_key(2));
+    }
+
+    #[test]
+    fn lockvec_push_arc() {
+        let lv = LockVec::new(vec![make_episode(1, false, false)]);
+        let ep = Arc::new(RwLock::new(make_episode(2, false, false)));
+        lv.push_arc(ep);
+        assert_eq!(lv.len(false), 2);
+        assert!(lv.contains_key(2));
+    }
+
+    #[test]
+    fn lockvec_replace_all() {
+        let lv = LockVec::new(vec![make_episode(1, false, false)]);
+        lv.replace_all(vec![
+            make_episode(10, false, false),
+            make_episode(20, false, false),
+        ]);
+        assert_eq!(lv.len(false), 2);
+        assert!(!lv.contains_key(1));
+        assert!(lv.contains_key(10));
+        assert!(lv.contains_key(20));
+    }
+
+    #[test]
+    fn lockvec_map() {
+        let lv = LockVec::new(vec![
+            make_episode(1, false, false),
+            make_episode(2, true, false),
+        ]);
+        let titles: Vec<String> = lv.map(|ep| ep.title.clone(), false);
+        assert_eq!(titles.len(), 2);
+    }
+
+    #[test]
+    fn lockvec_map_filtered() {
+        let lv = LockVec::new(vec![
+            make_episode(1, false, false),
+            make_episode(2, true, false),
+            make_episode(3, false, false),
+        ]);
+        // Manually set filtered_order to only include episode 1 and 3
+        {
+            let mut filtered = lv.borrow_filtered_order();
+            *filtered = vec![1, 3];
+        }
+        let titles: Vec<String> = lv.map(|ep| ep.title.clone(), true);
+        assert_eq!(titles.len(), 2);
+        assert_eq!(titles[0], "Episode 1");
+        assert_eq!(titles[1], "Episode 3");
+    }
+
+    #[test]
+    fn lockvec_filter_map() {
+        let lv = LockVec::new(vec![
+            make_episode(1, false, false),
+            make_episode(2, true, false),
+            make_episode(3, false, false),
+        ]);
+        let unplayed_ids: Vec<i64> = lv.filter_map(|ep| {
+            let e = ep.read().expect("RwLock read should not fail");
+            if e.played { None } else { Some(e.id) }
+        });
+        assert_eq!(unplayed_ids, vec![1, 3]);
+    }
+
+    #[test]
+    fn lockvec_get_index() {
+        let lv = LockVec::new(vec![
+            make_episode(10, false, false),
+            make_episode(20, false, false),
+        ]);
+        assert_eq!(lv.get_index(10), Some(0));
+        assert_eq!(lv.get_index(20), Some(1));
+        assert_eq!(lv.get_index(99), None);
+    }
+
+    #[test]
+    fn lockvec_get_id_by_index() {
+        let lv = LockVec::new(vec![
+            make_episode(10, false, false),
+            make_episode(20, false, false),
+        ]);
+        assert_eq!(lv.get_id_by_index(0), Some(10));
+        assert_eq!(lv.get_id_by_index(1), Some(20));
+        assert_eq!(lv.get_id_by_index(99), None);
+    }
+
+    #[test]
+    fn lockvec_map_single() {
+        let lv = LockVec::new(vec![make_episode(5, true, false)]);
+        let played = lv.map_single(5, |ep| ep.played);
+        assert_eq!(played, Some(true));
+        assert!(lv.map_single(99, |ep| ep.played).is_none());
+    }
+
+    #[test]
+    fn filter_status_default() {
+        let f = Filters::default();
+        assert!(matches!(f.played, FilterStatus::All));
+        assert!(matches!(f.downloaded, FilterStatus::All));
+    }
+
+    #[test]
+    fn episode_ordering_by_pubdate() {
+        let early = DateTime::from_timestamp(1000, 0).unwrap();
+        let late = DateTime::from_timestamp(2000, 0).unwrap();
+        let mut ep1 = make_episode(1, false, false);
+        let mut ep2 = make_episode(2, false, false);
+        ep1.pubdate = Some(early);
+        ep2.pubdate = Some(late);
+        assert!(ep1 < ep2);
+    }
+
+    #[test]
+    fn episode_is_played_trait() {
+        let played = make_episode(1, true, false);
+        let unplayed = make_episode(2, false, false);
+        assert!(played.is_played());
+        assert!(!unplayed.is_played());
+    }
+
+    #[test]
+    fn episode_get_id_trait() {
+        let ep = make_episode(42, false, false);
+        assert_eq!(ep.get_id(), 42);
+    }
+}
