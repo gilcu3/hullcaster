@@ -1,6 +1,48 @@
+use std::sync::{Arc, RwLock};
+
 use super::{App, GpodderRequest, HashMap, MAX_DURATION, MainMessage, Result, anyhow, play_file};
+use crate::types::Episode;
 
 impl App {
+    /// Syncs the unplayed list for a single episode: adds or removes it based
+    /// on its played state. Returns true if a change was made.
+    fn sync_unplayed_episode(&self, ep_id: i64, episode: &Arc<RwLock<Episode>>) -> bool {
+        let played = episode.read().expect("RwLock read should not fail").played;
+        if played && self.unplayed.contains_key(ep_id) {
+            self.unplayed.remove(ep_id);
+            true
+        } else if !played && !self.unplayed.contains_key(ep_id) {
+            self.unplayed.push_arc(episode.clone());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sends a gpodder `MarkPlayed` request for a single episode.
+    fn gpodder_mark_played(
+        &self, pod_url: String, ep_url: String, position: u64, duration: Option<u64>,
+    ) -> Result<()> {
+        if self.config.enable_sync {
+            let duration = duration.unwrap_or_else(|| {
+                log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
+                MAX_DURATION
+            });
+            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
+                pod_url, ep_url, position, duration,
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// Updates unplayed list and filters if changes were made.
+    fn apply_played_changes(&self, changed: bool) {
+        if changed {
+            self.update_unplayed(false);
+            self.update_filters(self.filters, false);
+        }
+    }
+
     /// Attempts to execute the play command on the given podcast episode.
     pub fn play_file(&self, pod_id: i64, ep_id: i64, external: bool) -> Result<()> {
         let (ep_path, ep_url) = {
@@ -77,15 +119,9 @@ impl App {
                     }
                 }
             }
-            let episode = w_episode.read().expect("RwLock read should not fail");
-            if episode.played && self.unplayed.contains_key(ep_id) {
-                self.unplayed.remove(ep_id);
-                changed = true;
-            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                self.unplayed.push_arc(w_episode.clone());
-                changed = true;
-            }
+            changed |= self.sync_unplayed_episode(ep_id, &w_episode);
 
+            let episode = w_episode.read().expect("RwLock read should not fail");
             self.db
                 .set_played_status(ep_id, episode.position, episode.duration, played)?;
             (
@@ -96,20 +132,15 @@ impl App {
             )
         };
 
-        if changed {
-            self.update_unplayed(false);
-            self.update_filters(self.filters, false);
-        }
-
+        self.apply_played_changes(changed);
         if self.config.enable_sync {
-            let duration = duration.unwrap_or_else(||{
+            let dur = duration.unwrap_or_else(|| {
                 log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
                 MAX_DURATION
             });
-            let position = { if played { duration } else { ep_position } };
-            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
-                pod_url, ep_url, position, duration,
-            ))?;
+            let position = if played { dur } else { ep_position };
+            self.tx_to_gpodder
+                .send(GpodderRequest::MarkPlayed(pod_url, ep_url, position, dur))?;
         }
         Ok(())
     }
@@ -199,8 +230,7 @@ impl App {
                 .read()
                 .expect("RwLock read should not fail")
                 .episodes;
-            for (ep_id, episode) in episodes.borrow_map().iter_mut() {
-                let w_episode = episode;
+            for (ep_id, w_episode) in episodes.borrow_map().iter_mut() {
                 {
                     let mut episode = w_episode.write().expect("RwLock write should not fail");
                     if episode.played != played {
@@ -208,15 +238,9 @@ impl App {
                         episode.played = played;
                     }
                 }
-                let episode = w_episode.read().expect("RwLock read should not fail");
+                changed |= self.sync_unplayed_episode(*ep_id, w_episode);
 
-                if episode.played && self.unplayed.contains_key(*ep_id) {
-                    self.unplayed.remove(*ep_id);
-                    changed = true;
-                } else if !episode.played && !self.unplayed.contains_key(*ep_id) {
-                    self.unplayed.push_arc(w_episode.clone());
-                    changed = true;
-                }
+                let episode = w_episode.read().expect("RwLock read should not fail");
                 if self.config.enable_sync {
                     let duration = episode.duration.unwrap_or_else(|| {
                         log::warn!(
@@ -231,20 +255,13 @@ impl App {
             }
             (sync_list, db_list)
         };
-        if changed {
-            self.update_unplayed(false);
-            self.update_filters(self.filters, false);
-        }
 
+        self.apply_played_changes(changed);
         self.db.set_played_status_batch(db_list)?;
 
         if self.config.enable_sync {
-            let episodes = sync_list
-                .iter()
-                .map(|(pod, ep, pos, dur)| (pod.clone(), ep.clone(), *pos, *dur))
-                .collect();
             self.tx_to_gpodder
-                .send(GpodderRequest::MarkPlayedBatch(episodes))?;
+                .send(GpodderRequest::MarkPlayedBatch(sync_list))?;
         }
         Ok(())
     }
@@ -274,34 +291,15 @@ impl App {
                 episode.position = position;
             }
 
+            changed |= self.sync_unplayed_episode(ep_id, &w_episode);
             let episode = w_episode.read().expect("RwLock read should not fail");
-
-            if episode.played && self.unplayed.contains_key(ep_id) {
-                self.unplayed.remove(ep_id);
-                changed = true;
-            } else if !episode.played && !self.unplayed.contains_key(ep_id) {
-                self.unplayed.push_arc(w_episode.clone());
-                changed = true;
-            }
             self.db
                 .set_played_status(ep_id, episode.position, episode.duration, episode.played)?;
             (episode.duration, episode.url.clone(), podcast.url.clone())
         };
 
-        if changed {
-            self.update_unplayed(false);
-            self.update_filters(self.filters, false);
-        }
-
-        if self.config.enable_sync {
-            let duration = duration.unwrap_or_else( ||{
-                log::warn!("Setting duration to infinity for episode {ep_url}, else cannot mark as played on gpodder");
-                MAX_DURATION
-            });
-            self.tx_to_gpodder.send(GpodderRequest::MarkPlayed(
-                pod_url, ep_url, position, duration,
-            ))?;
-        }
+        self.apply_played_changes(changed);
+        self.gpodder_mark_played(pod_url, ep_url, position, duration)?;
         Ok(())
     }
 }
