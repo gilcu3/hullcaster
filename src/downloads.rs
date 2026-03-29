@@ -49,8 +49,9 @@ pub fn download_list(
         tokio::spawn(async move {
             let _permit = sem.acquire().await;
             let result = download_file(ep, dest2, max_retries).await;
-            tx.send(Message::Dl(result))
-                .expect("Thread messaging error");
+            if tx.send(Message::Dl(result)).is_err() {
+                log::error!("Failed to send download message: channel closed");
+            }
         });
     }
 }
@@ -58,11 +59,13 @@ pub fn download_list(
 /// Downloads a file to a local filepath, returning `DownloadMsg` variant
 /// indicating success or failure.
 async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
-    let client = reqwest::Client::builder()
+    let Ok(client) = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120))
         .build()
-        .expect("Could not build reqwest::Client");
+    else {
+        return DownloadMsg::ResponseError(ep_data);
+    };
 
     let response = loop {
         if let Ok(resp) = client.get(&ep_data.url).send().await {

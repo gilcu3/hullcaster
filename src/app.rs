@@ -268,28 +268,40 @@ impl App {
     /// Sends the specified notification to the UI, which will display at the
     /// bottom of the screen.
     pub fn notif_to_ui(&self, message: String, error: bool) {
-        self.tx_to_ui
+        if self
+            .tx_to_ui
             .send(MainMessage::SpawnNotif(
                 message,
                 crate::config::MESSAGE_TIME,
                 error,
             ))
-            .expect("Thread messaging error");
+            .is_err()
+        {
+            log::error!("Failed to send notification to UI: channel closed");
+        }
     }
 
     /// Sends a persistent notification to the UI, which will display at the
     /// bottom of the screen until cleared.
     pub fn persistent_notif_to_ui(&self, message: String, error: bool) {
-        self.tx_to_ui
+        if self
+            .tx_to_ui
             .send(MainMessage::SpawnPersistentNotif(message, error))
-            .expect("Thread messaging error");
+            .is_err()
+        {
+            log::error!("Failed to send persistent notification to UI: channel closed");
+        }
     }
 
     /// Clears persistent notifications in the UI.
     pub fn clear_persistent_notif(&self) {
-        self.tx_to_ui
+        if self
+            .tx_to_ui
             .send(MainMessage::ClearPersistentNotif)
-            .expect("Thread messaging error");
+            .is_err()
+        {
+            log::error!("Failed to clear persistent notification: channel closed");
+        }
     }
 
     /// Updates the persistent notification about syncing podcasts and
@@ -615,7 +627,7 @@ impl App {
     }
 
     fn mark_played_db_batch(&mut self, updates: Vec<(i64, i64, u64, u64)>) -> Result<()> {
-        let mut pod_map = HashMap::new();
+        let mut pod_map = HashMap::with_capacity(updates.len());
         for (pod_id, ep_id, position, total) in updates {
             if let std::collections::hash_map::Entry::Vacant(e) = pod_map.entry(pod_id) {
                 e.insert(vec![(ep_id, position, total)]);

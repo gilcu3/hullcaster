@@ -41,20 +41,15 @@ pub fn check_feed(
 ) {
     tokio::spawn(async move {
         let _permit = semaphore.acquire().await;
-        match get_feed_data(&feed.url, max_retries).await {
+        let msg = match get_feed_data(&feed.url, max_retries).await {
             Ok(pod) => match feed.id {
-                Some(id) => {
-                    tx_to_main
-                        .send(Message::Feed(FeedMsg::SyncData((id, pod))))
-                        .expect("Thread messaging error");
-                }
-                None => tx_to_main
-                    .send(Message::Feed(FeedMsg::NewData(pod)))
-                    .expect("Thread messaging error"),
+                Some(id) => Message::Feed(FeedMsg::SyncData((id, pod))),
+                None => Message::Feed(FeedMsg::NewData(pod)),
             },
-            Err(_err) => tx_to_main
-                .send(Message::Feed(FeedMsg::Error(feed)))
-                .expect("Thread messaging error"),
+            Err(_err) => Message::Feed(FeedMsg::Error(feed)),
+        };
+        if tx_to_main.send(msg).is_err() {
+            log::error!("Failed to send feed message: channel closed");
         }
     });
 }

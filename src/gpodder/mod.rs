@@ -71,13 +71,17 @@ impl GpodderController {
                                 Vec::new()
                             });
                         let timestamp = sync_client.get_timestamp();
-                        tx_to_app
+                        if tx_to_app
                             .send(Message::Gpodder(GpodderMsg::SubscriptionChanges(
                                 subscription_changes,
                                 episode_actions,
                                 timestamp,
                             )))
-                            .expect("Could not send message to app");
+                            .is_err()
+                        {
+                            log::error!("Failed to send gpodder message: channel closed");
+                            break;
+                        }
                     }
                     GpodderRequest::AddPodcast(url) => {
                         if sync_client.add_podcast(&url).await.is_err() {
