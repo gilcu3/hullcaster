@@ -36,7 +36,7 @@ reqwest = { version = "0.13.2", default-features = false, features = [
   "blocking",
   "query",
 ] }
-rodio = { version = "0.21.1", features = ["tracing"] }
+rodio = { version = "0.22.2", features = ["tracing"] }
 rss = "2.0.12"
 rusqlite = "0.39.0"
 sanitize-filename = "0.6.0"

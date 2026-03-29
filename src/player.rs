@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use rodio::{OutputStream, Sink};
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player as RodioPlayer};
 use stream_download::source::SourceStream;
 use stream_download::{
     Settings, StreamDownload,
@@ -37,8 +37,8 @@ pub enum PlaybackStatus {
 }
 
 pub struct Player {
-    stream_handle: OutputStream, // else the sink stops working
-    sink: Sink,
+    stream_handle: MixerDeviceSink, // else the sink stops working
+    sink: RodioPlayer,
     elapsed: Arc<RwLock<u64>>,
     duration: u64,
     playing: Arc<RwLock<PlaybackStatus>>,
@@ -46,9 +46,9 @@ pub struct Player {
 
 impl Player {
     fn new(elapsed: Arc<RwLock<u64>>, playing: Arc<RwLock<PlaybackStatus>>) -> Self {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
+        let stream_handle = DeviceSinkBuilder::open_default_sink()
             .expect("rodio default stream should be available");
-        let sink = rodio::Sink::connect_new(stream_handle.mixer());
+        let sink = RodioPlayer::connect_new(stream_handle.mixer());
         Self {
             stream_handle,
             sink,
@@ -59,9 +59,9 @@ impl Player {
     }
 
     fn reset(&mut self) {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
+        let stream_handle = DeviceSinkBuilder::open_default_sink()
             .expect("rodio default stream should be available");
-        let sink = rodio::Sink::connect_new(stream_handle.mixer());
+        let sink = RodioPlayer::connect_new(stream_handle.mixer());
         self.stream_handle = stream_handle;
         self.sink = sink;
         *self.playing.write().expect("RwLock write should not fail") = PlaybackStatus::Finished;
