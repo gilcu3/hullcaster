@@ -195,3 +195,211 @@ impl Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_play_action_full() {
+        let json = r#"{
+            "podcast": "https://example.com/feed.xml",
+            "episode": "https://example.com/ep1.mp3",
+            "action": "play",
+            "timestamp": "2024-03-29T12:00:00Z",
+            "started": 0,
+            "position": 120,
+            "total": 3600
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.podcast, "https://example.com/feed.xml");
+        assert_eq!(action.episode, "https://example.com/ep1.mp3");
+        assert!(matches!(action.action, Action::Play));
+        assert_eq!(action.started, Some(0));
+        assert_eq!(action.position, Some(120));
+        assert_eq!(action.total, Some(3600));
+    }
+
+    #[test]
+    fn deserialize_action_types() {
+        for (action_str, expected) in [
+            ("new", "New"),
+            ("download", "Download"),
+            ("play", "Play"),
+            ("delete", "Delete"),
+        ] {
+            let json = format!(
+                r#"{{
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://example.com/ep.mp3",
+                    "action": "{action_str}",
+                    "timestamp": "2024-01-01T00:00:00Z"
+                }}"#
+            );
+            let action: EpisodeAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(format!("{:?}", action.action), expected);
+        }
+    }
+
+    #[test]
+    fn deserialize_negative_position_becomes_none() {
+        let json = r#"{
+            "podcast": "https://example.com/feed.xml",
+            "episode": "https://example.com/ep.mp3",
+            "action": "play",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "position": -1,
+            "total": -1,
+            "started": -100
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.position, None);
+        assert_eq!(action.total, None);
+        assert_eq!(action.started, None);
+    }
+
+    #[test]
+    fn deserialize_missing_optional_fields() {
+        let json = r#"{
+            "podcast": "https://example.com/feed.xml",
+            "episode": "https://example.com/ep.mp3",
+            "action": "download",
+            "timestamp": "2024-06-15T08:30:00Z"
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.position, None);
+        assert_eq!(action.total, None);
+        assert_eq!(action.started, None);
+    }
+
+    #[test]
+    fn deserialize_timestamp_to_unix() {
+        let json = r#"{
+            "podcast": "p",
+            "episode": "e",
+            "action": "new",
+            "timestamp": "2024-01-01T00:00:00Z"
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        // 2024-01-01T00:00:00Z = 1704067200 Unix seconds
+        assert_eq!(action.timestamp, 1_704_067_200);
+    }
+
+    #[test]
+    fn deserialize_invalid_timestamp_fails() {
+        let json = r#"{
+            "podcast": "p",
+            "episode": "e",
+            "action": "new",
+            "timestamp": "not-a-date"
+        }"#;
+        assert!(serde_json::from_str::<EpisodeAction>(json).is_err());
+    }
+
+    #[test]
+    fn deserialize_null_optional_field() {
+        let json = r#"{
+            "podcast": "p",
+            "episode": "e",
+            "action": "play",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "position": null,
+            "total": null
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.position, None);
+        assert_eq!(action.total, None);
+    }
+
+    #[test]
+    fn serialize_roundtrip() {
+        let json = r#"{
+            "podcast": "https://example.com/feed.xml",
+            "episode": "https://example.com/ep.mp3",
+            "action": "play",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "started": 0,
+            "position": 120,
+            "total": 3600
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        let serialized = serde_json::to_string(&action).unwrap();
+        let deserialized: EpisodeAction = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(action.podcast, deserialized.podcast);
+        assert_eq!(action.episode, deserialized.episode);
+        assert_eq!(action.timestamp, deserialized.timestamp);
+        assert_eq!(action.position, deserialized.position);
+        assert_eq!(action.total, deserialized.total);
+        assert_eq!(action.started, deserialized.started);
+    }
+
+    #[test]
+    fn deserialize_podcast_changes() {
+        let json = r#"{
+            "add": ["https://example.com/feed1.xml", "https://example.com/feed2.xml"],
+            "remove": ["https://example.com/old.xml"],
+            "timestamp": 1704067200
+        }"#;
+        let changes: PodcastChanges = serde_json::from_str(json).unwrap();
+        assert_eq!(changes.add.len(), 2);
+        assert_eq!(changes.remove.len(), 1);
+        assert_eq!(changes.timestamp, 1_704_067_200);
+    }
+
+    #[test]
+    fn deserialize_device() {
+        let json = r#"{
+            "id": "my-device",
+            "caption": "My Phone",
+            "type": "mobile",
+            "subscriptions": 42
+        }"#;
+        let device: Device = serde_json::from_str(json).unwrap();
+        assert_eq!(device.id, "my-device");
+        assert_eq!(device.caption, "My Phone");
+        assert_eq!(device.dtype, "mobile");
+        assert_eq!(device.subscriptions, 42);
+    }
+
+    #[test]
+    fn config_encodes_credentials() {
+        let config = Config::new(
+            3,
+            "https://gpodder.net".to_string(),
+            "device".to_string(),
+            "user".to_string(),
+            "pass",
+        );
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&config.credentials)
+            .unwrap();
+        assert_eq!(String::from_utf8(decoded).unwrap(), "user:pass");
+    }
+
+    #[test]
+    fn deserialize_zero_position() {
+        let json = r#"{
+            "podcast": "p",
+            "episode": "e",
+            "action": "play",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "position": 0
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.position, Some(0));
+    }
+
+    #[test]
+    fn deserialize_large_position() {
+        let json = r#"{
+            "podcast": "p",
+            "episode": "e",
+            "action": "play",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "position": 999999999
+        }"#;
+        let action: EpisodeAction = serde_json::from_str(json).unwrap();
+        assert_eq!(action.position, Some(999_999_999));
+    }
+}
