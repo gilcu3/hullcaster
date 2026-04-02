@@ -635,15 +635,15 @@ impl Database {
     /// Generates list of episodes for a given podcast.
     pub fn set_queue(&mut self, queue: Vec<i64>) -> Result<()> {
         let conn = self.conn_mut()?;
-        conn.execute("DELETE FROM queue;", params![])?;
         let tx = conn.transaction()?;
         {
+            tx.execute("DELETE FROM queue;", params![])?;
             let mut stmt = tx.prepare(
                 "INSERT INTO queue (episode_id)
-            VALUES (?);",
+                SELECT ? WHERE EXISTS (SELECT 1 FROM episodes WHERE id = ?);",
             )?;
             for episode_id in queue {
-                stmt.execute(params![episode_id])?;
+                stmt.execute(params![episode_id, episode_id])?;
             }
         }
         tx.commit()?;
