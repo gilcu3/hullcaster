@@ -42,21 +42,6 @@ impl UiState {
             *self.elapsed.read().expect("RwLock read should not fail"),
             &self.colors,
         );
-        {
-            let sp = self
-                .sync_progress
-                .read()
-                .expect("RwLock read should not fail");
-            let active = sp.is_active();
-            let completed = sp.completed;
-            let total = sp.total;
-            drop(sp);
-            self.podcasts.title = if active {
-                format!("Podcasts (syncing {completed}/{total})")
-            } else {
-                "Podcasts".to_string()
-            };
-        }
         match self.left_panel {
             Panel::Podcasts => render_menuable_area(
                 frame,
@@ -89,7 +74,13 @@ impl UiState {
             self.active_panel == Panel::Queue,
         );
 
-        render_notification_line(frame, notif_area, &self.notification, &self.colors);
+        render_notification_line(
+            frame,
+            notif_area,
+            &self.notification,
+            &self.sync_progress,
+            &self.colors,
+        );
         render_help_line(frame, help_area, &self.keymap, &self.colors);
 
         if let Some(active_popup) = &self.active_popup {

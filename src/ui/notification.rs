@@ -1,8 +1,16 @@
-use ratatui::{Frame, layout::Rect, style::Stylize, text::Line};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::Stylize,
+    text::Line,
+};
 use std::{
     collections::VecDeque,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
+
+use crate::types::SyncProgress;
 
 use super::colors::AppColors;
 
@@ -79,8 +87,21 @@ impl NotificationManager {
 }
 
 pub fn render_notification_line(
-    frame: &mut Frame, area: Rect, notification: &NotificationManager, colors: &AppColors,
+    frame: &mut Frame, area: Rect, notification: &NotificationManager,
+    sync_progress: &Arc<RwLock<SyncProgress>>, colors: &AppColors,
 ) {
+    let sp = sync_progress.read().expect("RwLock read should not fail");
+    let sync_text = if sp.is_active() {
+        format!("Syncing {}/{} ", sp.completed, sp.total)
+    } else {
+        String::new()
+    };
+    drop(sp);
+
+    let sync_width = u16::try_from(sync_text.len()).unwrap_or(0);
+    let [notif_area, sync_area] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(sync_width)]).areas(area);
+
     let cur_notif = if notification.current_msg.is_some() {
         notification
             .current_msg
@@ -99,5 +120,12 @@ pub fn render_notification_line(
             }
         },
     );
-    frame.render_widget(line, area);
+    frame.render_widget(line, notif_area);
+
+    if !sync_text.is_empty() {
+        let sync_line = Line::from(sync_text)
+            .style(colors.normal)
+            .alignment(Alignment::Right);
+        frame.render_widget(sync_line, sync_area);
+    }
 }
