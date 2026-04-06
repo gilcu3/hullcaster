@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.0 (2026/04/06)
+
+- Migrated to fully async architecture (tokio + reqwest)
+- Periodic background feed synchronization
+- Better AntennaPod compatibility
+- Sync progress in notification bar no longer conflicts with other notifications
+- Proper media-control support on macOS
+- List position preserved when underlying data changes
+- Lockfile support to prevent concurrent instances
+- Database and subscription sync performance improvements
+- Updated to Rust 2024 edition, rodio 0.22, rustls
+- Comprehensive test suite covering db, gpodder, feeds, config, keymap, and utils
+
 ## v0.2.0 (2025/09/20)
 
 - Major changes
