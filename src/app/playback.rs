@@ -49,7 +49,8 @@ impl App {
         }
     }
 
-    /// Attempts to execute the play command on the given podcast episode.
+    /// Attempts to play the given podcast episode via the built-in player or, if external is set,
+    /// via the configured play command.
     pub fn play_file(&self, pod_id: i64, ep_id: i64, external: bool) -> Result<()> {
         let (ep_path, ep_url) = {
             let pod = self

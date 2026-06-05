@@ -10,8 +10,9 @@
 #download_path = "~/.local/share/hullcaster/"
 
 
-# Command to use to play episodes. Use "%s" to indicate where file/URL
-# will be entered to the command.
+# Command to use to play episodes externally. Use "%s" to indicate where
+# file/URL will be entered to the command.  If "%s" is not present in the
+# command, the file/URL will be appended.
 # Default: vlc %s
 
 #play_command = "vlc %s"
