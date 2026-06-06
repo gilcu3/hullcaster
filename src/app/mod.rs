@@ -108,7 +108,7 @@ impl App {
             .sync_interval_minutes
             .map(|m| Duration::from_secs(u64::from(m) * 60));
         let mut last_sync = Instant::now();
-        let recv_timeout = sync_interval.unwrap_or(Duration::from_secs(3600));
+        let recv_timeout = sync_interval.unwrap_or(Duration::from_hours(1));
 
         loop {
             let message = match self.rx_to_main.recv_timeout(recv_timeout) {

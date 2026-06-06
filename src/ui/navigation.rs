@@ -160,17 +160,16 @@ impl UiState {
                     return Some(UiMsg::QueueModified);
                 }
             }
-            UserAction::MoveUp => {
-                if selected >= 1 {
-                    {
-                        let mut order_vec = self.queue.items.borrow_order();
-                        order_vec.swap(selected, selected - 1);
-                    }
-                    self.queue.state.select(Some(selected - 1));
-                    self.queue.sync_selected_with_state();
-                    return Some(UiMsg::QueueModified);
+            UserAction::MoveUp if selected >= 1 => {
+                {
+                    let mut order_vec = self.queue.items.borrow_order();
+                    order_vec.swap(selected, selected - 1);
                 }
+                self.queue.state.select(Some(selected - 1));
+                self.queue.sync_selected_with_state();
+                return Some(UiMsg::QueueModified);
             }
+
             _ => (),
         }
 

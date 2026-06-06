@@ -63,7 +63,7 @@ pub fn download_list(
 async fn download_file(mut ep_data: EpData, dest: PathBuf, mut max_retries: usize) -> DownloadMsg {
     let Ok(client) = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .build()
     else {
         return DownloadMsg::Error(ep_data, DownloadError::Response);

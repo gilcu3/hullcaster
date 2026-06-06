@@ -392,7 +392,7 @@ pub(super) fn render_help_line(
             // longest prefix is 21 chars long
             let key_str = match keys.len() {
                 0 => format!(":{action_str}"),
-                _ => format!("{}:{}", &keys[0], action_str,),
+                _ => format!("{}:{}", &keys[0], action_str),
             };
             if cur_length + key_str.len() > area.width as usize {
                 break;

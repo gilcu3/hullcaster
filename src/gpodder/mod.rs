@@ -38,7 +38,7 @@ impl GpodderController {
     fn new(config: Config, timestamp: Option<u64>) -> Self {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_mins(2))
             .build()
             .expect("Could not build reqwest::Client");
 
