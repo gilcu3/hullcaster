@@ -148,10 +148,7 @@ impl Player {
 
     async fn play_file(&self, path: &PathBuf) -> Result<()> {
         let file = std::fs::File::open(path)?;
-        let source = rodio::Decoder::builder()
-            .with_seekable(true)
-            .with_data(file)
-            .build()?;
+        let source = rodio::Decoder::try_from(file)?;
         if !self.sink.empty() {
             self.sink.stop();
         }
@@ -177,10 +174,16 @@ impl Player {
         let reader =
             StreamDownload::from_stream(stream, TempStorageProvider::new(), Settings::default())
                 .await?;
-        let source = rodio::Decoder::builder()
-            .with_seekable(true)
-            .with_data(reader)
-            .build()?;
+        let source = {
+            match reader.content_length() {
+                None => rodio::Decoder::builder().with_data(reader).build()?,
+                Some(byte_len) => rodio::Decoder::builder()
+                    .with_data(reader)
+                    .with_byte_len(byte_len)
+                    .with_seekable(true)
+                    .build()?,
+            }
+        };
         if !self.sink.empty() {
             self.sink.stop();
         }
