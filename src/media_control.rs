@@ -8,7 +8,9 @@ use crate::{
 };
 
 pub enum ControlMessage {
-    PlayPause,
+    Toggle,
+    Play,
+    Pause,
 }
 
 fn update_control_metadata(
@@ -35,15 +37,32 @@ pub fn init_controls(
         let mut last_episode_id = -1_i64;
         let mut last_status = PlaybackStatus::Ready;
 
-        controls.attach(move |event: MediaControlEvent| {
-            if event == MediaControlEvent::Toggle {
+        controls.attach(move |event: MediaControlEvent| match event {
+            MediaControlEvent::Toggle => {
                 tx_to_ui
-                    .send(ControlMessage::PlayPause)
+                    .send(ControlMessage::Toggle)
                     .inspect_err(|err| {
-                        log::error!("Could not send ControlMessage::PlayPause to ui: {err}");
+                        log::error!("Could not send ControlMessage::Toggle to ui: {err}");
                     })
                     .ok();
             }
+            MediaControlEvent::Play => {
+                tx_to_ui
+                    .send(ControlMessage::Play)
+                    .inspect_err(|err| {
+                        log::error!("Could not send ControlMessage::Play to ui: {err}");
+                    })
+                    .ok();
+            }
+            MediaControlEvent::Pause => {
+                tx_to_ui
+                    .send(ControlMessage::Pause)
+                    .inspect_err(|err| {
+                        log::error!("Could not send ControlMessage::Pause to ui: {err}");
+                    })
+                    .ok();
+            }
+            _ => {}
         })?;
 
         async move {

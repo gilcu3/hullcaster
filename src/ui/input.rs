@@ -209,7 +209,7 @@ impl UiState {
                         Panel::Queue | Panel::Podcasts => {}
                     },
                     Some(UserAction::PlayPause) => {
-                        if let Some(msg) = self.play_pause() {
+                        if let Some(msg) = self.handle_control_message(ControlMessage::Toggle) {
                             return vec![msg];
                         }
                     }
@@ -346,8 +346,6 @@ impl UiState {
     pub(super) fn getcontrol(&self) -> Option<UiMsg> {
         let mut control_message_iter = self.rx_from_control.try_iter();
         let message = control_message_iter.next()?;
-        match message {
-            ControlMessage::PlayPause => self.play_pause(),
-        }
+        self.handle_control_message(message)
     }
 }

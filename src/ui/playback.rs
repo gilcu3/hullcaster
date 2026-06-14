@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 
 use crate::{
+    media_control::ControlMessage,
     player::{PlaybackStatus, PlayerMessage},
     types::{Episode, ShareableRwLock},
 };
@@ -61,11 +62,19 @@ impl UiState {
         Some(UiMsg::UpdatePosition(cur_ep.pod_id, cur_ep.id, position))
     }
 
-    pub(super) fn play_pause(&self) -> Option<UiMsg> {
+    pub(super) fn handle_control_message(&self, msg: ControlMessage) -> Option<UiMsg> {
         let playing = self.playing.read().expect("RwLock read should not fail");
-        self.tx_to_player
-            .blocking_send(PlayerMessage::PlayPause)
-            .ok()?;
+        match (msg, *playing) {
+            (ControlMessage::Toggle, _)
+            | (ControlMessage::Play, PlaybackStatus::Paused)
+            | (ControlMessage::Pause, PlaybackStatus::Playing) => {
+                self.tx_to_player
+                    .blocking_send(PlayerMessage::PlayPause)
+                    .ok()?;
+            }
+            _ => {}
+        }
+
         // only updates position after Pause
         match *playing {
             PlaybackStatus::Playing => self.update_position(),
