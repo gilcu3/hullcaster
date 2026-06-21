@@ -754,7 +754,6 @@ dependencies = [
  "block2 0.6.2",
  "coreaudio-rs",
  "dasp_sample",
- "futures",
  "jni",
  "js-sys",
  "libc",
@@ -770,7 +769,6 @@ dependencies = [
  "objc2-core-audio-types",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
- "pulseaudio",
  "web-sys",
  "windows 0.62.2",
  "windows-core",
@@ -1222,17 +1220,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ca9601fb2d62598ee17836250842873a413586e5d7ed88b356e38ddbb0ec631"
 dependencies = [
  "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "enum-primitive-derive"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba7795da175654fe16979af73f81f26a8ea27638d8d9823d317016888a63dc4c"
-dependencies = [
- "num-traits",
  "quote",
  "syn 2.0.117",
 ]
@@ -3257,22 +3244,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulseaudio"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d70623bd7967a9ca4c2ae0e807fc380b291f98480fc037042305ec643a4d3373"
-dependencies = [
- "bitflags 2.13.0",
- "byteorder",
- "enum-primitive-derive",
- "futures",
- "log",
- "mio",
- "num-traits",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.39.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3651,7 +3622,6 @@ dependencies = [
  "cpal",
  "dasp_sample",
  "num-rational",
- "rtrb",
  "symphonia",
  "symphonia-adapter-libopus",
  "thiserror 2.0.18",
@@ -3678,12 +3648,6 @@ dependencies = [
  "derive_builder",
  "quick-xml",
 ]
-
-[[package]]
-name = "rtrb"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ade083ccbb4bf536df69d1f6432cc23deb7acccff86b183f3923a6fd56a1153"
 
 [[package]]
 name = "rusqlite"
