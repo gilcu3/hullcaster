@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use tokio::sync::Semaphore;
 
@@ -107,19 +107,26 @@ impl App {
             .config
             .sync_interval_minutes
             .map(|m| Duration::from_secs(u64::from(m) * 60));
-        let mut last_sync = Instant::now();
-        let recv_timeout = sync_interval.unwrap_or(Duration::from_hours(1));
+        // Wall clock, so suspended time counts toward the interval (a monotonic
+        // `Instant` is frozen during suspend).
+        let mut last_sync = SystemTime::now();
+        // Cap the wait so the interval is re-checked regularly, not once per interval.
+        let poll_timeout = sync_interval.map_or(Duration::from_hours(1), |interval| {
+            interval.min(Duration::from_secs(60))
+        });
 
         loop {
-            let message = match self.rx_to_main.recv_timeout(recv_timeout) {
+            // Check on every iteration, not just on timeout: incoming messages
+            // otherwise reset the wait and starve auto-sync while the app is in use.
+            if let Some(interval) = sync_interval
+                && last_sync.elapsed().unwrap_or_default() >= interval
+            {
+                self.sync(None);
+                last_sync = SystemTime::now();
+            }
+            let message = match self.rx_to_main.recv_timeout(poll_timeout) {
                 Ok(msg) => msg,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if sync_interval.is_some() && last_sync.elapsed() >= recv_timeout {
-                        self.sync(None);
-                        last_sync = Instant::now();
-                    }
-                    continue;
-                }
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             };
             let result = match message {
@@ -166,7 +173,7 @@ impl App {
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);
-                    last_sync = Instant::now();
+                    last_sync = SystemTime::now();
                     Ok(())
                 }
 
