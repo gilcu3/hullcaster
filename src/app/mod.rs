@@ -53,6 +53,7 @@ pub struct App {
     sync_counter: usize,
     sync_progress: ShareableRwLock<SyncProgress>,
     sync_tracker: Vec<SyncResult>,
+    pending_gpodder: Option<sync::PendingGpodderSync>,
     download_tracker: HashSet<i64>,
     last_filter_time_ms: Cell<u128>,
     pub tx_to_ui: mpsc::Sender<MainMessage>,
@@ -86,6 +87,7 @@ impl App {
             sync_counter: 0,
             sync_progress,
             sync_tracker: Vec::new(),
+            pending_gpodder: None,
             download_tracker: HashSet::new(),
             last_filter_time_ms: 0.into(),
             tx_to_ui,
@@ -112,7 +114,7 @@ impl App {
         let mut last_sync = SystemTime::now();
         // Cap the wait so the interval is re-checked regularly, not once per interval.
         let poll_timeout = sync_interval.map_or(Duration::from_hours(1), |interval| {
-            interval.min(Duration::from_secs(60))
+            interval.min(Duration::from_mins(1))
         });
 
         loop {
@@ -140,6 +142,10 @@ impl App {
                 Message::Feed(FeedMsg::NewData(pod)) => self.add_or_sync_data(&pod, None),
 
                 Message::Feed(FeedMsg::Error(feed)) => {
+                    // If a gpodder sync is waiting on this feed, clear it from the
+                    // barrier so the sync isn't blocked on a feed that won't
+                    // arrive. A no-op for feeds it isn't waiting on.
+                    self.gpodder_feed_settled(&feed.url);
                     match feed.title {
                         Some(t) => {
                             self.sync_counter -= 1;
@@ -279,11 +285,12 @@ impl App {
                 }
                 Message::Ui(UiMsg::QueueModified) => self.write_queue(),
                 Message::Ui(UiMsg::Noop) => Ok(()),
-                Message::Gpodder(GpodderMsg::SubscriptionChanges(
-                    subscription_changes,
-                    episode_actions,
-                    timestamp,
-                )) => self.gpodder_sync_pos(subscription_changes, episode_actions, timestamp),
+                Message::Gpodder(GpodderMsg::SubscriptionChanges(subscription_changes)) => {
+                    self.gpodder_subscription_changes(subscription_changes)
+                }
+                Message::Gpodder(GpodderMsg::EpisodeActions(episode_actions, timestamp)) => {
+                    self.gpodder_episode_actions(episode_actions, timestamp)
+                }
                 Message::Gpodder(GpodderMsg::Error(msg)) => {
                     self.notif_to_ui(msg, true);
                     Ok(())

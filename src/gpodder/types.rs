@@ -16,6 +16,7 @@ pub struct EpisodePlayedData {
 #[derive(Debug)]
 pub enum GpodderRequest {
     GetSubscriptionChanges,
+    GetEpisodeActions,
     AddPodcast(String),
     RemovePodcast(String),
     MarkPlayed(EpisodePlayedData),
@@ -25,7 +26,8 @@ pub enum GpodderRequest {
 
 #[derive(Debug)]
 pub enum GpodderMsg {
-    SubscriptionChanges((Vec<String>, Vec<String>), Vec<EpisodeAction>, u64),
+    SubscriptionChanges((Vec<String>, Vec<String>)),
+    EpisodeActions(Vec<EpisodeAction>, u64),
     Error(String),
 }
 

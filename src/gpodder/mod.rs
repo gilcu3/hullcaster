@@ -64,33 +64,43 @@ impl GpodderController {
             if let Ok(message) = rx_from_app.try_recv() {
                 match message {
                     GpodderRequest::GetSubscriptionChanges => {
-                        let mut had_error = false;
                         let subscription_changes = sync_client
                             .get_subscription_changes()
                             .await
                             .unwrap_or_else(|err| {
                                 log::error!("Failed to get subscription changes: {err}");
                                 send_error(&tx_to_app, format!("Gpodder sync failed: {err}"));
-                                had_error = true;
                                 (Vec::new(), Vec::new())
                             });
+                        // Send subscription changes only; episode actions are
+                        // fetched in a second phase (GetEpisodeActions) once the
+                        // newly-added podcasts' feeds have been ingested, so their
+                        // episodes exist before actions are applied.
+                        if tx_to_app
+                            .send(Message::Gpodder(GpodderMsg::SubscriptionChanges(
+                                subscription_changes,
+                            )))
+                            .is_err()
+                        {
+                            log::error!("Failed to send gpodder message: channel closed");
+                            break;
+                        }
+                    }
+                    GpodderRequest::GetEpisodeActions => {
                         let episode_actions = sync_client
                             .get_episode_action_changes()
                             .await
                             .unwrap_or_else(|err| {
                                 log::error!("Failed to get episode action changes: {err:?}");
-                                if !had_error {
-                                    send_error(
-                                        &tx_to_app,
-                                        format!("Gpodder episode sync failed: {err}"),
-                                    );
-                                }
+                                send_error(
+                                    &tx_to_app,
+                                    format!("Gpodder episode sync failed: {err}"),
+                                );
                                 Vec::new()
                             });
                         let timestamp = sync_client.get_timestamp();
                         if tx_to_app
-                            .send(Message::Gpodder(GpodderMsg::SubscriptionChanges(
-                                subscription_changes,
+                            .send(Message::Gpodder(GpodderMsg::EpisodeActions(
                                 episode_actions,
                                 timestamp,
                             )))
@@ -1066,7 +1076,7 @@ mod tests {
             run_spawn_and_collect(config, Some(0), GpodderRequest::GetSubscriptionChanges).await;
 
         let sub_changes = messages.iter().find_map(|m| {
-            if let Message::Gpodder(GpodderMsg::SubscriptionChanges(changes, _, _)) = m {
+            if let Message::Gpodder(GpodderMsg::SubscriptionChanges(changes)) = m {
                 Some(changes)
             } else {
                 None
@@ -1077,6 +1087,45 @@ mod tests {
         assert_eq!(added.len(), 3);
         assert!(removed.is_empty());
         assert!(added.contains(&"https://example.com/feed1.xml".to_string()));
+    }
+
+    #[tokio::test]
+    async fn spawn_get_episode_actions_returns_actions() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 2000,
+                "actions": [{
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://example.com/ep1.mp3",
+                    "action": "play",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "position": 30,
+                    "total": 120
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let messages =
+            run_spawn_and_collect(config, Some(1000), GpodderRequest::GetEpisodeActions).await;
+
+        let actions = messages.iter().find_map(|m| {
+            if let Message::Gpodder(GpodderMsg::EpisodeActions(actions, _)) = m {
+                Some(actions)
+            } else {
+                None
+            }
+        });
+        assert!(
+            actions.is_some(),
+            "Expected EpisodeActions, got: {messages:?}"
+        );
+        assert_eq!(actions.unwrap().len(), 1);
     }
 
     #[tokio::test]

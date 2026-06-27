@@ -6,6 +6,18 @@ struct PodcastEpisodeMap {
     by_guid: HashMap<String, i64>,
 }
 
+/// State held between the two phases of a gpodder sync. Phase 1 subscribes to
+/// the new podcasts the server reports and records the feeds we are still
+/// fetching; phase 2 (`GetEpisodeActions`) only runs once those feeds have all
+/// settled, so the episodes exist locally before play/position actions are
+/// applied.
+pub(super) struct PendingGpodderSync {
+    /// Normalized URLs of newly-subscribed podcasts whose feeds are still being
+    /// fetched. Drained as `gpodder_feed_settled` fires for each one (whether it
+    /// succeeded or failed).
+    awaited_feeds: HashSet<String>,
+}
+
 use super::{
     Action, App, Arc, EpisodeAction, GpodderRequest, HashMap, PodcastFeed, PodcastNoId, Result,
     feeds, normalize_url, resolve_redirection,
@@ -122,6 +134,9 @@ impl App {
                         format!("Successfully added {} episodes.", result.added.len()),
                         false,
                     );
+                    // If a gpodder sync is waiting on this feed, mark it settled
+                    // (now that its episodes exist) so episode actions can run.
+                    self.gpodder_feed_settled(&pod.url);
                 }
             }
             Err(_err) => self.notif_to_ui(failure, true),
@@ -148,8 +163,13 @@ impl App {
     }
 
     /// Processes subscription changes: adds server-only podcasts locally,
-    /// uploads local-only podcasts to server, returns IDs of podcasts to remove.
-    fn process_subscription_changes(&self, added: Vec<String>, deleted: Vec<String>) -> Vec<i64> {
+    /// uploads local-only podcasts to server. Returns the IDs of podcasts to
+    /// remove and the normalized URLs of the newly-added podcasts whose feeds
+    /// are now being fetched (the set the gpodder sync waits on before applying
+    /// episode actions).
+    fn process_subscription_changes(
+        &self, added: Vec<String>, deleted: Vec<String>,
+    ) -> (Vec<i64>, HashSet<String>) {
         // Build map with normalized URLs for comparison
         let pod_map: HashMap<String, (i64, String)> = self
             .podcasts
@@ -163,12 +183,14 @@ impl App {
 
         // Add server podcasts not in local
         let mut server_urls = HashSet::new();
+        let mut awaited_feeds = HashSet::new();
         for url in added {
             let url_resolved = resolve_redirection(&url).unwrap_or(url);
             let normalized = normalize_url(&url_resolved);
             server_urls.insert(normalized.clone());
             if !pod_map.contains_key(&normalized) {
                 self.add_podcast(url_resolved);
+                awaited_feeds.insert(normalized);
             }
         }
 
@@ -191,23 +213,69 @@ impl App {
         }
 
         // Resolve deleted URLs and find matching local podcast IDs
-        deleted
+        let removed_pods = deleted
             .into_iter()
             .filter_map(|url| {
                 let url_resolved = resolve_redirection(&url).unwrap_or(url);
                 let normalized = normalize_url(&url_resolved);
                 pod_map.get(&normalized).map(|(id, _)| *id)
             })
-            .collect()
+            .collect();
+
+        (removed_pods, awaited_feeds)
     }
 
-    pub(super) fn gpodder_sync_pos(
+    /// Phase 1 of a gpodder sync: handle subscription changes. Adds the new
+    /// podcasts the server reports (spawning their feed fetches) and removes
+    /// deleted ones, then either requests the episode actions immediately (when
+    /// no new feeds are pending) or waits for those feeds to arrive first.
+    pub(super) fn gpodder_subscription_changes(
         &mut self, subscription_changes: (Vec<String>, Vec<String>),
-        episode_actions: Vec<EpisodeAction>, timestamp: u64,
     ) -> Result<()> {
         let (added, deleted) = subscription_changes;
-        let removed_pods = self.process_subscription_changes(added, deleted);
+        let (removed_pods, awaited_feeds) = self.process_subscription_changes(added, deleted);
 
+        for pod_id in removed_pods {
+            self.remove_podcast(pod_id, true)?;
+        }
+
+        self.pending_gpodder = Some(PendingGpodderSync { awaited_feeds });
+        self.maybe_request_episode_actions()
+    }
+
+    /// Requests episode actions (phase 2) once every newly-subscribed feed has
+    /// been fetched, so the episodes exist locally before actions are applied.
+    fn maybe_request_episode_actions(&self) -> Result<()> {
+        if let Some(pending) = &self.pending_gpodder
+            && pending.awaited_feeds.is_empty()
+        {
+            self.tx_to_gpodder.send(GpodderRequest::GetEpisodeActions)?;
+        }
+        Ok(())
+    }
+
+    /// Phase 2 of a gpodder sync: apply the episode actions. By now every
+    /// newly-subscribed podcast's feed has settled, so for feeds that succeeded
+    /// the episodes exist locally and their play/position status is no longer
+    /// lost. The timestamp is a server-fetch watermark (`min` of the
+    /// subscriptions and actions timestamps, each only advanced on a successful
+    /// fetch), so it is persisted unconditionally: a feed that failed to fetch
+    /// is retried via subscription changes, not by replaying episode actions.
+    pub(super) fn gpodder_episode_actions(
+        &mut self, episode_actions: Vec<EpisodeAction>, timestamp: u64,
+    ) -> Result<()> {
+        self.pending_gpodder = None;
+        let number_updates = self.apply_gpodder_episode_actions(episode_actions)?;
+        self.finalize_gpodder_sync(timestamp, number_updates);
+        Ok(())
+    }
+
+    /// Matches gpodder episode actions to local episodes (by GUID, then URL) and
+    /// applies the resulting play positions. Returns the number of episodes
+    /// updated.
+    fn apply_gpodder_episode_actions(
+        &mut self, episode_actions: Vec<EpisodeAction>,
+    ) -> Result<usize> {
         let pod_data: HashMap<String, PodcastEpisodeMap> = self
             .podcasts
             .map(
@@ -280,18 +348,20 @@ impl App {
                 Action::Delete | Action::Download | Action::New => {}
             }
         }
-        let mut updates = Vec::new();
 
-        for ((pod_id, ep_id), (position, total)) in last_actions {
-            updates.push((pod_id, ep_id, position, total));
-        }
+        let updates: Vec<(i64, i64, u64, u64)> = last_actions
+            .into_iter()
+            .map(|((pod_id, ep_id), (position, total))| (pod_id, ep_id, position, total))
+            .collect();
         let number_updates = updates.len();
 
-        // mutable actions on self
         self.mark_played_db_batch(updates)?;
-        for pod_id in removed_pods {
-            self.remove_podcast(pod_id, true)?;
-        }
+        Ok(number_updates)
+    }
+
+    /// Completes a gpodder sync: persists the sync timestamp, refreshes the UI,
+    /// and notifies how many episodes were updated.
+    fn finalize_gpodder_sync(&self, timestamp: u64, number_updates: usize) {
         self.db
             .set_param("timestamp", &timestamp.to_string())
             .inspect_err(|err| log::error!("Failed to set timestamp in database: {err}"))
@@ -302,7 +372,24 @@ impl App {
             format!("Gpodder sync finished with {number_updates} updates"),
             false,
         );
-        Ok(())
+    }
+
+    /// Records that a newly-subscribed podcast's feed has settled, whether it
+    /// was fetched successfully or failed. Once every feed a gpodder sync is
+    /// waiting on has settled, the episode actions are requested. A no-op for
+    /// feeds the sync is not waiting on (e.g. manual additions). A failed feed
+    /// is simply dropped from the wait set so the sync isn't blocked on it.
+    pub(super) fn gpodder_feed_settled(&mut self, url: &str) {
+        let normalized = normalize_url(url);
+        let cleared = self
+            .pending_gpodder
+            .as_mut()
+            .is_some_and(|pending| pending.awaited_feeds.remove(&normalized));
+        if cleared {
+            self.maybe_request_episode_actions()
+                .inspect_err(|err| log::error!("Failed to request episode actions: {err}"))
+                .ok();
+        }
     }
 
     pub(super) fn pos_sync_counter(&mut self) {
