@@ -1,5 +1,9 @@
 [advisories]
-ignore = []
+ignore = [
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; pulled in by winit" },
+  { id = "RUSTSEC-2026-0194", reason = "quick-xml DoS on untrusted XML; pulled in by winit" },
+  { id = "RUSTSEC-2026-0195", reason = "same quick-xml build-time usage as RUSTSEC-2026-0194" },
+]
 [licenses]
 allow = [
   "MIT",
