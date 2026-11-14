@@ -222,8 +222,8 @@ pub(super) fn render_shortcut_help_popup(
                     // longest prefix is 21 chars long
                     let key_str = match keys.len() {
                         0 => format!("{action_str:>28} <missing>"),
-                        1 => format!("{:>28} \"{}\"", action_str, &keys[0]),
-                        _ => format!("{:>28} \"{}\" or \"{}\"", action_str, &keys[0], &keys[1]),
+                        1 => format!("{:>28} \"{}\"", action_str, keys[0]),
+                        _ => format!("{:>28} \"{}\" or \"{}\"", action_str, keys[0], keys[1]),
                     };
                     if action == UserAction::Back && !keys.is_empty() {
                         back_key = format!("\"{}\"", keys[0]);
@@ -392,7 +392,7 @@ pub(super) fn render_help_line(
             // longest prefix is 21 chars long
             let key_str = match keys.len() {
                 0 => format!(":{action_str}"),
-                _ => format!("{}:{}", &keys[0], action_str),
+                _ => format!("{}:{}", keys[0], action_str),
             };
             if cur_length + key_str.len() > area.width as usize {
                 break;

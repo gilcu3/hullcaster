@@ -329,9 +329,9 @@ mod tests {
 
         let ep = &data.episodes[0];
         assert_eq!(ep.title, "#20 I Want To Break Free");
-        assert!(!ep.url.is_empty());
-        assert!(!ep.guid.is_empty());
-        assert!(!ep.description.is_empty());
+        assert_ne!(ep.url, "");
+        assert_ne!(ep.guid, "");
+        assert_ne!(ep.description, "");
         assert!(ep.pubdate.is_some());
         assert_eq!(ep.duration, Some(1824));
     }
@@ -340,10 +340,10 @@ mod tests {
     fn parse_episode_missing_all_optional() {
         let item = Item::default();
         let ep = parse_episode_data(&item);
-        assert!(ep.title.is_empty());
-        assert!(ep.url.is_empty());
-        assert!(ep.guid.is_empty());
-        assert!(ep.description.is_empty());
+        assert_eq!(ep.title, "");
+        assert_eq!(ep.url, "");
+        assert_eq!(ep.guid, "");
+        assert_eq!(ep.description, "");
         assert!(ep.pubdate.is_none());
         assert!(ep.duration.is_none());
     }

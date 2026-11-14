@@ -264,9 +264,9 @@ mod tests {
         assert!(!config.enable_sync);
         assert!(config.sync_on_start);
         assert!(config.confirm_quit);
-        assert!(config.sync_server.is_empty());
-        assert!(config.sync_username.is_empty());
-        assert!(config.sync_password.is_empty());
+        assert_eq!(config.sync_server, "");
+        assert_eq!(config.sync_username, "");
+        assert_eq!(config.sync_password, "");
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
         )
         .unwrap();
         assert!(config.enable_sync);
-        assert!(config.sync_server.is_empty());
+        assert_eq!(config.sync_server, "");
     }
 
     #[test]
@@ -391,7 +391,7 @@ mod tests {
         )
         .unwrap();
         assert!(config.enable_sync);
-        assert!(config.sync_username.is_empty());
+        assert_eq!(config.sync_username, "");
     }
 
     #[test]

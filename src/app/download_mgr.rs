@@ -203,7 +203,7 @@ impl App {
                 .episodes;
             let mut borrowed_ep_map = episodes.borrow_map();
 
-            for (_, ep) in borrowed_ep_map.iter_mut() {
+            for ep in borrowed_ep_map.values_mut() {
                 let mut ep = ep.write().expect("RwLock write should not fail");
                 if ep.path.is_some() {
                     eps_path_to_remove.push(

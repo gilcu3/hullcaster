@@ -14,12 +14,16 @@ use crate::types::SyncProgress;
 
 use super::colors::AppColors;
 
+// derive_more::Constructor expands to `field: field` with our spans, which clippy
+// misreports as redundant_field_names in the struct definition.
+#[allow(clippy::redundant_field_names)]
 #[derive(Debug, Clone, PartialEq, Default, derive_more::Constructor)]
 struct Notification {
     message: String,
     error: bool,
 }
 
+#[allow(clippy::redundant_field_names)]
 #[derive(Debug, Clone, PartialEq, Default, derive_more::Constructor)]
 struct PendingNotification {
     message: String,

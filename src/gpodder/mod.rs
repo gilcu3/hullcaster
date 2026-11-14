@@ -722,7 +722,7 @@ mod tests {
 
         let (added, removed) = controller.get_subscription_changes().await.unwrap();
         assert_eq!(added.len(), 2);
-        assert!(removed.is_empty());
+        assert_eq!(removed, Vec::<String>::new());
     }
 
     #[tokio::test]
@@ -1085,7 +1085,7 @@ mod tests {
         assert!(sub_changes.is_some(), "Expected SubscriptionChanges");
         let (added, removed) = sub_changes.unwrap();
         assert_eq!(added.len(), 3);
-        assert!(removed.is_empty());
+        assert_eq!(*removed, Vec::<String>::new());
         assert!(added.contains(&"https://example.com/feed1.xml".to_string()));
     }
 

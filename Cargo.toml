@@ -22,7 +22,7 @@ base64 = "0.23.1"
 chrono = "0.4.44"
 clap = { version = "4.6.7", features = ["cargo", "env"] }
 console-subscriber = { version = "0.5.0", optional = true }
-derive_more = { version = "2.0.0", features = ["constructor"] }
+derive_more = { version = "2.1.1", features = ["constructor"] }
 dirs = { package = "dirs-next", version = "2.0.0" }
 escaper = "0.1.1"
 fs2 = "0.4.3"
@@ -76,8 +76,8 @@ overflow-checks = true
 
 [lints.clippy]
 panic = "deny"
-panic-in-result-fn = "warn"
-unwrap-used = "deny"
+panic_in_result_fn = "warn"
+unwrap_used = "deny"
 
 # Workaround for clippy on MacOS
 future_not_send = "allow"

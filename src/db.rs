@@ -752,7 +752,7 @@ mod tests {
 
         let result = db.insert_podcast(&podcast).unwrap();
         assert_eq!(result.added.len(), 2);
-        assert!(result.updated.is_empty());
+        assert_eq!(result.updated, Vec::<i64>::new());
 
         let podcasts = db.get_podcasts().unwrap();
         assert_eq!(podcasts.len(), 1);
@@ -787,8 +787,8 @@ mod tests {
             .unwrap();
 
         db.remove_podcast(pod_id).unwrap();
-        assert!(db.get_podcasts().unwrap().is_empty());
-        assert!(db.get_episodes(pod_id).unwrap().is_empty());
+        assert_eq!(db.get_podcasts().unwrap(), Vec::<Podcast>::new());
+        assert_eq!(db.get_episodes(pod_id).unwrap(), Vec::<Episode>::new());
     }
 
     #[test]
@@ -966,7 +966,7 @@ mod tests {
     fn queue_empty() {
         let mut db = Database::connect_in_memory().unwrap();
         db.set_queue(Vec::new()).unwrap();
-        assert!(db.get_queue().unwrap().is_empty());
+        assert_eq!(db.get_queue().unwrap(), Vec::<i64>::new());
     }
 
     #[test]
@@ -976,7 +976,7 @@ mod tests {
         db.insert_podcast(&podcast).unwrap();
 
         db.clear_db().unwrap();
-        assert!(db.get_podcasts().unwrap().is_empty());
+        assert_eq!(db.get_podcasts().unwrap(), Vec::<Podcast>::new());
     }
 
     #[test]

@@ -508,7 +508,7 @@ impl<T: Menuable> Clone for LockVec<T> {
 impl LockVec<Podcast> {
     pub fn get_episodes_map(&self) -> HashMap<i64, Arc<RwLock<Episode>>> {
         let mut all_ep_map = HashMap::new();
-        for (_pod_id, pod) in self.borrow_map().iter() {
+        for pod in self.borrow_map().values() {
             let episodes = &pod.read().expect("RwLock read should not fail").episodes;
             let ep_map = episodes.borrow_map();
             for (ep_id, ep) in ep_map.iter() {
