@@ -1,8 +1,8 @@
 use base64::Engine;
-use chrono::{DateTime, TimeZone, Utc};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeStruct};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStruct};
 use serde_json::Value;
-use std::{fmt, sync::RwLock};
+use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct EpisodePlayedData {
@@ -106,8 +106,9 @@ pub struct EpisodeAction {
     #[serde(default)]
     pub guid: Option<String>,
     pub action: Action,
-    #[serde(deserialize_with = "deserialize_date")]
-    pub timestamp: u64,
+    /// When the action happened, in Unix seconds. Optional in the gpodder API.
+    #[serde(deserialize_with = "deserialize_date", default)]
+    pub timestamp: Option<u64>,
     #[serde(deserialize_with = "i64_to_u64_deserializer", default)]
     pub started: Option<u64>,
     #[serde(deserialize_with = "i64_to_u64_deserializer", default)]
@@ -116,32 +117,29 @@ pub struct EpisodeAction {
     pub total: Option<u64>,
 }
 
-fn deserialize_date<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn deserialize_date<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    struct GpodderDate;
-
-    impl Visitor<'_> for GpodderDate {
-        type Value = u64;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a date string in the format YYYY-MM-DD")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            let dt = DateTime::parse_from_rfc3339(value)
-                .map_err(|err| E::custom(format!("failed to parse date: {err}")))?;
-            dt.timestamp()
-                .try_into()
-                .map_err(|err| E::custom(format!("failed to parse date: {err}")))
-        }
+    let Value::String(value) = Value::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    let timestamp = parse_gpodder_date(&value);
+    if timestamp.is_none() {
+        log::debug!("Ignoring unparsable episode action timestamp: {value}");
     }
+    Ok(timestamp)
+}
 
-    deserializer.deserialize_str(GpodderDate)
+fn parse_gpodder_date(value: &str) -> Option<u64> {
+    let seconds = DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.timestamp())
+        .or_else(|_| {
+            NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
+                .map(|dt| dt.and_utc().timestamp())
+        })
+        .ok()?;
+    u64::try_from(seconds).ok()
 }
 
 fn i64_to_u64_deserializer<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
@@ -170,7 +168,10 @@ impl Serialize for EpisodeAction {
     where
         S: Serializer,
     {
-        let field_count = 7 + usize::from(self.device.is_some()) + usize::from(self.guid.is_some());
+        let field_count = 6
+            + usize::from(self.device.is_some())
+            + usize::from(self.guid.is_some())
+            + usize::from(self.timestamp.is_some());
         let mut state = serializer.serialize_struct("EpisodeAction", field_count)?;
         state.serialize_field("podcast", &self.podcast)?;
         state.serialize_field("episode", &self.episode)?;
@@ -187,16 +188,14 @@ impl Serialize for EpisodeAction {
             Action::Delete => "delete",
         };
         state.serialize_field("action", action)?;
-        let datetime = Utc.timestamp_opt(
-            self.timestamp
-                .try_into()
-                .map_err(|_| serde::ser::Error::custom("timestamp conversion error"))?,
-            0,
-        );
-        let datetime_str = datetime
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        state.serialize_field("timestamp", datetime_str.as_str())?;
+        if let Some(timestamp) = self.timestamp {
+            let datetime = i64::try_from(timestamp)
+                .ok()
+                .and_then(|seconds| Utc.timestamp_opt(seconds, 0).single())
+                .ok_or_else(|| serde::ser::Error::custom("timestamp conversion error"))?;
+            let datetime_str = datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            state.serialize_field("timestamp", datetime_str.as_str())?;
+        }
         state.serialize_field("started", &self.started)?;
         state.serialize_field("position", &self.position)?;
         state.serialize_field("total", &self.total)?;
@@ -306,18 +305,34 @@ mod tests {
         }"#;
         let action: EpisodeAction = serde_json::from_str(json).unwrap();
         // 2024-01-01T00:00:00Z = 1704067200 Unix seconds
-        assert_eq!(action.timestamp, 1_704_067_200);
+        assert_eq!(action.timestamp, Some(1_704_067_200));
     }
 
     #[test]
-    fn deserialize_invalid_timestamp_fails() {
-        let json = r#"{
-            "podcast": "p",
-            "episode": "e",
-            "action": "new",
-            "timestamp": "not-a-date"
-        }"#;
-        assert!(serde_json::from_str::<EpisodeAction>(json).is_err());
+    fn deserialize_timestamp_without_zone_is_utc() {
+        for timestamp in ["2024-01-01T00:00:00", "2024-01-01T00:00:00.250"] {
+            let json = format!(
+                r#"{{"podcast": "p", "episode": "e", "action": "play", "timestamp": "{timestamp}"}}"#
+            );
+            let action: EpisodeAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(action.timestamp, Some(1_704_067_200), "{timestamp}");
+        }
+    }
+
+    #[test]
+    fn deserialize_missing_or_invalid_timestamp_keeps_action() {
+        for timestamp in [
+            "",
+            r#", "timestamp": null"#,
+            r#", "timestamp": "yesterday""#,
+        ] {
+            let json = format!(
+                r#"{{"podcast": "p", "episode": "e", "action": "play", "position": 60, "total": 120{timestamp}}}"#
+            );
+            let action: EpisodeAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(action.timestamp, None, "{json}");
+            assert_eq!(action.position, Some(60));
+        }
     }
 
     #[test]

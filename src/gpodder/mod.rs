@@ -1,4 +1,3 @@
-use anyhow::Context;
 use anyhow::{Result, anyhow};
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -206,7 +205,7 @@ impl GpodderController {
                 device: Some(self.config.device.clone()),
                 guid: (!ep.guid.is_empty()).then_some(ep.guid),
                 action: Action::Play,
-                timestamp,
+                timestamp: Some(timestamp),
                 started: Some(0),
                 position: Some(ep.position),
                 total: Some(ep.duration),
@@ -250,15 +249,16 @@ impl GpodderController {
             .ok_or_else(|| anyhow!("Failed to get actions"))?;
         let mut actions: Vec<EpisodeAction> = Vec::new();
         for action in episode_actions {
-            let action = serde_json::from_value::<EpisodeAction>(action.clone())
-                .with_context(|| format!("{action:?}"))?;
-            actions.push(action);
+            match serde_json::from_value::<EpisodeAction>(action.clone()) {
+                Ok(action) => actions.push(action),
+                Err(err) => log::warn!("Skipping unparsable episode action ({err}): {action}"),
+            }
         }
         *self
             .state
             .actions_timestamp
             .write()
-            .expect("RwLock write should not fail") = timestamp + 1;
+            .expect("RwLock write should not fail") = timestamp;
         Ok(actions)
     }
 
@@ -529,7 +529,7 @@ impl GpodderController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::matchers::{body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(server_url: &str) -> Config {
@@ -681,6 +681,7 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/api/2/episodes/testuser.json"))
+            .and(query_param("since", "1000"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "timestamp": 5000,
                 "actions": [
@@ -714,15 +715,78 @@ mod tests {
         assert_eq!(actions[0].position, Some(300));
         assert!(matches!(actions[1].action, Action::Download));
 
-        // Timestamp should be updated to response timestamp + 1
+        // The response timestamp is stored as is, for use as the next `since`
         assert_eq!(
             *controller
                 .state
                 .actions_timestamp
                 .read()
                 .expect("RwLock read should not fail"),
-            5001
+            5000
         );
+    }
+
+    #[tokio::test]
+    async fn get_episode_action_changes_skips_unparsable_actions() {
+        let server = MockServer::start().await;
+        mock_login_and_init(&server).await;
+
+        // goPodder style: zone-less timestamps and omitted optional fields,
+        // mixed with actions this client cannot parse.
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .and(query_param("since", "1000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 5000,
+                "actions": [
+                    {
+                        "podcast": "https://example.com/feed.xml",
+                        "episode": "https://example.com/ep1.mp3",
+                        "device": "antennapod",
+                        "action": "play",
+                        "timestamp": "2024-05-10T07:54:45",
+                        "started": 0,
+                        "position": 300,
+                        "total": 3600
+                    },
+                    {
+                        "podcast": "https://example.com/feed.xml",
+                        "episode": "https://example.com/ep2.mp3",
+                        "action": "flattr"
+                    },
+                    {
+                        "episode": "https://example.com/ep3.mp3",
+                        "action": "play"
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .and(query_param("since", "5000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "timestamp": 6000,
+                "actions": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let controller = GpodderController::new(config, Some(1000));
+
+        let actions = controller.get_episode_action_changes().await.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].episode, "https://example.com/ep1.mp3");
+        assert_eq!(actions[0].timestamp, Some(1_715_327_685));
+        assert_eq!(actions[0].position, Some(300));
+
+        // The skipped actions must not stall the sync: the next request asks
+        // for changes since the returned timestamp.
+        let actions = controller.get_episode_action_changes().await.unwrap();
+        assert!(actions.is_empty());
     }
 
     #[tokio::test]
