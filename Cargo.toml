@@ -18,25 +18,25 @@ instrument = ["tokio/tracing", "console-subscriber"]
 
 [dependencies]
 anyhow = "1.0.102"
-base64 = "0.22.1"
+base64 = "0.23.1"
 chrono = "0.4.44"
-clap = { version = "4.6.0", features = ["cargo", "env"] }
+clap = { version = "4.6.7", features = ["cargo", "env"] }
 console-subscriber = { version = "0.5.0", optional = true }
 derive_more = { version = "2.0.0", features = ["constructor"] }
 dirs = { package = "dirs-next", version = "2.0.0" }
 escaper = "0.1.1"
 fs2 = "0.4.3"
 gag = "1.0.0"
-log = "0.4.29"
+log = "0.4.35"
 opml = "1.1.6"
-ratatui = "0.30.0"
+ratatui = "0.30.2"
 regex = "1.12.3"
-reqwest = { version = "0.13.2", default-features = false, features = [
+reqwest = { version = "0.13.5", default-features = false, features = [
   "cookies",
   "blocking",
   "query",
 ] }
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "3ee9745862279ce1d18db593155016e7ce024aeb", default-features = false, features = [
+rodio = { git = "https://github.com/RustAudio/rodio", rev = "685e05765c2aff8fbb51e32cda5b18428d09ffbe", default-features = false, features = [
   "playback",
   "flac",
   "mp3",
@@ -48,24 +48,24 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "3ee9745862279ce1d18
   "symphonia-all",
   "symphonia-libopus",
 ] }
-rss = "2.0.12"
-rusqlite = "0.39.0"
+rss = "2.1.2"
+rusqlite = "0.42.0"
 sanitize-filename = "0.6.0"
 semver = "1.0.27"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 shellexpand = "3.1.2"
 simplelog = { version = "0.12.2", features = ["local-offset"] }
-souvlaki = "0.8.3"
-stream-download = { version = "0.24.0", features = ["reqwest-rustls"] }
-symphonia = { version = "0.5.5", features = ["mp3"] }
+souvlaki = "0.9.3"
+stream-download = { version = "0.24.5", features = ["reqwest-rustls"] }
+symphonia = { version = "0.6.1", features = ["mp3"] }
 tokio = { version = "1.50.0", features = ["rt-multi-thread"] }
-toml = "0.9.12"
-tui-input = "0.15.0"
+toml = "1.2.1"
+tui-input = "0.15.5"
 unicode-segmentation = "1.13.2"
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-winit = "0.30.13"
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+winit = { version = "0.30.13", default-features = false }
 
 [profile.reproducible]
 inherits = "release"

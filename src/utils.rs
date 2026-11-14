@@ -7,11 +7,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use symphonia::core::codecs::CODEC_TYPE_NULL;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -45,29 +44,21 @@ pub fn evaluate_in_shell(value: &str) -> Result<String> {
 pub fn audio_duration(audio_bytes: Vec<u8>) -> Result<u64> {
     let cursor = Cursor::new(audio_bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), MediaSourceStreamOptions::default());
-    let probed = get_probe().format(
+    let format = get_probe().probe(
         &Hint::new(),
         mss,
-        &FormatOptions::default(),
-        &MetadataOptions::default(),
+        FormatOptions::default(),
+        MetadataOptions::default(),
     )?;
-    let mut duration = 0;
-    for track in probed.format.tracks() {
-        if track.codec_params.codec != CODEC_TYPE_NULL {
-            let tt = track
-                .codec_params
-                .time_base
-                .ok_or_else(|| anyhow!("time_base is None"))?
-                .calc_time(
-                    track
-                        .codec_params
-                        .n_frames
-                        .ok_or_else(|| anyhow!("n_frames is None"))?,
-                );
-            duration += tt.seconds;
-        }
-    }
-    Ok(duration)
+    let track = format
+        .first_track_known_codec(TrackType::Audio)
+        .ok_or_else(|| anyhow!("no audio track with a known codec"))?;
+    let time = track
+        .time_base
+        .ok_or_else(|| anyhow!("time_base is None"))?
+        .calc_duration(track.duration.ok_or_else(|| anyhow!("duration is None"))?)
+        .ok_or_else(|| anyhow!("duration overflows"))?;
+    Ok(u64::try_from(time.as_secs())?)
 }
 
 pub fn audio_duration_file(file_path: PathBuf) -> Result<u64> {
