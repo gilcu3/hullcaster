@@ -100,6 +100,9 @@ pub enum Action {
 pub struct EpisodeAction {
     pub podcast: String,
     pub episode: String,
+    /// The device the action happened on. Optional in the gpodder API.
+    #[serde(default)]
+    pub device: Option<String>,
     #[serde(default)]
     pub guid: Option<String>,
     pub action: Action,
@@ -167,10 +170,13 @@ impl Serialize for EpisodeAction {
     where
         S: Serializer,
     {
-        let field_count = if self.guid.is_some() { 8 } else { 7 };
+        let field_count = 7 + usize::from(self.device.is_some()) + usize::from(self.guid.is_some());
         let mut state = serializer.serialize_struct("EpisodeAction", field_count)?;
         state.serialize_field("podcast", &self.podcast)?;
         state.serialize_field("episode", &self.episode)?;
+        if let Some(device) = &self.device {
+            state.serialize_field("device", device)?;
+        }
         if let Some(guid) = &self.guid {
             state.serialize_field("guid", guid)?;
         }
@@ -334,6 +340,7 @@ mod tests {
         let json = r#"{
             "podcast": "https://example.com/feed.xml",
             "episode": "https://example.com/ep.mp3",
+            "device": "laptop",
             "action": "play",
             "timestamp": "2024-01-01T00:00:00Z",
             "started": 0,
@@ -346,6 +353,7 @@ mod tests {
 
         assert_eq!(action.podcast, deserialized.podcast);
         assert_eq!(action.episode, deserialized.episode);
+        assert_eq!(deserialized.device.as_deref(), Some("laptop"));
         assert_eq!(action.timestamp, deserialized.timestamp);
         assert_eq!(action.position, deserialized.position);
         assert_eq!(action.total, deserialized.total);

@@ -123,23 +123,12 @@ impl GpodderController {
                         }
                     }
                     GpodderRequest::MarkPlayed(data) => {
-                        if let Err(err) = sync_client
-                            .mark_played(
-                                &data.podcast_url,
-                                &data.episode_url,
-                                &data.guid,
-                                data.position,
-                                data.duration,
-                            )
-                            .await
-                        {
-                            log::error!("Failed to mark played {}: {err}", data.episode_url);
+                        let episode_url = data.episode_url.clone();
+                        if let Err(err) = sync_client.mark_played_batch(vec![data]).await {
+                            log::error!("Failed to mark played {episode_url}: {err}");
                             send_error(
                                 &tx_to_app,
-                                format!(
-                                    "Gpodder: failed to sync position for {}",
-                                    data.episode_url
-                                ),
+                                format!("Gpodder: failed to sync position for {episode_url}"),
                             );
                         }
                     }
@@ -197,73 +186,37 @@ impl GpodderController {
         }
     }
 
-    pub async fn mark_played(
-        &self, podcast_url: &str, episode_url: &str, guid: &str, position: u64, duration: u64,
-    ) -> Result<String> {
-        self.require_login().await?;
-        let url_mark_played = format!(
-            "{}/api/2/episodes/{}/{}.json",
-            self.config.server, self.config.username, self.config.device
-        );
-        let action = EpisodeAction {
-            podcast: podcast_url.to_string(),
-            episode: episode_url.to_string(),
-            guid: if guid.is_empty() {
-                None
-            } else {
-                Some(guid.to_string())
-            },
-            action: Action::Play,
-            timestamp: current_time()?,
-            started: Some(0),
-            position: Some(position),
-            total: Some(duration),
-        };
-        let actions = [action];
-        let msg = serde_json::to_string(&actions)?;
-
-        let result = execute_request_post(
-            &self.client,
-            url_mark_played,
-            msg,
-            &self.config.credentials,
-            self.config.max_retries,
+    /// The episode actions endpoint. The gpodder API has no per-device variant
+    /// for uploads; the device goes into each action instead.
+    fn episodes_url(&self) -> String {
+        format!(
+            "{}/api/2/episodes/{}.json",
+            self.config.server, self.config.username
         )
-        .await?;
-        log::debug!("Marked position: {position} episode: {episode_url} podcast: {podcast_url}");
-        Ok(result)
     }
 
     pub async fn mark_played_batch(&self, eps: Vec<EpisodePlayedData>) -> Result<String> {
         self.require_login().await?;
-        let url_mark_played = format!(
-            "{}/api/2/episodes/{}/{}.json",
-            self.config.server, self.config.username, self.config.device
-        );
+        let timestamp = current_time()?;
         let actions: Vec<EpisodeAction> = eps
-            .iter()
-            .filter_map(|ep| {
-                Some(EpisodeAction {
-                    podcast: ep.podcast_url.clone(),
-                    episode: ep.episode_url.clone(),
-                    guid: if ep.guid.is_empty() {
-                        None
-                    } else {
-                        Some(ep.guid.clone())
-                    },
-                    action: Action::Play,
-                    timestamp: current_time().ok()?,
-                    started: Some(0),
-                    position: Some(ep.position),
-                    total: Some(ep.duration),
-                })
+            .into_iter()
+            .map(|ep| EpisodeAction {
+                podcast: ep.podcast_url,
+                episode: ep.episode_url,
+                device: Some(self.config.device.clone()),
+                guid: (!ep.guid.is_empty()).then_some(ep.guid),
+                action: Action::Play,
+                timestamp,
+                started: Some(0),
+                position: Some(ep.position),
+                total: Some(ep.duration),
             })
             .collect();
         let msg = serde_json::to_string(&actions)?;
 
         let result = execute_request_post(
             &self.client,
-            url_mark_played,
+            self.episodes_url(),
             msg,
             &self.config.credentials,
             self.config.max_retries,
@@ -275,10 +228,6 @@ impl GpodderController {
 
     pub async fn get_episode_action_changes(&self) -> Result<Vec<EpisodeAction>> {
         self.require_login().await?;
-        let url_episode_action_changes = format!(
-            "{}/api/2/episodes/{}.json",
-            self.config.server, self.config.username
-        );
         let since = *self
             .state
             .actions_timestamp
@@ -286,7 +235,7 @@ impl GpodderController {
             .expect("RwLock read should not fail");
         let json_string = execute_request_get(
             &self.client,
-            url_episode_action_changes,
+            self.episodes_url(),
             vec![("since", since.to_string().as_str())],
             &self.config.credentials,
             self.config.max_retries,
@@ -580,7 +529,7 @@ impl GpodderController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(server_url: &str) -> Config {
@@ -777,30 +726,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mark_played_single() {
+    async fn spawn_mark_played_uploads_single_action() {
         let server = MockServer::start().await;
         mock_login_and_init(&server).await;
 
         Mock::given(method("POST"))
-            .and(path("/api/2/episodes/testuser/testdevice.json"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .and(body_partial_json(serde_json::json!([{
+                "podcast": "https://example.com/feed.xml",
+                "episode": "https://example.com/ep1.mp3",
+                "guid": "guid-ep1",
+                "device": "testdevice",
+                "action": "play",
+                "position": 120,
+                "total": 3600
+            }])))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
             .expect(1)
             .mount(&server)
             .await;
 
         let config = test_config(&server.uri());
-        let controller = GpodderController::new(config, Some(1000));
+        let messages = run_spawn_and_collect(
+            config,
+            Some(1000),
+            GpodderRequest::MarkPlayed(EpisodePlayedData {
+                podcast_url: "https://example.com/feed.xml".into(),
+                episode_url: "https://example.com/ep1.mp3".into(),
+                guid: "guid-ep1".into(),
+                position: 120,
+                duration: 3600,
+            }),
+        )
+        .await;
 
-        let result = controller
-            .mark_played(
-                "https://example.com/feed.xml",
-                "https://example.com/ep1.mp3",
-                "guid-ep1",
-                120,
-                3600,
-            )
-            .await;
-        assert!(result.is_ok());
+        let has_error = messages
+            .iter()
+            .any(|m| matches!(m, Message::Gpodder(GpodderMsg::Error(_))));
+        assert!(!has_error, "Unexpected GpodderMsg::Error: {messages:?}");
     }
 
     #[tokio::test]
@@ -809,7 +772,11 @@ mod tests {
         mock_login_and_init(&server).await;
 
         Mock::given(method("POST"))
-            .and(path("/api/2/episodes/testuser/testdevice.json"))
+            .and(path("/api/2/episodes/testuser.json"))
+            .and(body_partial_json(serde_json::json!([
+                {"episode": "https://example.com/ep1.mp3", "device": "testdevice"},
+                {"episode": "https://example.com/ep2.mp3", "device": "testdevice"}
+            ])))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
             .expect(1)
             .mount(&server)
