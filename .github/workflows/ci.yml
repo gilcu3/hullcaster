@@ -33,17 +33,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install ${{ matrix.dependencies }}
 
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Cache cargo deps
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-rustc-${{ steps.install_toolchain.outputs.cachekey }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-rustc-${{ steps.install_toolchain.outputs.cachekey }}
+          key: ${{ runner.os }}-rustc-${{ hashFiles('rust-toolchain.toml') }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-rustc-${{ hashFiles('rust-toolchain.toml') }}-cargo-
 
       - name: Cargo format
         run: cargo fmt --check
