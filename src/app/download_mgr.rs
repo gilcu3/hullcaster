@@ -1,5 +1,5 @@
 use super::{
-    App, EpData, GpodderRequest, Options, PathBuf, Result, anyhow, downloads, fs,
+    App, ChangeOrigin, EpData, Options, PathBuf, Result, anyhow, downloads, fs,
     sanitize_with_options,
 };
 
@@ -243,7 +243,9 @@ impl App {
     }
 
     /// Removes a podcast from the list, optionally deleting local files first
-    pub fn remove_podcast(&self, pod_id: i64, delete_files: bool) -> Result<()> {
+    pub(super) fn remove_podcast(
+        &self, pod_id: i64, delete_files: bool, origin: ChangeOrigin,
+    ) -> Result<()> {
         if delete_files {
             self.delete_files(pod_id).ok();
         }
@@ -257,9 +259,8 @@ impl App {
             (pod.id, pod.url.clone())
         };
         self.db.remove_podcast(pod_id)?;
-        if self.config.enable_sync {
-            self.tx_to_gpodder
-                .send(GpodderRequest::RemovePodcast(url))?;
+        if origin == ChangeOrigin::User {
+            self.push_subscription_changes(Vec::new(), vec![url]);
         }
         {
             match self.db.get_podcasts() {

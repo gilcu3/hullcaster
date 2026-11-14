@@ -8,10 +8,11 @@ use crate::config::TICK_RATE;
 use crate::types::Message;
 
 use self::net::{execute_request_get, execute_request_post};
-use self::types::{Device, Podcast, PodcastChanges, State, UploadPodcastChanges};
+use self::types::{Device, PodcastChanges, State};
 
 pub use self::types::{
     Action, Config, EpisodeAction, EpisodePlayedData, GpodderMsg, GpodderRequest,
+    SubscriptionChanges,
 };
 mod net;
 mod types;
@@ -69,7 +70,9 @@ impl GpodderController {
                             .unwrap_or_else(|err| {
                                 log::error!("Failed to get subscription changes: {err}");
                                 send_error(&tx_to_app, format!("Gpodder sync failed: {err}"));
-                                (Vec::new(), Vec::new())
+                                // Not a first sync: an empty list from a failed
+                                // fetch must not look like an empty server.
+                                SubscriptionChanges::default()
                             });
                         // Send subscription changes only; episode actions are
                         // fetched in a second phase (GetEpisodeActions) once the
@@ -109,16 +112,17 @@ impl GpodderController {
                             break;
                         }
                     }
-                    GpodderRequest::AddPodcast(url) => {
-                        if let Err(err) = sync_client.add_podcast(&url).await {
-                            log::error!("Failed to add podcast with url {url}: {err}");
-                            send_error(&tx_to_app, format!("Gpodder: failed to add {url}"));
-                        }
-                    }
-                    GpodderRequest::RemovePodcast(url) => {
-                        if let Err(err) = sync_client.remove_podcast(&url).await {
-                            log::error!("Failed to remove podcast with url {url}: {err}");
-                            send_error(&tx_to_app, format!("Gpodder: failed to remove {url}"));
+                    GpodderRequest::UploadSubscriptionChanges { add, remove } => {
+                        if let Err(err) =
+                            sync_client.upload_subscription_changes(&add, &remove).await
+                        {
+                            log::error!(
+                                "Failed to upload subscription changes (add: {add:?}, remove: {remove:?}): {err}"
+                            );
+                            send_error(
+                                &tx_to_app,
+                                "Gpodder: failed to upload subscription changes".to_string(),
+                            );
                         }
                     }
                     GpodderRequest::MarkPlayed(data) => {
@@ -314,121 +318,75 @@ impl GpodderController {
         Ok(())
     }
 
-    pub async fn get_subscription_changes(&self) -> Result<(Vec<String>, Vec<String>)> {
-        self.require_login().await?;
-        if *self
-            .state
-            .subscriptions_timestamp
-            .read()
-            .expect("RwLock read should not fail")
-            == 0
-        {
-            let added = self.get_all_subscriptions().await?;
-            return Ok((added, Vec::new()));
-        }
-        let url_subscription_changes = format!(
+    /// The subscriptions endpoint of this device, for both fetching and
+    /// uploading changes.
+    fn subscriptions_url(&self) -> String {
+        format!(
             "{}/api/2/subscriptions/{}/{}.json",
             self.config.server, self.config.username, self.config.device
-        );
-        let pastime = (*self
+        )
+    }
+
+    /// Fetches the subscription changes since the last sync. The first sync
+    /// uses `since=0`, which every server answers with all subscriptions.
+    pub async fn get_subscription_changes(&self) -> Result<SubscriptionChanges> {
+        self.require_login().await?;
+        let since = *self
             .state
             .subscriptions_timestamp
             .read()
-            .expect("RwLock read should not fail"))
-        .to_string();
-        let params = vec![("since", pastime.as_str())];
+            .expect("RwLock read should not fail");
         let json_string = execute_request_get(
             &self.client,
-            url_subscription_changes,
-            params,
+            self.subscriptions_url(),
+            vec![("since", since.to_string().as_str())],
             &self.config.credentials,
             self.config.max_retries,
         )
         .await?;
-        let parsed: serde_json::Result<PodcastChanges> = serde_json::from_str(json_string.as_str());
-        if let Ok(changes) = parsed {
-            for sub in &changes.add {
-                log::info!("podcast added {sub}");
-            }
-            for sub in &changes.remove {
-                log::info!("podcast removed {sub}");
-            }
-            *self
-                .state
-                .subscriptions_timestamp
-                .write()
-                .expect("RwLock write should not fail") = changes.timestamp + 1;
-            Ok((changes.add, changes.remove))
-        } else {
-            Err(anyhow!("Error parsing subscription changes"))
+        let changes: PodcastChanges = serde_json::from_str(json_string.as_str())
+            .map_err(|err| anyhow!("Error parsing subscription changes: {err}"))?;
+        for sub in &changes.add {
+            log::info!("podcast added {sub}");
         }
+        for sub in &changes.remove {
+            log::info!("podcast removed {sub}");
+        }
+        // The API says to reuse the returned timestamp as is
+        *self
+            .state
+            .subscriptions_timestamp
+            .write()
+            .expect("RwLock write should not fail") = changes.timestamp;
+        Ok(SubscriptionChanges {
+            add: changes.add,
+            remove: changes.remove,
+            first_sync: since == 0,
+        })
     }
 
+    /// Uploads local subscription changes. The timestamp of the response is
+    /// not used as the next `since`: changes other devices made since our
+    /// last fetch would be skipped, and fetching our own changes back is
+    /// harmless.
     pub async fn upload_subscription_changes(
-        &self, changes: (Vec<&String>, Vec<&String>),
+        &self, add: &[String], remove: &[String],
     ) -> Result<()> {
         self.require_login().await?;
-        let url_upload_subscriptions = format!(
-            "{}/api/2/subscriptions/{}/{}.json",
-            self.config.server, self.config.username, self.config.device
-        );
         let json_changes = serde_json::json!({
-            "add": changes.0,
-            "remove": changes.1
+            "add": add,
+            "remove": remove
         })
         .to_string();
-        let json_string = execute_request_post(
+        execute_request_post(
             &self.client,
-            url_upload_subscriptions,
+            self.subscriptions_url(),
             json_changes,
             &self.config.credentials,
             self.config.max_retries,
         )
         .await?;
-        let parsed: serde_json::Result<UploadPodcastChanges> =
-            serde_json::from_str(json_string.as_str());
-        if let Ok(changes) = parsed {
-            for sub in &changes.update_urls {
-                log::info!("url changed {} {}", sub[0], sub[1]);
-            }
-            *self
-                .state
-                .subscriptions_timestamp
-                .write()
-                .expect("RwLock write should not fail") = changes.timestamp + 1;
-            Ok(())
-        } else {
-            Err(anyhow!("Error parsing url subscription changes"))
-        }
-    }
-
-    pub async fn add_podcast(&self, url: &String) -> Result<()> {
-        self.upload_subscription_changes((vec![url], vec![])).await
-    }
-
-    pub async fn remove_podcast(&self, url: &String) -> Result<()> {
-        self.upload_subscription_changes((vec![], vec![url])).await
-    }
-
-    async fn get_all_subscriptions(&self) -> Result<Vec<String>> {
-        let url_subscription_changes = format!(
-            "{}/subscriptions/{}.json",
-            self.config.server, self.config.username
-        );
-        let json_string = execute_request_get(
-            &self.client,
-            url_subscription_changes,
-            vec![],
-            &self.config.credentials,
-            self.config.max_retries,
-        )
-        .await?;
-        let parsed: serde_json::Result<Vec<Podcast>> = serde_json::from_str(json_string.as_str());
-
-        parsed.map_or_else(
-            |err| Err(anyhow!("Error parsing subscriptions: {err}")),
-            |subscriptions| Ok(subscriptions.iter().map(|f| f.feed.clone()).collect()),
-        )
+        Ok(())
     }
 
     async fn get_devices(&self) -> Result<Vec<Device>> {
@@ -529,7 +487,7 @@ impl GpodderController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{body_partial_json, method, path, query_param};
+    use wiremock::matchers::{body_json, body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(server_url: &str) -> Config {
@@ -622,6 +580,7 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .and(query_param("since", "1000"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "add": ["https://example.com/feed1.xml"],
                 "remove": ["https://example.com/old.xml"],
@@ -634,18 +593,24 @@ mod tests {
         let config = test_config(&server.uri());
         let controller = GpodderController::new(config, Some(1000));
 
-        let (added, removed) = controller.get_subscription_changes().await.unwrap();
-        assert_eq!(added, vec!["https://example.com/feed1.xml"]);
-        assert_eq!(removed, vec!["https://example.com/old.xml"]);
+        let changes = controller.get_subscription_changes().await.unwrap();
+        assert_eq!(
+            changes,
+            SubscriptionChanges {
+                add: vec!["https://example.com/feed1.xml".to_string()],
+                remove: vec!["https://example.com/old.xml".to_string()],
+                first_sync: false,
+            }
+        );
 
-        // Timestamp should be updated to response timestamp + 1
+        // The response timestamp is stored as is, for use as the next `since`
         assert_eq!(
             *controller
                 .state
                 .subscriptions_timestamp
                 .read()
                 .expect("RwLock read should not fail"),
-            2001
+            2000
         );
     }
 
@@ -654,24 +619,26 @@ mod tests {
         let server = MockServer::start().await;
         mock_login_and_init(&server).await;
 
-        // When timestamp is 0, get_all_subscriptions is called instead
+        // The first sync asks the device endpoint for all changes since 0
         Mock::given(method("GET"))
-            .and(path("/subscriptions/testuser.json"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"feed": "https://example.com/feed1.xml", "title": "Feed 1"},
-                {"feed": "https://example.com/feed2.xml", "title": "Feed 2"}
-            ])))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .and(query_param("since", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "add": ["https://example.com/feed1.xml", "https://example.com/feed2.xml"],
+                "remove": ["https://example.com/old.xml"],
+                "timestamp": 2000
+            })))
             .expect(1)
             .mount(&server)
             .await;
 
         let config = test_config(&server.uri());
-        // timestamp 0 triggers initial sync path
         let controller = GpodderController::new(config, Some(0));
 
-        let (added, removed) = controller.get_subscription_changes().await.unwrap();
-        assert_eq!(added.len(), 2);
-        assert_eq!(removed, Vec::<String>::new());
+        let changes = controller.get_subscription_changes().await.unwrap();
+        assert!(changes.first_sync);
+        assert_eq!(changes.add.len(), 2);
+        assert_eq!(changes.remove, vec!["https://example.com/old.xml"]);
     }
 
     #[tokio::test]
@@ -876,6 +843,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .and(body_json(serde_json::json!({
+                "add": ["https://example.com/new1.xml", "https://example.com/new2.xml"],
+                "remove": ["https://example.com/old.xml"]
+            })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "update_urls": [],
                 "timestamp": 3000
@@ -887,17 +858,26 @@ mod tests {
         let config = test_config(&server.uri());
         let controller = GpodderController::new(config, Some(1000));
 
-        let url = "https://example.com/new_feed.xml".to_string();
-        let result = controller.add_podcast(&url).await;
-        assert!(result.is_ok());
+        controller
+            .upload_subscription_changes(
+                &[
+                    "https://example.com/new1.xml".to_string(),
+                    "https://example.com/new2.xml".to_string(),
+                ],
+                &["https://example.com/old.xml".to_string()],
+            )
+            .await
+            .unwrap();
 
+        // Uploading does not move `since`: changes other devices made since
+        // our last fetch must still be fetched.
         assert_eq!(
             *controller
                 .state
                 .subscriptions_timestamp
                 .read()
                 .expect("RwLock read should not fail"),
-            3001
+            1000
         );
     }
 
@@ -1027,7 +1007,10 @@ mod tests {
         let messages = run_spawn_and_collect(
             config,
             Some(1000),
-            GpodderRequest::AddPodcast("https://example.com/feed.xml".to_string()),
+            GpodderRequest::UploadSubscriptionChanges {
+                add: vec!["https://example.com/feed.xml".to_string()],
+                remove: Vec::new(),
+            },
         )
         .await;
 
@@ -1083,21 +1066,17 @@ mod tests {
         let server = MockServer::start().await;
         mock_login_and_init(&server).await;
 
-        // timestamp 0 triggers get_all_subscriptions path
         Mock::given(method("GET"))
-            .and(path("/subscriptions/testuser.json"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"feed": "https://example.com/feed1.xml", "title": "Feed 1"},
-                {"feed": "https://example.com/feed2.xml", "title": "Feed 2"},
-                {"feed": "https://example.com/feed3.xml", "title": "Feed 3"}
-            ])))
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/2/episodes/testuser.json"))
+            .and(path("/api/2/subscriptions/testuser/testdevice.json"))
+            .and(query_param("since", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "timestamp": 100,
-                "actions": []
+                "add": [
+                    "https://example.com/feed1.xml",
+                    "https://example.com/feed2.xml",
+                    "https://example.com/feed3.xml"
+                ],
+                "remove": [],
+                "timestamp": 100
             })))
             .mount(&server)
             .await;
@@ -1106,18 +1085,24 @@ mod tests {
         let messages =
             run_spawn_and_collect(config, Some(0), GpodderRequest::GetSubscriptionChanges).await;
 
-        let sub_changes = messages.iter().find_map(|m| {
-            if let Message::Gpodder(GpodderMsg::SubscriptionChanges(changes)) = m {
-                Some(changes)
-            } else {
-                None
-            }
-        });
-        assert!(sub_changes.is_some(), "Expected SubscriptionChanges");
-        let (added, removed) = sub_changes.unwrap();
-        assert_eq!(added.len(), 3);
-        assert_eq!(*removed, Vec::<String>::new());
-        assert!(added.contains(&"https://example.com/feed1.xml".to_string()));
+        let changes = messages
+            .iter()
+            .find_map(|m| {
+                if let Message::Gpodder(GpodderMsg::SubscriptionChanges(changes)) = m {
+                    Some(changes)
+                } else {
+                    None
+                }
+            })
+            .expect("Expected SubscriptionChanges");
+        assert!(changes.first_sync);
+        assert_eq!(changes.add.len(), 3);
+        assert_eq!(changes.remove, Vec::<String>::new());
+        assert!(
+            changes
+                .add
+                .contains(&"https://example.com/feed1.xml".to_string())
+        );
     }
 
     #[tokio::test]

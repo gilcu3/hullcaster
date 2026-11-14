@@ -23,12 +23,14 @@ use crate::{
         PodcastNoId, ShareableRwLock, SyncProgress,
     },
     ui::UiMsg,
-    utils::{current_time_ms, get_unplayed_episodes, normalize_url, resolve_redirection},
+    utils::{current_time_ms, get_unplayed_episodes, normalize_url},
 };
 
 mod download_mgr;
 mod playback;
 mod sync;
+
+use sync::ChangeOrigin;
 
 /// Enum used for communicating with other tasks.
 #[derive(Debug)]
@@ -54,6 +56,9 @@ pub struct App {
     sync_progress: ShareableRwLock<SyncProgress>,
     sync_tracker: Vec<SyncResult>,
     pending_gpodder: Option<sync::PendingGpodderSync>,
+    /// URLs of the podcasts a gpodder sync is adding, until their feeds settle,
+    /// so they are not pushed back to the server.
+    gpodder_added_feeds: HashSet<String>,
     download_tracker: HashSet<i64>,
     last_filter_time_ms: Cell<u128>,
     pub tx_to_ui: mpsc::Sender<MainMessage>,
@@ -88,6 +93,7 @@ impl App {
             sync_progress,
             sync_tracker: Vec::new(),
             pending_gpodder: None,
+            gpodder_added_feeds: HashSet::new(),
             download_tracker: HashSet::new(),
             last_filter_time_ms: 0.into(),
             tx_to_ui,
@@ -135,7 +141,7 @@ impl App {
                 Message::Ui(UiMsg::Quit) => break,
 
                 Message::Ui(UiMsg::AddFeed(url)) => {
-                    self.add_podcast(url);
+                    self.add_podcast(url, ChangeOrigin::User);
                     Ok(())
                 }
 
@@ -226,7 +232,7 @@ impl App {
                 Message::Ui(UiMsg::DeleteAll(pod_id)) => self.delete_files(pod_id),
 
                 Message::Ui(UiMsg::RemovePodcast(pod_id, delete_files)) => {
-                    self.remove_podcast(pod_id, delete_files)
+                    self.remove_podcast(pod_id, delete_files, ChangeOrigin::User)
                 }
 
                 Message::Ui(UiMsg::FilterChange(filter_type)) => {
@@ -284,7 +290,7 @@ impl App {
                 Message::Ui(UiMsg::QueueModified) => self.write_queue(),
                 Message::Ui(UiMsg::Noop) => Ok(()),
                 Message::Gpodder(GpodderMsg::SubscriptionChanges(subscription_changes)) => {
-                    self.gpodder_subscription_changes(subscription_changes)
+                    self.gpodder_subscription_changes(&subscription_changes)
                 }
                 Message::Gpodder(GpodderMsg::EpisodeActions(episode_actions, timestamp)) => {
                     self.gpodder_episode_actions(episode_actions, timestamp)

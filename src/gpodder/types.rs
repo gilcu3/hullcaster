@@ -17,8 +17,11 @@ pub struct EpisodePlayedData {
 pub enum GpodderRequest {
     GetSubscriptionChanges,
     GetEpisodeActions,
-    AddPodcast(String),
-    RemovePodcast(String),
+    /// Pushes local subscription changes to the server in one request.
+    UploadSubscriptionChanges {
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
     MarkPlayed(EpisodePlayedData),
     MarkPlayedBatch(Vec<EpisodePlayedData>),
     Quit,
@@ -26,7 +29,7 @@ pub enum GpodderRequest {
 
 #[derive(Debug)]
 pub enum GpodderMsg {
-    SubscriptionChanges((Vec<String>, Vec<String>)),
+    SubscriptionChanges(SubscriptionChanges),
     EpisodeActions(Vec<EpisodeAction>, u64),
     Error(String),
 }
@@ -66,25 +69,16 @@ pub struct PodcastChanges {
     pub add: Vec<String>,
     pub remove: Vec<String>,
     pub timestamp: u64,
-    #[allow(unused)]
-    pub update_urls: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct Podcast {
-    pub feed: String,
-    #[allow(dead_code)]
-    pub title: Option<String>,
-    #[allow(dead_code)]
-    pub website: Option<String>,
-    #[allow(dead_code)]
-    pub description: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct UploadPodcastChanges {
-    pub update_urls: Vec<Vec<String>>,
-    pub timestamp: u64,
+/// Subscription changes reported by the server since the last sync.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct SubscriptionChanges {
+    pub add: Vec<String>,
+    pub remove: Vec<String>,
+    /// Whether this is the first sync with the server (`since=0`), when `add`
+    /// holds every subscription instead of the recent ones.
+    pub first_sync: bool,
 }
 
 #[derive(Deserialize, Debug)]

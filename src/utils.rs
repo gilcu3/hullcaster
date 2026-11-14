@@ -122,15 +122,6 @@ pub async fn resolve_redirection_async(url: &str) -> Result<String> {
     Ok(final_url)
 }
 
-pub fn resolve_redirection(url: &str) -> Result<String> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(APP_USER_AGENT)
-        .build()?;
-    let response = client.head(url).send()?;
-    let final_url = response.url().to_string();
-    Ok(final_url)
-}
-
 /// Normalizes a URL for comparison: lowercase host, sorted query params.
 pub fn normalize_url(url: &str) -> String {
     reqwest::Url::parse(url).map_or_else(

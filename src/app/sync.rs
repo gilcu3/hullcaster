@@ -20,13 +20,87 @@ pub(super) struct PendingGpodderSync {
 
 use super::{
     Action, App, Arc, EpisodeAction, GpodderRequest, HashMap, PodcastFeed, PodcastNoId, Result,
-    feeds, normalize_url, resolve_redirection,
+    feeds, normalize_url,
 };
 use crate::feeds::FetchedUrls;
+use crate::gpodder::SubscriptionChanges;
+use crate::utils::urls_equivalent;
+
+/// Who made a subscription change, which decides whether it is pushed to the
+/// gpodder server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ChangeOrigin {
+    /// The user, on this device: push it.
+    User,
+    /// The gpodder server: it already knows.
+    Server,
+}
+
+/// What a batch of subscription changes from the gpodder server means
+/// locally.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SubscriptionPlan {
+    /// Local podcasts the server removed.
+    remove: Vec<i64>,
+    /// Podcasts the server added that we do not have yet.
+    fetch: Vec<String>,
+    /// Local podcasts to upload, because the server does not have them.
+    upload: Vec<String>,
+}
+
+/// Plans how to apply subscription changes from the server to the local
+/// podcasts, given as `(id, url)`, the way `AntennaPod` does:
+/// - removals are applied first and matched exactly, as the servers do, so a
+///   removed alias never takes an active podcast with it;
+/// - adds are matched with [`urls_equivalent`], to skip feeds we already have;
+/// - local podcasts are only uploaded on a first sync, when `add` is the
+///   server's whole subscription list rather than its recent changes.
+fn plan_subscription_changes(
+    local: &[(i64, String)], changes: &SubscriptionChanges,
+) -> SubscriptionPlan {
+    let (removed, kept): (Vec<_>, Vec<_>) = local
+        .iter()
+        .partition(|(_, url)| changes.remove.contains(url));
+
+    let mut fetch: Vec<String> = Vec::new();
+    for url in &changes.add {
+        let known = kept
+            .iter()
+            .map(|(_, local)| local)
+            .chain(&fetch)
+            .any(|known| urls_equivalent(known, url));
+        if !known {
+            fetch.push(url.clone());
+        }
+    }
+
+    let upload = if changes.first_sync {
+        kept.iter()
+            .filter(|(_, url)| {
+                !changes
+                    .add
+                    .iter()
+                    .any(|server| urls_equivalent(server, url))
+            })
+            .map(|(_, url)| url.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    SubscriptionPlan {
+        remove: removed.iter().map(|(id, _)| *id).collect(),
+        fetch,
+        upload,
+    }
+}
 
 impl App {
     /// Add a new podcast by fetching the RSS feed data.
-    pub fn add_podcast(&self, url: String) {
+    pub(super) fn add_podcast(&mut self, url: String, origin: ChangeOrigin) {
+        if origin == ChangeOrigin::Server {
+            self.gpodder_added_feeds.insert(url.clone());
+        }
         let feed = PodcastFeed::new(None, url, None);
         feeds::check_feed(
             feed,
@@ -93,9 +167,8 @@ impl App {
         } else {
             match self.db.insert_podcast(pod) {
                 Ok(result) => {
-                    if self.config.enable_sync {
-                        self.tx_to_gpodder
-                            .send(GpodderRequest::AddPodcast(pod.url.clone()))?;
+                    if !self.gpodder_added_feeds.contains(&urls.requested) {
+                        self.push_subscription_changes(vec![pod.url.clone()], Vec::new());
                     }
                     // Re-fetch all to get the DB-assigned ID and sort order
                     self.podcasts.replace_all(self.db.get_podcasts()?);
@@ -176,81 +249,44 @@ impl App {
         Ok(())
     }
 
-    /// Processes subscription changes: adds server-only podcasts locally,
-    /// uploads local-only podcasts to server. Returns the IDs of podcasts to
-    /// remove and the normalized URLs of the newly-added podcasts whose feeds
-    /// are now being fetched (the set the gpodder sync waits on before applying
-    /// episode actions).
-    fn process_subscription_changes(
-        &self, added: Vec<String>, deleted: Vec<String>,
-    ) -> (Vec<i64>, HashSet<String>) {
-        // Build map with normalized URLs for comparison
-        let pod_map: HashMap<String, (i64, String)> = self
-            .podcasts
-            .borrow_map()
-            .iter()
-            .map(|(id, pod)| {
-                let rpod = pod.read().expect("Failed to acquire read lock");
-                (normalize_url(&rpod.url), (*id, rpod.url.clone()))
-            })
-            .collect();
-
-        // Add server podcasts not in local
-        let mut server_urls = HashSet::new();
-        let mut awaited_feeds = HashSet::new();
-        for url in added {
-            let url_resolved = resolve_redirection(&url).unwrap_or(url);
-            let normalized = normalize_url(&url_resolved);
-            server_urls.insert(normalized.clone());
-            if !pod_map.contains_key(&normalized) {
-                self.add_podcast(url_resolved);
-                awaited_feeds.insert(normalized);
-            }
+    /// Pushes subscription changes made on this device to the gpodder server.
+    /// Changes that came from the server must not come through here, or they
+    /// would be echoed back.
+    pub(super) fn push_subscription_changes(&self, add: Vec<String>, remove: Vec<String>) {
+        if !self.config.enable_sync || (add.is_empty() && remove.is_empty()) {
+            return;
         }
-
-        // Upload local podcasts not on server
-        let local_only: Vec<String> = pod_map
-            .iter()
-            .filter(|(norm_url, _)| !server_urls.contains(norm_url.as_str()))
-            .map(|(_, (_, raw_url))| raw_url.clone())
-            .collect();
-        if !local_only.is_empty() {
-            log::info!("Uploading {} local podcasts to gpodder", local_only.len());
-            for url in local_only {
-                self.tx_to_gpodder
-                    .send(GpodderRequest::AddPodcast(url))
-                    .inspect_err(|err| {
-                        log::error!("Failed to upload podcast to gpodder: {err}");
-                    })
-                    .ok();
-            }
-        }
-
-        // Resolve deleted URLs and find matching local podcast IDs
-        let removed_pods = deleted
-            .into_iter()
-            .filter_map(|url| {
-                let url_resolved = resolve_redirection(&url).unwrap_or(url);
-                let normalized = normalize_url(&url_resolved);
-                pod_map.get(&normalized).map(|(id, _)| *id)
-            })
-            .collect();
-
-        (removed_pods, awaited_feeds)
+        self.tx_to_gpodder
+            .send(GpodderRequest::UploadSubscriptionChanges { add, remove })
+            .inspect_err(|err| log::error!("Failed to send subscription changes: {err}"))
+            .ok();
     }
 
-    /// Phase 1 of a gpodder sync: handle subscription changes. Adds the new
-    /// podcasts the server reports (spawning their feed fetches) and removes
-    /// deleted ones, then either requests the episode actions immediately (when
-    /// no new feeds are pending) or waits for those feeds to arrive first.
+    /// Phase 1 of a gpodder sync: handle subscription changes. Removes the
+    /// podcasts the server removed, adds the ones it added (spawning their feed
+    /// fetches) and, on a first sync, uploads the local podcasts it lacks.
+    /// Then either requests the episode actions immediately (when no new feeds
+    /// are pending) or waits for those feeds to arrive first.
     pub(super) fn gpodder_subscription_changes(
-        &mut self, subscription_changes: (Vec<String>, Vec<String>),
+        &mut self, changes: &SubscriptionChanges,
     ) -> Result<()> {
-        let (added, deleted) = subscription_changes;
-        let (removed_pods, awaited_feeds) = self.process_subscription_changes(added, deleted);
+        let local = self.podcasts.map(|pod| (pod.id, pod.url.clone()), false);
+        let plan = plan_subscription_changes(&local, changes);
 
-        for pod_id in removed_pods {
-            self.remove_podcast(pod_id, true)?;
+        for pod_id in plan.remove {
+            self.remove_podcast(pod_id, true, ChangeOrigin::Server)?;
+        }
+        let mut awaited_feeds = HashSet::new();
+        for url in plan.fetch {
+            awaited_feeds.insert(normalize_url(&url));
+            self.add_podcast(url, ChangeOrigin::Server);
+        }
+        if !plan.upload.is_empty() {
+            log::info!(
+                "First gpodder sync: uploading {} local podcasts",
+                plan.upload.len()
+            );
+            self.push_subscription_changes(plan.upload, Vec::new());
         }
 
         self.pending_gpodder = Some(PendingGpodderSync { awaited_feeds });
@@ -394,6 +430,7 @@ impl App {
     /// feeds the sync is not waiting on (e.g. manual additions). A failed feed
     /// is simply dropped from the wait set so the sync isn't blocked on it.
     pub(super) fn gpodder_feed_settled(&mut self, url: &str) {
+        self.gpodder_added_feeds.remove(url);
         let normalized = normalize_url(url);
         let cleared = self
             .pending_gpodder
@@ -432,5 +469,110 @@ impl App {
         self.gpodder_sync_pre()
             .inspect_err(|err| log::error!("gpodder_sync_pre failed: {err}"))
             .ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn local(urls: &[&str]) -> Vec<(i64, String)> {
+        (1..).zip(urls.iter().map(ToString::to_string)).collect()
+    }
+
+    fn changes(add: &[&str], remove: &[&str], first_sync: bool) -> SubscriptionChanges {
+        SubscriptionChanges {
+            add: add.iter().map(ToString::to_string).collect(),
+            remove: remove.iter().map(ToString::to_string).collect(),
+            first_sync,
+        }
+    }
+
+    #[test]
+    fn incremental_sync_without_changes_uploads_nothing() {
+        let local = local(&["https://a.com/feed", "https://b.com/feed"]);
+        let plan = plan_subscription_changes(&local, &changes(&[], &[], false));
+        assert_eq!(plan, SubscriptionPlan::default());
+    }
+
+    #[test]
+    fn removed_alias_keeps_active_podcast() {
+        // An old alias that redirects to the active feed is removed on the
+        // server, while the active URL is (re)added.
+        let local = local(&["https://podcast.darknetdiaries.com/"]);
+        let plan = plan_subscription_changes(
+            &local,
+            &changes(
+                &["https://podcast.darknetdiaries.com"],
+                &["https://feeds.megaphone.fm/darknetdiaries"],
+                false,
+            ),
+        );
+        assert_eq!(plan, SubscriptionPlan::default());
+    }
+
+    #[test]
+    fn removals_match_exactly() {
+        let local = local(&["https://a.com/feed", "http://b.com/feed"]);
+        let plan = plan_subscription_changes(
+            &local,
+            &changes(&[], &["https://a.com/feed", "https://b.com/feed"], false),
+        );
+        assert_eq!(plan.remove, vec![1]);
+    }
+
+    #[test]
+    fn adds_skip_feeds_we_already_have() {
+        let local = local(&["https://a.com/feed"]);
+        let plan = plan_subscription_changes(
+            &local,
+            &changes(
+                &[
+                    "http://A.com/feed/",
+                    "https://c.com/feed",
+                    "https://C.com/feed",
+                ],
+                &[],
+                false,
+            ),
+        );
+        assert_eq!(plan.fetch, vec!["https://c.com/feed"]);
+        assert_eq!(plan.upload, Vec::<String>::new());
+    }
+
+    #[test]
+    fn removal_then_add_of_another_spelling_refetches() {
+        let local = local(&["http://a.com/feed"]);
+        let plan = plan_subscription_changes(
+            &local,
+            &changes(&["https://a.com/feed"], &["http://a.com/feed"], false),
+        );
+        assert_eq!(plan.remove, vec![1]);
+        assert_eq!(plan.fetch, vec!["https://a.com/feed"]);
+    }
+
+    #[test]
+    fn first_sync_uploads_only_what_the_server_lacks() {
+        let local = local(&[
+            "https://a.com/feed",
+            "https://b.com/feed",
+            "https://c.com/feed",
+        ]);
+        let plan = plan_subscription_changes(
+            &local,
+            &changes(
+                &["https://A.com/feed/", "https://d.com/feed"],
+                &["https://c.com/feed"],
+                true,
+            ),
+        );
+        assert_eq!(
+            plan,
+            SubscriptionPlan {
+                remove: vec![3],
+                fetch: vec!["https://d.com/feed".to_string()],
+                upload: vec!["https://b.com/feed".to_string()],
+            }
+        );
     }
 }
