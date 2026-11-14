@@ -179,7 +179,10 @@ impl App {
                     Ok(())
                 }
 
-                Message::Feed(FeedMsg::SyncData((id, pod))) => self.sync_podcast_data(id, &pod),
+                Message::Feed(FeedMsg::SyncData((id, pod))) => {
+                    self.sync_podcast_data(id, &pod);
+                    Ok(())
+                }
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);

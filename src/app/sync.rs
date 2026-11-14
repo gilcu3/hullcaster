@@ -1,9 +1,71 @@
 use std::collections::HashSet;
 
-struct PodcastEpisodeMap {
+/// A local episode, as gpodder episode actions are matched against it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalEpisode {
     pod_id: i64,
-    by_url: HashMap<String, i64>,
-    by_guid: HashMap<String, i64>,
+    ep_id: i64,
+    podcast_url: String,
+}
+
+/// Local episodes of all podcasts, indexed by GUID and by media URL.
+#[derive(Default)]
+struct EpisodeIndex {
+    episodes: Vec<LocalEpisode>,
+    by_guid: HashMap<String, Vec<usize>>,
+    by_url: HashMap<String, Vec<usize>>,
+}
+
+impl EpisodeIndex {
+    fn insert(&mut self, episode: LocalEpisode, guid: &str, url: &str) {
+        let index = self.episodes.len();
+        self.episodes.push(episode);
+        if let Some(guid) = valid_guid(guid) {
+            self.by_guid
+                .entry(guid.to_string())
+                .or_default()
+                .push(index);
+        }
+        if !url.is_empty() {
+            self.by_url.entry(url.to_string()).or_default().push(index);
+        }
+    }
+
+    /// Finds the episode an action refers to by GUID, or else by media URL,
+    /// across all podcasts, as `AntennaPod` does: clients disagree on podcast
+    /// URLs, since `AntennaPod` follows moved feeds without telling the server.
+    /// If several episodes match (feeds reusing simple GUIDs, or a podcast
+    /// subscribed twice), the action's podcast URL picks one.
+    fn find(&self, podcast: &str, guid: Option<&str>, url: &str) -> Option<&LocalEpisode> {
+        guid.and_then(valid_guid)
+            .and_then(|guid| self.pick(self.by_guid.get(guid)?, podcast))
+            .or_else(|| self.pick(self.by_url.get(url)?, podcast))
+    }
+
+    fn pick(&self, candidates: &[usize], podcast: &str) -> Option<&LocalEpisode> {
+        if let [only] = candidates {
+            return self.episodes.get(*only);
+        }
+        let mut same_podcast = candidates
+            .iter()
+            .filter_map(|index| self.episodes.get(*index))
+            .filter(|episode| urls_equivalent(&episode.podcast_url, podcast));
+        let first = same_podcast.next();
+        // Still ambiguous: better to skip the action than to apply it to the
+        // wrong episode.
+        if same_podcast.next().is_some() {
+            None
+        } else {
+            first
+        }
+    }
+}
+
+/// A GUID usable for matching, rejecting the blank and "null" values some
+/// clients send, as `AntennaPod` does.
+fn valid_guid(guid: &str) -> Option<&str> {
+    let guid = guid.trim();
+    (!guid.is_empty() && guid != "null").then_some(guid)
 }
 
 /// State held between the two phases of a gpodder sync. Phase 1 subscribes to
@@ -194,39 +256,44 @@ impl App {
     }
 
     /// Updates an existing podcast with data from its RSS feed.
-    pub fn sync_podcast_data(&mut self, pod_id: i64, pod: &PodcastNoId) -> Result<()> {
-        match self.db.update_podcast(pod_id, pod) {
-            Ok(result) => {
-                let moved = self
-                    .podcasts
-                    .map_single(pod_id, |p| p.url != pod.url)
-                    .unwrap_or_default();
-                let episodes_changed = !result.added.is_empty() || !result.updated.is_empty();
-                if moved {
-                    // Reload, so the list shows the URL the database kept
-                    self.podcasts.replace_all(self.db.get_podcasts()?);
-                } else if episodes_changed {
-                    self.refresh_podcast_episodes(pod_id)?;
-                }
-                if moved || episodes_changed {
-                    self.update_unplayed(true);
-                    self.update_queue();
-                    self.update_filters(self.filters, true);
-                }
+    pub fn sync_podcast_data(&mut self, pod_id: i64, pod: &PodcastNoId) {
+        if let Err(err) = self.apply_podcast_data(pod_id, pod) {
+            log::error!("Error synchronizing {}: {err}", pod.title);
+            self.notif_to_ui(format!("Error synchronizing {}.", pod.title), true);
+        }
 
-                self.sync_tracker.push(result);
-                self.sync_counter -= 1;
-                self.sync_progress
-                    .write()
-                    .expect("RwLock write should not fail")
-                    .completed += 1;
-                self.update_tracker_notif();
+        // Count the podcast as done even if it failed, or the sync never
+        // finishes and the gpodder sync that follows it never starts.
+        self.sync_counter -= 1;
+        self.sync_progress
+            .write()
+            .expect("RwLock write should not fail")
+            .completed += 1;
+        self.update_tracker_notif();
+        if self.sync_counter == 0 {
+            self.pos_sync_counter();
+        }
+    }
 
-                if self.sync_counter == 0 {
-                    self.pos_sync_counter();
-                }
-            }
-            Err(_err) => self.notif_to_ui(format!("Error synchronizing {}.", pod.title), true),
+    /// Stores a podcast's refreshed feed data and updates what is shown.
+    fn apply_podcast_data(&mut self, pod_id: i64, pod: &PodcastNoId) -> Result<()> {
+        let result = self.db.update_podcast(pod_id, pod)?;
+        let moved = self
+            .podcasts
+            .map_single(pod_id, |p| p.url != pod.url)
+            .unwrap_or_default();
+        let episodes_changed = !result.added.is_empty() || !result.updated.is_empty();
+        self.sync_tracker.push(result);
+        if moved {
+            // Reload, so the list shows the URL the database kept
+            self.podcasts.replace_all(self.db.get_podcasts()?);
+        } else if episodes_changed {
+            self.refresh_podcast_episodes(pod_id)?;
+        }
+        if moved || episodes_changed {
+            self.update_unplayed(true);
+            self.update_queue();
+            self.update_filters(self.filters, true);
         }
         Ok(())
     }
@@ -320,43 +387,39 @@ impl App {
         Ok(())
     }
 
-    /// Matches gpodder episode actions to local episodes (by GUID, then URL) and
-    /// applies the resulting play positions. Returns the number of episodes
-    /// updated.
+    /// Matches gpodder episode actions to local episodes (see
+    /// [`EpisodeIndex::find`]) and applies the resulting play positions.
+    /// Returns the number of episodes updated.
     fn apply_gpodder_episode_actions(
         &mut self, episode_actions: Vec<EpisodeAction>,
     ) -> Result<usize> {
-        let pod_data: HashMap<String, PodcastEpisodeMap> = self
+        let mut index = EpisodeIndex::default();
+        for (episode, guid, url) in self
             .podcasts
             .map(
                 |pod| {
-                    let by_url: HashMap<String, i64> = pod
-                        .episodes
-                        .map(|ep| (ep.url.clone(), ep.id), false)
-                        .into_iter()
-                        .collect();
-                    let by_guid: HashMap<String, i64> = pod
-                        .episodes
-                        .map(|ep| (ep.guid.clone(), ep.id), false)
-                        .into_iter()
-                        .filter(|(guid, _)| !guid.is_empty())
-                        .collect();
-                    (
-                        normalize_url(&pod.url),
-                        PodcastEpisodeMap {
-                            pod_id: pod.id,
-                            by_url,
-                            by_guid,
+                    pod.episodes.map(
+                        |ep| {
+                            let episode = LocalEpisode {
+                                pod_id: pod.id,
+                                ep_id: ep.id,
+                                podcast_url: pod.url.clone(),
+                            };
+                            (episode, ep.guid.clone(), ep.url.clone())
                         },
+                        false,
                     )
                 },
                 false,
             )
             .into_iter()
-            .collect();
+            .flatten()
+        {
+            index.insert(episode, &guid, &url);
+        }
 
         let mut last_actions = HashMap::new();
-
+        let mut skipped = 0_usize;
         for a in episode_actions {
             match a.action {
                 Action::Play => {
@@ -368,29 +431,16 @@ impl App {
                         a.position,
                         a.total
                     );
-
-                    let normalized_podcast = normalize_url(&a.podcast);
-                    if let Some(pod) = pod_data.get(&normalized_podcast)
-                        && let Some(position) = a.position
-                        && let Some(total) = a.total
-                    {
-                        // Match by GUID first (like AntennaPod), then fall back to URL
-                        let ep_id = a
-                            .guid
-                            .as_deref()
-                            .and_then(|g| pod.by_guid.get(g))
-                            .or_else(|| pod.by_url.get(a.episode.as_str()));
-                        if let Some(ep_id) = ep_id {
-                            last_actions.insert((pod.pod_id, *ep_id), (position, total));
-                        } else {
-                            log::warn!(
-                                "Gpodder episode action skipped: episode not found locally: {}",
-                                a.episode
-                            );
-                        }
-                    } else if !pod_data.contains_key(&normalized_podcast) {
-                        log::warn!(
-                            "Gpodder episode action skipped: podcast not found locally: {}",
+                    let (Some(position), Some(total)) = (a.position, a.total) else {
+                        continue;
+                    };
+                    if let Some(ep) = index.find(&a.podcast, a.guid.as_deref(), &a.episode) {
+                        last_actions.insert((ep.pod_id, ep.ep_id), (position, total));
+                    } else {
+                        skipped += 1;
+                        log::debug!(
+                            "Gpodder episode action skipped, episode not found locally: {} ({})",
+                            a.episode,
                             a.podcast
                         );
                     }
@@ -404,6 +454,11 @@ impl App {
             .map(|((pod_id, ep_id), (position, total))| (pod_id, ep_id, position, total))
             .collect();
         let number_updates = updates.len();
+        if skipped > 0 {
+            log::info!(
+                "Gpodder: skipped {skipped} play actions for episodes not found locally (details at debug level)"
+            );
+        }
 
         self.mark_played_db_batch(updates)?;
         Ok(number_updates)
@@ -573,6 +628,131 @@ mod tests {
                 fetch: vec!["https://d.com/feed".to_string()],
                 upload: vec!["https://b.com/feed".to_string()],
             }
+        );
+    }
+
+    fn index(episodes: &[(i64, &str, &str, &str)]) -> EpisodeIndex {
+        let mut index = EpisodeIndex::default();
+        for (ep_id, podcast_url, guid, url) in episodes {
+            let episode = LocalEpisode {
+                pod_id: *ep_id / 100,
+                ep_id: *ep_id,
+                podcast_url: (*podcast_url).to_string(),
+            };
+            index.insert(episode, guid, url);
+        }
+        index
+    }
+
+    fn found(index: &EpisodeIndex, podcast: &str, guid: Option<&str>, url: &str) -> Option<i64> {
+        index.find(podcast, guid, url).map(|ep| ep.ep_id)
+    }
+
+    #[test]
+    fn matches_across_podcast_urls() {
+        // Subscribed locally under the redirect target, while another client
+        // reports the old alias.
+        let index = index(&[(
+            101,
+            "https://podcast.darknetdiaries.com/",
+            "dnd-1",
+            "https://cdn.example.com/dnd1.mp3",
+        )]);
+        let alias = "https://feeds.megaphone.fm/darknetdiaries";
+        assert_eq!(
+            found(
+                &index,
+                alias,
+                Some("dnd-1"),
+                "https://other.example.com/x.mp3"
+            ),
+            Some(101)
+        );
+        assert_eq!(
+            found(&index, alias, None, "https://cdn.example.com/dnd1.mp3"),
+            Some(101)
+        );
+        assert_eq!(
+            found(
+                &index,
+                alias,
+                Some("unknown"),
+                "https://cdn.example.com/dnd1.mp3"
+            ),
+            Some(101)
+        );
+        assert_eq!(
+            found(
+                &index,
+                alias,
+                Some("unknown"),
+                "https://unknown.example.com/x.mp3"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn ignores_blank_and_null_guids() {
+        let index = index(&[
+            (101, "https://a.com/feed", "", "https://a.com/1.mp3"),
+            (201, "https://b.com/feed", "null", "https://b.com/1.mp3"),
+        ]);
+        assert_eq!(
+            found(
+                &index,
+                "https://a.com/feed",
+                Some(""),
+                "https://b.com/1.mp3"
+            ),
+            Some(201)
+        );
+        assert_eq!(
+            found(
+                &index,
+                "https://a.com/feed",
+                Some("null"),
+                "https://a.com/1.mp3"
+            ),
+            Some(101)
+        );
+    }
+
+    #[test]
+    fn podcast_url_breaks_ties() {
+        // Two feeds reusing the same simple GUID
+        let index = index(&[
+            (101, "https://a.com/feed", "1", "https://a.com/1.mp3"),
+            (201, "https://b.com/feed", "1", "https://b.com/1.mp3"),
+        ]);
+        assert_eq!(
+            found(
+                &index,
+                "http://B.com/feed/",
+                Some("1"),
+                "https://x.com/x.mp3"
+            ),
+            Some(201)
+        );
+        // Ambiguous GUID and no podcast match: fall back to the media URL
+        assert_eq!(
+            found(
+                &index,
+                "https://c.com/feed",
+                Some("1"),
+                "https://a.com/1.mp3"
+            ),
+            Some(101)
+        );
+        // Still ambiguous: skip rather than guess
+        assert_eq!(
+            found(
+                &index,
+                "https://c.com/feed",
+                Some("1"),
+                "https://x.com/x.mp3"
+            ),
+            None
         );
     }
 }
