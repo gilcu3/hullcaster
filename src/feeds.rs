@@ -164,6 +164,11 @@ fn is_permanent_redirect(status: StatusCode, from: &Url, to: &Url) -> bool {
 /// permanent redirect on the first hop led, or else the feed's own
 /// `<itunes:new-feed-url>`. This follows `AntennaPod`, so both clients agree on
 /// when a feed has moved; a temporary redirect keeps the requested URL.
+///
+/// Unlike `AntennaPod`, a `new-feed-url` that only differs cosmetically from the
+/// requested URL (see [`urls_equivalent`]) is ignored. Otherwise a feed that
+/// names its http URL while that URL redirects to https would switch URLs on
+/// every refresh.
 fn moved_feed_url(
     requested: &str, redirected_to: Option<String>, channel: &Channel,
 ) -> Option<String> {
@@ -172,6 +177,7 @@ fn moved_feed_url(
         .and_then(|itunes| itunes.new_feed_url())
         .map(str::trim)
         .filter(|url| Url::parse(url).is_ok_and(|url| matches!(url.scheme(), "http" | "https")))
+        .filter(|url| !urls_equivalent(url, requested))
         .map(str::to_string);
     redirected_to
         .or(new_feed_url)
@@ -402,6 +408,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(pod.url, format!("{}/invalid", server.uri()));
+    }
+
+    #[test]
+    fn cosmetic_new_feed_url_is_ignored() {
+        // The Joy of Why names its http URL, which redirects back to https:
+        // following it would switch URLs on every refresh.
+        let channel =
+            Channel::read_from(feed_xml(Some("http://joy.quantamagazine.org")).as_bytes()).unwrap();
+        let requested = "https://joy.quantamagazine.org/";
+        assert_eq!(moved_feed_url(requested, None, &channel), None);
+
+        // A real redirect still counts
+        assert_eq!(
+            moved_feed_url(
+                "http://joy.quantamagazine.org",
+                Some(requested.to_string()),
+                &channel
+            ),
+            Some(requested.to_string())
+        );
+
+        // So does a new-feed-url that really points elsewhere
+        let channel =
+            Channel::read_from(feed_xml(Some("https://example.org/joy.xml")).as_bytes()).unwrap();
+        assert_eq!(
+            moved_feed_url(requested, None, &channel),
+            Some("https://example.org/joy.xml".to_string())
+        );
     }
 
     #[tokio::test]
