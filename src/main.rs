@@ -11,7 +11,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::{Arg, ArgAction, Command};
 use fs2::FileExt;
 use gag::Gag;
-use utils::parse_create_dir;
+use utils::{parse_create_dir, urls_equivalent};
 
 mod app;
 mod config;
@@ -31,11 +31,11 @@ mod utils;
 use crate::app::{App, MainMessage};
 use crate::config::Config;
 use crate::db::Database;
-use crate::feeds::{FeedMsg, PodcastFeed};
+use crate::feeds::{FeedMsg, FetchedUrls, PodcastFeed};
 use crate::gpodder::{GpodderController, GpodderRequest};
 use crate::media_control::init_controls;
 use crate::player::{PlaybackStatus, Player, PlayerMessage};
-use crate::types::{LockVec, Message, SyncProgress};
+use crate::types::{LockVec, Message, PodcastNoId, SyncProgress};
 use crate::ui::UiState;
 use crate::utils::{evaluate_in_shell, get_unplayed_episodes};
 use tokio::sync::Semaphore;
@@ -532,22 +532,25 @@ fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Resu
 
     let mut db_inst = Database::connect(db_path)?;
 
+    // URLs of the podcasts already subscribed, to skip feeds we already have
+    let mut subscribed: Vec<String> = Vec::new();
     // delete database if we are replacing the data
     if args.contains_id("replace") {
         db_inst
             .clear_db()
             .with_context(|| "Error clearing database")?;
     } else {
-        let old_podcasts = db_inst.get_podcasts()?;
+        subscribed = db_inst
+            .get_podcasts()?
+            .into_iter()
+            .map(|pod| pod.url)
+            .collect();
 
         // if URL is already in database, remove it from import
         podcast_list.retain(|pod| {
-            for op in &old_podcasts {
-                if pod.url == op.url {
-                    return false;
-                }
-            }
-            true
+            !subscribed
+                .iter()
+                .any(|known| urls_equivalent(known, &pod.url))
         });
     }
 
@@ -579,19 +582,10 @@ fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Resu
     let mut failure = false;
     while let Some(message) = rx_to_main.iter().next() {
         match message {
-            Message::Feed(FeedMsg::NewData(pod)) => {
-                let title = pod.title.clone();
-                let db_result = db_inst.insert_podcast(&pod);
-                match db_result {
-                    Ok(_) => {
-                        if !args.contains_id("quiet") {
-                            println!("Added {title}");
-                        }
-                    }
-                    Err(_err) => {
-                        failure = true;
-                        eprintln!("Error adding {title}");
-                    }
+            Message::Feed(FeedMsg::NewData(pod, urls)) => {
+                let quiet = args.contains_id("quiet");
+                if !import_podcast(&mut db_inst, pod, &urls, &mut subscribed, quiet) {
+                    failure = true;
                 }
             }
 
@@ -618,6 +612,29 @@ fn import(db_path: &Path, config: &Arc<Config>, args: &clap::ArgMatches) -> Resu
         println!("Import successful.");
     }
     Ok(())
+}
+
+/// Adds a podcast fetched during an import, unless it is already subscribed
+/// under any of its URLs. Returns false if adding it failed.
+fn import_podcast(
+    db_inst: &mut Database, pod: PodcastNoId, urls: &FetchedUrls, subscribed: &mut Vec<String>,
+    quiet: bool,
+) -> bool {
+    if feeds::is_already_subscribed(&pod, urls, subscribed.iter().map(String::as_str)) {
+        if !quiet {
+            println!("Skipped {}: already subscribed", pod.title);
+        }
+        return true;
+    }
+    if db_inst.insert_podcast(&pod).is_err() {
+        eprintln!("Error adding {}", pod.title);
+        return false;
+    }
+    if !quiet {
+        println!("Added {}", pod.title);
+    }
+    subscribed.push(pod.url);
+    true
 }
 
 /// Exports all podcasts to OPML format, either printing to stdout or

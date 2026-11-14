@@ -22,6 +22,7 @@ use super::{
     Action, App, Arc, EpisodeAction, GpodderRequest, HashMap, PodcastFeed, PodcastNoId, Result,
     feeds, normalize_url, resolve_redirection,
 };
+use crate::feeds::FetchedUrls;
 
 impl App {
     /// Add a new podcast by fetching the RSS feed data.
@@ -82,64 +83,77 @@ impl App {
         self.update_tracker_notif();
     }
 
-    /// Handles the application logic for adding a new podcast, or synchronizing
-    /// data from the RSS feed of an existing podcast. `pod_id` will be None if
-    /// a new podcast is being added (i.e., the database has not given it an id
-    /// yet).
-    // TODO: improve error handling in this function
-    pub fn add_or_sync_data(&mut self, pod: &PodcastNoId, pod_id: Option<i64>) -> Result<()> {
-        let title = pod.title.clone();
-        let db_result;
-        let failure = if let Some(id) = pod_id {
-            db_result = self.db.update_podcast(id, pod);
-            format!("Error synchronizing {title}.")
+    /// Adds a newly fetched podcast to the database, unless it is already
+    /// subscribed under any of the URLs it was fetched through.
+    pub fn add_new_podcast(&mut self, pod: &PodcastNoId, urls: &FetchedUrls) -> Result<()> {
+        let subscribed = self.podcasts.map(|p| p.url.clone(), false);
+        if feeds::is_already_subscribed(pod, urls, subscribed.iter().map(String::as_str)) {
+            log::info!("Not adding {}: already subscribed", urls.requested);
+            self.notif_to_ui(format!("Already subscribed to {}.", pod.title), false);
         } else {
-            let title = pod.title.clone();
-            let url = pod.url.clone();
-            db_result = self.db.insert_podcast(pod);
-            if self.config.enable_sync {
-                self.tx_to_gpodder.send(GpodderRequest::AddPodcast(url))?;
-            }
-            format!("Error adding podcast {title} to database.")
-        };
-        match db_result {
-            Ok(result) => {
-                if !result.added.is_empty() || !result.updated.is_empty() {
-                    if let Some(id) = pod_id {
-                        // Existing podcast: refresh only its episodes
-                        self.refresh_podcast_episodes(id)?;
-                    } else {
-                        // New podcast: re-fetch all to get DB-assigned ID and sort order
-                        self.podcasts.replace_all(self.db.get_podcasts()?);
+            match self.db.insert_podcast(pod) {
+                Ok(result) => {
+                    if self.config.enable_sync {
+                        self.tx_to_gpodder
+                            .send(GpodderRequest::AddPodcast(pod.url.clone()))?;
                     }
+                    // Re-fetch all to get the DB-assigned ID and sort order
+                    self.podcasts.replace_all(self.db.get_podcasts()?);
+                    self.update_unplayed(true);
+                    self.update_queue();
+                    self.update_filters(self.filters, true);
+                    self.notif_to_ui(
+                        format!("Successfully added {} episodes.", result.added.len()),
+                        false,
+                    );
+                }
+                Err(_err) => self.notif_to_ui(
+                    format!("Error adding podcast {} to database.", pod.title),
+                    true,
+                ),
+            }
+        }
+        // If a gpodder sync is waiting on this feed, mark it settled whatever
+        // happened, so episode actions can run. The sync knows the feed by the
+        // URL it requested, which differs from `pod.url` if the feed moved.
+        self.gpodder_feed_settled(&urls.requested);
+        Ok(())
+    }
+
+    /// Updates an existing podcast with data from its RSS feed.
+    pub fn sync_podcast_data(&mut self, pod_id: i64, pod: &PodcastNoId) -> Result<()> {
+        match self.db.update_podcast(pod_id, pod) {
+            Ok(result) => {
+                let moved = self
+                    .podcasts
+                    .map_single(pod_id, |p| p.url != pod.url)
+                    .unwrap_or_default();
+                let episodes_changed = !result.added.is_empty() || !result.updated.is_empty();
+                if moved {
+                    // Reload, so the list shows the URL the database kept
+                    self.podcasts.replace_all(self.db.get_podcasts()?);
+                } else if episodes_changed {
+                    self.refresh_podcast_episodes(pod_id)?;
+                }
+                if moved || episodes_changed {
                     self.update_unplayed(true);
                     self.update_queue();
                     self.update_filters(self.filters, true);
                 }
 
-                if pod_id.is_some() {
-                    self.sync_tracker.push(result);
-                    self.sync_counter -= 1;
-                    self.sync_progress
-                        .write()
-                        .expect("RwLock write should not fail")
-                        .completed += 1;
-                    self.update_tracker_notif();
+                self.sync_tracker.push(result);
+                self.sync_counter -= 1;
+                self.sync_progress
+                    .write()
+                    .expect("RwLock write should not fail")
+                    .completed += 1;
+                self.update_tracker_notif();
 
-                    if self.sync_counter == 0 {
-                        self.pos_sync_counter();
-                    }
-                } else {
-                    self.notif_to_ui(
-                        format!("Successfully added {} episodes.", result.added.len()),
-                        false,
-                    );
-                    // If a gpodder sync is waiting on this feed, mark it settled
-                    // (now that its episodes exist) so episode actions can run.
-                    self.gpodder_feed_settled(&pod.url);
+                if self.sync_counter == 0 {
+                    self.pos_sync_counter();
                 }
             }
-            Err(_err) => self.notif_to_ui(failure, true),
+            Err(_err) => self.notif_to_ui(format!("Error synchronizing {}.", pod.title), true),
         }
         Ok(())
     }

@@ -145,6 +145,26 @@ pub fn normalize_url(url: &str) -> String {
     )
 }
 
+pub fn urls_equivalent(a: &str, b: &str) -> bool {
+    let (Ok(url_a), Ok(url_b)) = (reqwest::Url::parse(a), reqwest::Url::parse(b)) else {
+        return a == b;
+    };
+    let (Some(host_a), Some(host_b)) = (url_a.host_str(), url_b.host_str()) else {
+        return a == b;
+    };
+    host_a.eq_ignore_ascii_case(host_b)
+        && path_segments(&url_a).eq(path_segments(&url_b))
+        && url_a.query().unwrap_or_default() == url_b.query().unwrap_or_default()
+}
+
+fn path_segments(url: &reqwest::Url) -> impl Iterator<Item = String> {
+    url.path_segments()
+        .into_iter()
+        .flatten()
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_lowercase)
+}
+
 pub fn get_unplayed_episodes(podcasts: &LockVec<Podcast>) -> Vec<Arc<RwLock<Episode>>> {
     let mut ueps = Vec::new();
     for podcast in podcasts.borrow_map().values() {
@@ -379,5 +399,43 @@ mod tests {
             normalize_url("https://example.com/feed.xml"),
             normalize_url("https://EXAMPLE.COM/feed.xml")
         );
+    }
+
+    #[test]
+    fn urls_equivalent_ignores_cosmetic_differences() {
+        for other in [
+            "https://example.com/podcast/feed.xml",
+            "http://example.com/podcast/feed.xml",
+            "https://EXAMPLE.com/Podcast/Feed.XML",
+            "https://example.com/podcast/feed.xml/",
+            "https://example.com//podcast/feed.xml",
+            "https://example.com:8443/podcast/feed.xml",
+        ] {
+            assert!(
+                urls_equivalent("https://example.com/podcast/feed.xml", other),
+                "{other}"
+            );
+        }
+    }
+
+    #[test]
+    fn urls_equivalent_distinguishes_feeds() {
+        for other in [
+            "https://example.org/podcast/feed.xml",
+            "https://example.com/podcast/other.xml",
+            "https://example.com/podcast/feed.xml?id=2",
+            "https://feeds.example.com/podcast/feed.xml",
+        ] {
+            assert!(
+                !urls_equivalent("https://example.com/podcast/feed.xml?id=1", other),
+                "{other}"
+            );
+        }
+        assert!(urls_equivalent(
+            "https://example.com/feed?id=1",
+            "https://example.com/feed?id=1"
+        ));
+        assert!(urls_equivalent("not a url", "not a url"));
+        assert!(!urls_equivalent("not a url", "https://example.com/"));
     }
 }

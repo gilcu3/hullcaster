@@ -298,13 +298,28 @@ impl Database {
     pub fn update_podcast(&mut self, pod_id: i64, podcast: &PodcastNoId) -> Result<SyncResult> {
         {
             let conn = self.conn()?;
+            // A feed that moved to a URL another podcast already uses keeps its
+            // old URL, instead of failing the update on the UNIQUE constraint.
+            let url_taken: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM podcasts WHERE url = ? AND id != ?);",
+                params![podcast.url, pod_id],
+                |row| row.get(0),
+            )?;
+            if url_taken {
+                log::warn!(
+                    "Keeping the old URL of {}: {} is already used by another podcast",
+                    podcast.title,
+                    podcast.url
+                );
+            }
             let mut stmt = conn.prepare_cached(
-                "UPDATE podcasts SET title = ?, url = ?, description = ?,
-            author = ?, explicit = ?, last_checked = ?
+                "UPDATE podcasts SET title = ?, url = CASE WHEN ? THEN url ELSE ? END,
+            description = ?, author = ?, explicit = ?, last_checked = ?
             WHERE id = ?;",
             )?;
             stmt.execute(params![
                 podcast.title,
+                url_taken,
                 podcast.url,
                 podcast.description,
                 podcast.author,
@@ -812,6 +827,50 @@ mod tests {
             podcasts[0].description.as_deref(),
             Some("Updated description")
         );
+    }
+
+    #[test]
+    fn update_podcast_follows_moved_url() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+        let pod_id = db.get_podcasts().unwrap()[0].id;
+
+        let mut moved = podcast;
+        moved.url = "https://new.example.com/feed.xml".to_string();
+        db.update_podcast(pod_id, &moved).unwrap();
+
+        assert_eq!(
+            db.get_podcasts().unwrap()[0].url,
+            "https://new.example.com/feed.xml"
+        );
+    }
+
+    #[test]
+    fn update_podcast_keeps_url_taken_by_another_podcast() {
+        let mut db = Database::connect_in_memory().unwrap();
+        let podcast = sample_podcast();
+        db.insert_podcast(&podcast).unwrap();
+        let mut other = sample_podcast();
+        other.url = "https://other.example.com/feed.xml".to_string();
+        db.insert_podcast(&other).unwrap();
+        let pod_id = db
+            .get_podcasts()
+            .unwrap()
+            .iter()
+            .find(|pod| pod.url == podcast.url)
+            .unwrap()
+            .id;
+
+        let mut moved = podcast.clone();
+        moved.url.clone_from(&other.url);
+        moved.title = "Updated Title".to_string();
+        db.update_podcast(pod_id, &moved).unwrap();
+
+        let podcasts = db.get_podcasts().unwrap();
+        let pod = podcasts.iter().find(|pod| pod.id == pod_id).unwrap();
+        assert_eq!(pod.url, podcast.url);
+        assert_eq!(pod.title, "Updated Title");
     }
 
     #[test]

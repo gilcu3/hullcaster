@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
-use std::sync::Arc;
+use reqwest::{StatusCode, Url};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -8,15 +9,42 @@ use rss::{Channel, Item};
 use tokio::sync::Semaphore;
 
 use crate::types::{EpisodeNoId, Message, PodcastNoId};
-use crate::utils::APP_USER_AGENT;
+use crate::utils::{APP_USER_AGENT, urls_equivalent};
+
+/// Same limit as reqwest's default redirect policy.
+const MAX_REDIRECTS: usize = 10;
 
 /// Enum for communicating back to the main thread after feed data has
 /// been retrieved.
 #[derive(Debug)]
 pub enum FeedMsg {
-    NewData(PodcastNoId),
+    NewData(PodcastNoId, FetchedUrls),
     SyncData((i64, PodcastNoId)),
     Error(PodcastFeed),
+}
+
+/// The URLs a new feed was fetched through. `PodcastNoId::url` holds the URL
+/// to store, which differs from these when the feed has moved.
+#[derive(Debug, Clone)]
+pub struct FetchedUrls {
+    /// The URL that was requested.
+    pub requested: String,
+    /// The URL the feed was finally served from, after all redirects.
+    pub final_url: String,
+}
+
+/// Whether a newly fetched feed is already subscribed under any of its URLs:
+/// the one requested, the one it was finally served from, or the one it moved
+/// to.
+pub fn is_already_subscribed<'a>(
+    pod: &PodcastNoId, urls: &FetchedUrls, subscribed: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    let candidates = [pod.url.as_str(), &urls.requested, &urls.final_url];
+    subscribed.into_iter().any(|known| {
+        candidates
+            .iter()
+            .any(|candidate| urls_equivalent(known, candidate))
+    })
 }
 
 /// Struct holding data about a podcast feed (subset of info about a
@@ -42,9 +70,15 @@ pub fn check_feed(
     tokio::spawn(async move {
         let _permit = semaphore.acquire().await;
         let msg = match get_feed_data(&feed.url, max_retries).await {
-            Ok(pod) => match feed.id {
+            Ok((pod, final_url)) => match feed.id {
                 Some(id) => Message::Feed(FeedMsg::SyncData((id, pod))),
-                None => Message::Feed(FeedMsg::NewData(pod)),
+                None => Message::Feed(FeedMsg::NewData(
+                    pod,
+                    FetchedUrls {
+                        requested: feed.url,
+                        final_url,
+                    },
+                )),
             },
             Err(_err) => Message::Feed(FeedMsg::Error(feed)),
         };
@@ -55,15 +89,21 @@ pub fn check_feed(
 }
 
 /// Given a URL, this attempts to pull the data about a podcast and its
-/// episodes from an RSS feed.
-async fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId> {
+/// episodes from an RSS feed. Returns the podcast, whose URL follows the feed
+/// if it moved (see [`moved_feed_url`]), and the URL it was finally served
+/// from.
+async fn get_feed_data(url: &str, mut max_retries: usize) -> Result<(PodcastNoId, String)> {
+    let redirected_to: Arc<Mutex<Option<String>>> = Arc::default();
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
         .user_agent(APP_USER_AGENT)
+        .redirect(record_permanent_redirect(Arc::clone(&redirected_to)))
         .build()?;
 
     let response = loop {
+        // Only the redirects of the response we end up using count
+        *redirected_to.lock().expect("Mutex lock should not fail") = None;
         if let Ok(resp) = client.get(url).send().await {
             if resp.status().is_success() {
                 break Ok(resp);
@@ -80,10 +120,62 @@ async fn get_feed_data(url: &str, mut max_retries: usize) -> Result<PodcastNoId>
         }
     }?;
 
+    let final_url = response.url().to_string();
     let resp_data = response.bytes().await?;
 
     let channel = Channel::read_from(&resp_data[..])?;
-    Ok(parse_feed_data(channel, url))
+    let redirected_to = redirected_to
+        .lock()
+        .expect("Mutex lock should not fail")
+        .take();
+    let url = moved_feed_url(url, redirected_to, &channel).unwrap_or_else(|| url.to_string());
+    Ok((parse_feed_data(channel, &url), final_url))
+}
+
+/// A redirect policy that follows redirects like reqwest's default one, and
+/// records where the first hop leads when it is a permanent move.
+fn record_permanent_redirect(
+    redirected_to: Arc<Mutex<Option<String>>>,
+) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= MAX_REDIRECTS {
+            return attempt.error("too many redirects");
+        }
+        if let [first] = attempt.previous()
+            && is_permanent_redirect(attempt.status(), first, attempt.url())
+        {
+            *redirected_to.lock().expect("Mutex lock should not fail") =
+                Some(attempt.url().to_string());
+        }
+        attempt.follow()
+    })
+}
+
+/// Whether a redirect means the resource moved for good: a 301 or 308, or a
+/// redirect that only upgrades http to https. `AntennaPod` treats both alike.
+fn is_permanent_redirect(status: StatusCode, from: &Url, to: &Url) -> bool {
+    matches!(
+        status,
+        StatusCode::MOVED_PERMANENTLY | StatusCode::PERMANENT_REDIRECT
+    ) || (from.scheme() == "http" && to.as_str() == from.as_str().replacen("http", "https", 1))
+}
+
+/// The URL a feed now lives at, if it differs from the requested one: where a
+/// permanent redirect on the first hop led, or else the feed's own
+/// `<itunes:new-feed-url>`. This follows `AntennaPod`, so both clients agree on
+/// when a feed has moved; a temporary redirect keeps the requested URL.
+fn moved_feed_url(
+    requested: &str, redirected_to: Option<String>, channel: &Channel,
+) -> Option<String> {
+    let new_feed_url = channel
+        .itunes_ext()
+        .and_then(|itunes| itunes.new_feed_url())
+        .map(str::trim)
+        .filter(|url| Url::parse(url).is_ok_and(|url| matches!(url.scheme(), "http" | "https")))
+        .map(str::to_string);
+    redirected_to
+        .or(new_feed_url)
+        .filter(|url| url != requested)
 }
 
 /// Given a Channel with the RSS feed data, this parses the data about a
@@ -201,9 +293,171 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::BufReader;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn open_file(path: &str) -> BufReader<File> {
         BufReader::new(File::open(path).unwrap())
+    }
+
+    fn feed_xml(new_feed_url: Option<&str>) -> String {
+        let new_feed_url = new_feed_url
+            .map(|url| format!("<itunes:new-feed-url>{url}</itunes:new-feed-url>"))
+            .unwrap_or_default();
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+<title>Test</title><link>https://example.com</link><description>Test feed</description>
+{new_feed_url}
+<item><title>Episode</title><guid>guid-1</guid>
+<enclosure url="https://example.com/ep1.mp3" length="1" type="audio/mpeg"/></item>
+</channel>
+</rss>"#
+        )
+    }
+
+    async fn serve_feed(server: &MockServer, route: &str, new_feed_url: Option<&str>) {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_string(feed_xml(new_feed_url)))
+            .mount(server)
+            .await;
+    }
+
+    async fn serve_redirect(server: &MockServer, from: &str, status: u16, to: &str) {
+        Mock::given(method("GET"))
+            .and(path(from))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("Location", format!("{}{to}", server.uri())),
+            )
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn permanent_redirect_moves_feed() {
+        for status in [301, 308] {
+            let server = MockServer::start().await;
+            serve_redirect(&server, "/old", status, "/new").await;
+            serve_feed(&server, "/new", None).await;
+
+            let (pod, final_url) = get_feed_data(&format!("{}/old", server.uri()), 1)
+                .await
+                .unwrap();
+            assert_eq!(pod.url, format!("{}/new", server.uri()), "{status}");
+            assert_eq!(final_url, format!("{}/new", server.uri()), "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn temporary_redirect_keeps_requested_url() {
+        for status in [302, 303, 307] {
+            let server = MockServer::start().await;
+            serve_redirect(&server, "/old", status, "/new").await;
+            serve_feed(&server, "/new", None).await;
+
+            let (pod, final_url) = get_feed_data(&format!("{}/old", server.uri()), 1)
+                .await
+                .unwrap();
+            assert_eq!(pod.url, format!("{}/old", server.uri()), "{status}");
+            assert_eq!(final_url, format!("{}/new", server.uri()), "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn only_the_first_redirect_decides_a_move() {
+        let server = MockServer::start().await;
+        serve_redirect(&server, "/a", 302, "/b").await;
+        serve_redirect(&server, "/b", 301, "/c").await;
+        serve_redirect(&server, "/d", 301, "/e").await;
+        serve_redirect(&server, "/e", 302, "/c").await;
+        serve_feed(&server, "/c", None).await;
+
+        let (pod, _) = get_feed_data(&format!("{}/a", server.uri()), 1)
+            .await
+            .unwrap();
+        assert_eq!(pod.url, format!("{}/a", server.uri()));
+
+        let (pod, _) = get_feed_data(&format!("{}/d", server.uri()), 1)
+            .await
+            .unwrap();
+        assert_eq!(pod.url, format!("{}/e", server.uri()));
+    }
+
+    #[tokio::test]
+    async fn new_feed_url_moves_feed() {
+        let server = MockServer::start().await;
+        serve_feed(&server, "/moved", Some("https://example.org/feed.xml")).await;
+        serve_feed(&server, "/invalid", Some("not a url")).await;
+
+        let (pod, final_url) = get_feed_data(&format!("{}/moved", server.uri()), 1)
+            .await
+            .unwrap();
+        assert_eq!(pod.url, "https://example.org/feed.xml");
+        assert_eq!(final_url, format!("{}/moved", server.uri()));
+
+        let (pod, _) = get_feed_data(&format!("{}/invalid", server.uri()), 1)
+            .await
+            .unwrap();
+        assert_eq!(pod.url, format!("{}/invalid", server.uri()));
+    }
+
+    #[tokio::test]
+    async fn permanent_redirect_wins_over_new_feed_url() {
+        let server = MockServer::start().await;
+        serve_redirect(&server, "/old", 301, "/new").await;
+        serve_feed(&server, "/new", Some("https://example.org/feed.xml")).await;
+
+        let (pod, _) = get_feed_data(&format!("{}/old", server.uri()), 1)
+            .await
+            .unwrap();
+        assert_eq!(pod.url, format!("{}/new", server.uri()));
+    }
+
+    #[test]
+    fn upgrade_to_https_counts_as_permanent() {
+        let url = |s: &str| Url::parse(s).unwrap();
+        let from = url("http://example.com/feed.xml");
+        assert!(is_permanent_redirect(
+            StatusCode::FOUND,
+            &from,
+            &url("https://example.com/feed.xml")
+        ));
+        assert!(!is_permanent_redirect(
+            StatusCode::FOUND,
+            &from,
+            &url("https://example.com/other.xml")
+        ));
+        assert!(!is_permanent_redirect(
+            StatusCode::FOUND,
+            &url("https://example.com/feed.xml"),
+            &url("https://cdn.example.com/feed.xml")
+        ));
+    }
+
+    #[test]
+    fn already_subscribed_under_any_fetched_url() {
+        let channel = Channel::read_from(feed_xml(None).as_bytes()).unwrap();
+        let pod = parse_feed_data(channel, "https://moved.example.com/feed");
+        let urls = FetchedUrls {
+            requested: "https://old.example.com/feed".to_string(),
+            final_url: "https://cdn.example.com/feed".to_string(),
+        };
+
+        for known in [
+            "https://moved.example.com/feed",
+            "http://OLD.example.com/feed/",
+            "https://cdn.example.com/feed",
+        ] {
+            assert!(is_already_subscribed(&pod, &urls, [known]), "{known}");
+        }
+        assert!(!is_already_subscribed(
+            &pod,
+            &urls,
+            ["https://other.example.com/feed"]
+        ));
     }
 
     #[test]

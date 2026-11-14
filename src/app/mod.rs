@@ -139,7 +139,7 @@ impl App {
                     Ok(())
                 }
 
-                Message::Feed(FeedMsg::NewData(pod)) => self.add_or_sync_data(&pod, None),
+                Message::Feed(FeedMsg::NewData(pod, urls)) => self.add_new_podcast(&pod, &urls),
 
                 Message::Feed(FeedMsg::Error(feed)) => {
                     // If a gpodder sync is waiting on this feed, clear it from the
@@ -173,9 +173,7 @@ impl App {
                     Ok(())
                 }
 
-                Message::Feed(FeedMsg::SyncData((id, pod))) => {
-                    self.add_or_sync_data(&pod, Some(id))
-                }
+                Message::Feed(FeedMsg::SyncData((id, pod))) => self.sync_podcast_data(id, &pod),
 
                 Message::Ui(UiMsg::SyncAll) => {
                     self.sync(None);
